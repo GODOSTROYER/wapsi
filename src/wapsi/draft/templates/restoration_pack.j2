@@ -1,0 +1,89 @@
+{#- Restoration pack (SOP Para 11, Process P1 / P2): attribution sheet, NOC, remittance letter, indemnity bond,
+    Supurdignama and timeline. Per-account per-victim amounts use "<account_id>/victim_amount:<ncrp_id>". -#}
+# Restoration pack (Process {{ s.restoration_process }}): {{ c.case_id }}
+
+- **Complaint(s):** {{ s.ncrp_ids }}
+- **Holding bank:** {{ c.home_bank_name }} (bank code {{ c.home_bank_id }})
+- **Apportionment rule used:** {{ c.rule_text }} [SOP-5-XIII] [SOP-ANNEX-V]
+- **Process:** {{ c.process_text }} [{{ c.process_cite }}]
+
+## Part A: Attribution sheet
+
+| Complaint | Victim | A/c No. | Bank | Status | Attributed amount |
+|---|---|---|---|---|---|
+{% for r in c.attribution %}
+| {{ r.ncrp }} | {{ r.victim }} | {{ s[r.acct ~ "/account_id"] }} | {{ s[r.acct ~ "/bank_id"] }} | {{ r.status }} | {{ s[r.acct ~ "/victim_amount:" ~ r.ncrp] }} |
+{% else %}
+| none | | | | no recoverable money was traced | |
+{% endfor %}
+
+| Complaint | Victim | Victim A/c No. | Amount claimed | Recoverable (all accounts) |
+|---|---|---|---|---|
+{% for v in c.victims %}
+| {{ v.ncrp }} | {{ v.name }} | {{ s["victim_account:" ~ v.ncrp] }} | {{ s["complaint_amount:" ~ v.ncrp] }} | {% if v.has_recoverable %}{{ s["victim_amount:" ~ v.ncrp] }}{% else %}none{% endif %} |
+{% endfor %}
+
+- Total recoverable: {{ s.total_recoverable }}, of which {{ s.total_hold }} is held at this bank. Amounts requested from other banks are recoverable only once those banks confirm their holds.
+- Money held at any layer of the trail{% if c.has_intermediary_hold %}, including the disputed amount held in a nodal / pool / escrow account,{% endif %} can be released to the victim [SOP-5-X].
+- Where the recoverable money is less than the claims, it is shared between the victims in proportion to the money traced to each of them (pro-rata) [SOP-5-XIII].
+{% if c.forward_holds %}
+- Forward holds marked on future credits of first-layer accounts (not money in hand, not attributed yet):{% for a in c.forward_holds %} A/c No. {{ s[a ~ "/account_id"] }} {{ s[a ~ "/forward_hold_amount"] }}{% if not loop.last %};{% endif %}{% endfor %} [SOP-9-1-I].
+{% endif %}
+
+## Part B: Bank no-objection certificate (template)
+
+To: The Investigating Officer, Law Enforcement Agency handling complaint(s) {{ s.ncrp_ids }}
+
+{{ c.home_bank_name }} has no objection to the release of the following amounts, now on hold, to the victim(s) as per the attribution sheet above, on receipt of the direction under the applicable process [{{ c.process_cite }}]:
+
+{% for r in c.home_attribution %}
+- A/c No. {{ s[r.acct ~ "/account_id"] }}: {{ s[r.acct ~ "/victim_amount:" ~ r.ncrp] }} for complaint {{ r.ncrp }}
+{% else %}
+- No amount is on hold at this bank.
+{% endfor %}
+
+Nodal Officer (Cyber Fraud Cell), {{ c.home_bank_name }}. Signature, seal and date: ____________
+
+## Part C: Remittance letter (template)
+
+To: Branch Operations, {{ c.home_bank_name }}
+
+On receipt of the direction of the Investigating Officer / competent authority, remit the following amounts from the holds and release the lien to that extent:
+
+{% for r in c.home_attribution %}
+- From A/c No. {{ s[r.acct ~ "/account_id"] }} to victim A/c No. {{ s["victim_account:" ~ r.ncrp] }} ({{ r.victim }}, complaint {{ r.ncrp }}): {{ s[r.acct ~ "/victim_amount:" ~ r.ncrp] }}
+{% else %}
+- Nothing to remit from this bank.
+{% endfor %}
+
+Update the release on CFCFRMS after remittance.
+
+## Part D: Indemnity bond (template)
+
+{% for v in c.victims if v.has_recoverable %}
+I, {{ v.name }}, complainant in NCRP complaint {{ v.ncrp }} and holder of A/c No. {{ s["victim_account:" ~ v.ncrp] }}, on restoration of {{ s["victim_amount:" ~ v.ncrp] }}, undertake to refund the amount, in full or in part, if a competent court or authority so directs, and to indemnify {{ c.home_bank_name }} against any claim arising from the release.
+
+Signature: ____________ Place: ____________ Date: ____________
+
+{% endfor %}
+## Part E: Supurdignama, certificate of custody (template)
+
+{% for v in c.victims if v.has_recoverable %}
+I, {{ v.name }}, complainant in NCRP complaint {{ v.ncrp }}, acknowledge receiving {{ s["victim_amount:" ~ v.ncrp] }} into my custody (supurdagi) on the direction of the Investigating Officer. I undertake to produce the amount or its equivalent before the court whenever directed and not to deal with it contrary to any direction of the court.
+
+Signature of the complainant: ____________ Witness: ____________ Investigating Officer: ____________
+
+{% endfor %}
+## Part F: Timeline [{{ c.process_cite }}]
+
+- Notice: the Investigating Officer issues notice to the account holder(s) within 7 calendar days [{{ c.process_cite }}].
+- Reply: the account holder replies within 15 days of the notice.
+- Remittance: on the direction to release, the bank remits the attributed amounts within 15 days and updates CFCFRMS [SOP-5-XIII].
+
+## Part G: Escalation flags (human decision required)
+
+{% for e in c.escalations %}
+- A/c No. {{ s[e.acct ~ "/account_id"] }} is flagged ESCALATE_S106_CANDIDATE because {{ e.basis }}. The hold of {{ s[e.acct ~ "/hold_amount"] }} stays amount-specific and restoration can proceed. Seizure under Section 106 BNSS needs a registered FIR and a debit freeze needs an order of the Magistrate under Section 107 BNSS [BNSS-106] [BNSS-107]; banks may only mark the disputed amount under lien [CASE-KARTIK-CHATUR]. The nodal officer decides on any escalation.
+{% else %}
+- None.
+{% endfor %}

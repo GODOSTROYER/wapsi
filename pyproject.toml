@@ -1,0 +1,49 @@
+[project]
+name = "wapsi"
+version = "0.1.0"
+description = "Wapsi: cyber-fraud money-trail tracing and victim-restoration copilot for bank nodal officers (NCRP / CFCFRMS)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=15",
+    "jinja2>=3.1",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+ml = ["scikit-learn>=1.4", "xgboost>=2.0"]
+docs = ["pypdf>=4.2"]
+ui = ["streamlit>=1.38", "plotly>=5.20"]
+gcp = [
+    "google-adk>=2.9",
+    "google-cloud-bigquery>=3.25",
+    "google-cloud-firestore>=2.19",
+    "google-cloud-modelarmor>=0.2",
+    "litellm>=1.84",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.2", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wapsi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--basetemp=.pytest_tmp"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

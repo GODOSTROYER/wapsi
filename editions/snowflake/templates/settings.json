@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python editions/snowflake/hooks/session_start.py",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "snowflakesqlexecute|bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python editions/snowflake/hooks/pre_sql_guard.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "edit|write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python editions/snowflake/hooks/post_edit_tests.py",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,400 @@
+"""Fictional name, place and business vocabularies for the synthetic world.
+
+Every name is a random combination of common given names and surnames from many Indian regions and communities;
+no combination refers to a real person. Business names are composites and every bank is marked "(synthetic)".
+"""
+
+from __future__ import annotations
+
+# (given names, surnames, cities) per region / community. Given names mix genders.
+REGIONS: dict[str, tuple[list[str], list[str], list[str]]] = {
+    "marathi": (
+        [
+            "Aarti",
+            "Sachin",
+            "Snehal",
+            "Vaibhav",
+            "Pooja",
+            "Omkar",
+            "Ashwini",
+            "Rohit",
+            "Madhuri",
+            "Prasad",
+            "Shraddha",
+            "Ganesh",
+            "Swati",
+            "Nikhil",
+        ],
+        ["Kulkarni", "Deshpande", "Jadhav", "Pawar", "Shinde", "Patil", "Gokhale", "Bhosale", "More", "Kale"],
+        ["Pune", "Nashik", "Nagpur", "Kolhapur", "Aurangabad", "Thane", "Mumbai"],
+    ),
+    "gujarati": (
+        ["Hetal", "Jignesh", "Krupa", "Bhavin", "Nirali", "Chirag", "Falguni", "Ketan", "Mitali", "Parth"],
+        ["Patel", "Shah", "Desai", "Mehta", "Trivedi", "Joshi", "Parekh", "Chauhan", "Vora"],
+        ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar"],
+    ),
+    "punjabi": (
+        ["Gurpreet", "Harjit", "Simran", "Manpreet", "Jaspreet", "Navjot", "Kuldeep", "Amandeep", "Baljit"],
+        ["Singh", "Kaur", "Gill", "Sandhu", "Dhillon", "Grewal", "Sidhu", "Bajwa"],
+        ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Mohali", "Chandigarh"],
+    ),
+    "tamil": (
+        [
+            "Karthik",
+            "Lakshmi",
+            "Senthil",
+            "Divya",
+            "Murugan",
+            "Priya",
+            "Arun",
+            "Kavitha",
+            "Saravanan",
+            "Meenakshi",
+        ],
+        ["Subramanian", "Ramasamy", "Krishnan", "Natarajan", "Sundaram", "Pandian", "Venkatesan", "Raman"],
+        ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli"],
+    ),
+    "telugu": (
+        ["Srinivas", "Lavanya", "Venkat", "Sravani", "Ravi Teja", "Swapna", "Naveen", "Anusha", "Prasanth"],
+        ["Reddy", "Naidu", "Rao", "Chowdary", "Varma", "Goud", "Yadav", "Raju"],
+        ["Hyderabad", "Vijayawada", "Visakhapatnam", "Warangal", "Guntur", "Tirupati"],
+    ),
+    "kannada": (
+        ["Manjunath", "Shwetha", "Prakash", "Kavya", "Girish", "Rekha", "Santosh", "Nandini", "Harish"],
+        ["Gowda", "Hegde", "Shetty", "Kamath", "Bhat", "Rao", "Patil", "Kulkarni"],
+        ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Belagavi", "Davanagere"],
+    ),
+    "malayali": (
+        [
+            "Anil",
+            "Deepa",
+            "Jomon",
+            "Sreeja",
+            "Rajeev",
+            "Anjali",
+            "Biju",
+            "Reshma",
+            "Tomy",
+            "Nisha",
+            "Shameer",
+        ],
+        ["Nair", "Menon", "Pillai", "Kurian", "Varghese", "Thomas", "Joseph", "Panicker", "Koshy"],
+        ["Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur", "Kottayam", "Kannur"],
+    ),
+    "bengali": (
+        ["Arindam", "Moumita", "Sourav", "Tanushree", "Debashis", "Riya", "Partha", "Sharmila", "Anirban"],
+        ["Chatterjee", "Banerjee", "Mukherjee", "Das", "Ghosh", "Sen", "Bose", "Dutta", "Saha"],
+        ["Kolkata", "Howrah", "Durgapur", "Siliguri", "Asansol"],
+    ),
+    "odia": (
+        ["Subhashree", "Manas", "Lipsa", "Bikash", "Sasmita", "Debasis", "Pragyan"],
+        ["Mohanty", "Panda", "Mishra", "Sahoo", "Behera", "Nayak", "Pradhan"],
+        ["Bhubaneswar", "Cuttack", "Rourkela", "Berhampur", "Sambalpur"],
+    ),
+    "assamese_ne": (
+        ["Bhaskar", "Pallavi", "Dhruba", "Rupjyoti", "Lalremruata", "Vanlalpeka", "Imlisunep", "Temjen"],
+        ["Bora", "Saikia", "Gogoi", "Baruah", "Kalita", "Lalthangliana", "Ao", "Jamir"],
+        ["Guwahati", "Dibrugarh", "Jorhat", "Shillong", "Aizawl", "Kohima"],
+    ),
+    "hindi_belt": (
+        [
+            "Amit",
+            "Neha",
+            "Rajesh",
+            "Sunita",
+            "Vikas",
+            "Anjali",
+            "Manoj",
+            "Rekha",
+            "Pankaj",
+            "Kavita",
+            "Sanjay",
+            "Pinky",
+            "Deepak",
+            "Ritu",
+        ],
+        [
+            "Sharma",
+            "Verma",
+            "Gupta",
+            "Yadav",
+            "Tiwari",
+            "Mishra",
+            "Srivastava",
+            "Chaudhary",
+            "Pandey",
+            "Singh",
+        ],
+        [
+            "Lucknow",
+            "Kanpur",
+            "Patna",
+            "Jaipur",
+            "Bhopal",
+            "Indore",
+            "Varanasi",
+            "Delhi",
+            "Gurugram",
+            "Noida",
+        ],
+    ),
+    "muslim": (
+        [
+            "Imran",
+            "Ayesha",
+            "Faisal",
+            "Zainab",
+            "Arif",
+            "Farheen",
+            "Salman",
+            "Nazia",
+            "Irfan",
+            "Rukhsar",
+            "Tanveer",
+        ],
+        ["Khan", "Shaikh", "Ansari", "Qureshi", "Siddiqui", "Sayyed", "Pathan", "Mirza", "Rizvi"],
+        ["Hyderabad", "Lucknow", "Bhopal", "Aligarh", "Mumbai", "Srinagar", "Malappuram"],
+    ),
+    "christian_goan": (
+        ["Joanna", "Clinton", "Sheryl", "Aloysius", "Maria", "Brian", "Cynthia", "Glen"],
+        ["D'Souza", "Fernandes", "Pereira", "Rodrigues", "D'Costa", "Gomes", "Pinto", "Lobo"],
+        ["Panaji", "Margao", "Mangaluru", "Mumbai", "Vasai"],
+    ),
+    "parsi": (
+        ["Zubin", "Farzana", "Cyrus", "Perizaad", "Darius", "Shirin"],
+        ["Mistry", "Irani", "Bharucha", "Daruwalla", "Contractor", "Engineer"],
+        ["Mumbai", "Pune", "Surat", "Navsari"],
+    ),
+    "kashmiri": (
+        ["Aamir", "Mehvish", "Rohit", "Iqra", "Sahil", "Shazia"],
+        ["Bhat", "Dar", "Lone", "Kaul", "Raina", "Wani"],
+        ["Srinagar", "Jammu", "Anantnag", "Baramulla"],
+    ),
+    "rajasthani": (
+        ["Bhupendra", "Mamta", "Dinesh", "Sarita", "Mahendra", "Kiran"],
+        ["Rathore", "Shekhawat", "Agarwal", "Maheshwari", "Choudhary", "Meena"],
+        ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Bikaner", "Ajmer"],
+    ),
+}
+
+REGION_WEIGHTS: dict[str, float] = {
+    "marathi": 0.13,
+    "gujarati": 0.07,
+    "punjabi": 0.05,
+    "tamil": 0.08,
+    "telugu": 0.08,
+    "kannada": 0.07,
+    "malayali": 0.06,
+    "bengali": 0.07,
+    "odia": 0.03,
+    "assamese_ne": 0.03,
+    "hindi_belt": 0.17,
+    "muslim": 0.09,
+    "christian_goan": 0.02,
+    "parsi": 0.01,
+    "kashmiri": 0.02,
+    "rajasthani": 0.02,
+}
+
+CITY_AREAS = [
+    "CENTRAL",
+    "STATION-RD",
+    "MG-ROAD",
+    "MARKET",
+    "EAST",
+    "WEST",
+    "NORTH",
+    "SOUTH",
+    "BUS-STAND",
+    "CIVIL-LINES",
+    "CANTT",
+    "OLD-TOWN",
+    "RING-RD",
+    "SECTOR-4",
+    "IT-PARK",
+]
+
+# composite business vocabulary (fictional combinations)
+BIZ_STEMS = [
+    "Aranya",
+    "Kaveri",
+    "Meghdoot",
+    "Tulsivan",
+    "Nilanjan",
+    "Suryodaya",
+    "Vindhya",
+    "Sahyog",
+    "Chandrakala",
+    "Pushpak",
+    "Amrutdhara",
+    "Navrang",
+    "Ekta",
+    "Prayas",
+    "Hansdhwani",
+    "Kalpataru",
+    "Mayur",
+    "Shivalik",
+    "Godavari",
+    "Anmol",
+    "Trinetra",
+    "Vasundhara",
+    "Indradhanu",
+    "Sarang",
+]
+BIZ_TRADES = [
+    "Infosolutions",
+    "Textiles",
+    "Agro Foods",
+    "Logistics",
+    "Pharma Distributors",
+    "Engineering Works",
+    "Packaging",
+    "Builders",
+    "Auto Components",
+    "Printers",
+    "Cold Storage",
+    "Hospitality",
+    "Electricals",
+    "Plastics",
+    "Trading Co",
+    "Data Services",
+    "Healthcare",
+    "Education Services",
+]
+BIZ_SUFFIX = ["Pvt Ltd", "LLP", "Pvt Ltd", "& Sons", "Enterprises", "Industries"]
+
+MERCHANT_PREFIX = [
+    "Shree",
+    "New",
+    "Royal",
+    "Sai",
+    "Al-Noor",
+    "St. Anne's",
+    "Guru Kripa",
+    "Lakshmi",
+    "Janta",
+    "Metro",
+    "Balaji",
+    "Krishna",
+    "Madina",
+    "Waheguru",
+    "Annapurna",
+    "Green Leaf",
+    "Star",
+    "Om",
+    "Jai Hind",
+    "Silver Oak",
+    "Nandini",
+    "Sagar",
+    "Moonlight",
+    "Bismillah",
+]
+
+# category -> (merchant noun list, typical ticket median, invoice probability)
+MERCHANT_CATEGORIES: dict[str, tuple[list[str], float, float]] = {
+    "grocery": (["Kirana Stores", "Provision Mart", "Supermarket", "General Stores"], 450.0, 0.02),
+    "pharmacy": (["Medicals", "Pharmacy", "Chemists"], 380.0, 0.05),
+    "food": (["Tiffin Centre", "Bakery", "Sweets", "Biryani House", "Dhaba", "Cafe"], 320.0, 0.01),
+    "fuel": (["Fuel Station", "Petroleum"], 1200.0, 0.0),
+    "electronics": (["Electronics", "Mobile Gallery", "Digital World", "Home Appliances"], 9500.0, 0.85),
+    "jewellery": (["Jewellers", "Gold Palace", "Bullion House"], 42000.0, 0.9),
+    "apparel": (["Textiles", "Fashion Hub", "Saree Centre", "Garments"], 1800.0, 0.4),
+    "hardware": (["Hardware", "Paints & Sanitary", "Building Materials"], 2600.0, 0.5),
+    "travel": (["Tours & Travels", "Holidays"], 7800.0, 0.8),
+    "online": (["Online Mart", "E-Store", "Bazaar Online"], 2200.0, 0.95),
+}
+MERCHANT_CATEGORY_WEIGHTS: dict[str, float] = {
+    "grocery": 0.28,
+    "pharmacy": 0.12,
+    "food": 0.18,
+    "fuel": 0.06,
+    "electronics": 0.08,
+    "jewellery": 0.04,
+    "apparel": 0.09,
+    "hardware": 0.05,
+    "travel": 0.03,
+    "online": 0.07,
+}
+WASH_CATEGORIES = ["electronics", "jewellery", "online", "travel"]  # T3 merchant-wash targets
+WHOLESALE_CATEGORIES = ["hardware", "apparel", "grocery", "electronics"]  # T6 supplier purchases
+
+BILLERS = [
+    "Power Distribution Co",
+    "Water Supply Board",
+    "Gas Distribution",
+    "Broadband Services",
+    "Mobile Postpaid Services",
+    "DTH Services",
+]
+BILL_REMARKS = [
+    "ELECTRICITY BILL",
+    "WATER BILL",
+    "PIPED GAS BILL",
+    "BROADBAND BILL",
+    "MOBILE BILL",
+    "DTH RECHARGE",
+]
+
+POOL_NAMES = [
+    "PayKaro PA Pool",
+    "Setu-Pay Nodal",
+    "Bazaar Escrow",
+    "RupeeLink PA Pool",
+    "CashKart Nodal",
+    "TrustVault Escrow",
+    "QuickCollect PA Pool",
+    "Dhan-Setu Nodal",
+]
+
+VASPS = [
+    "VASP ZENKOIN EXCHANGE (synthetic)",
+    "VASP BHARATBIT MARKETS (synthetic)",
+    "VASP TEZCOIN P2P (synthetic)",
+    "VASP SATOSHI-DESI (synthetic)",
+]
+
+BANK_NAMES = {
+    "HB01": "Sahyadri Co-operative Bank (synthetic)",
+    "OB02": "Konkan Commercial Bank (synthetic)",
+    "OB03": "Deccan Payments Bank (synthetic)",
+}
+
+P2P_REMARKS = [
+    "",
+    "",
+    "",
+    "sent",
+    "for dinner",
+    "trip share",
+    "thanks",
+    "loan return",
+    "gift",
+    "fees",
+    "grocery share",
+    "petrol",
+    "maintenance",
+    "tuition",
+    "birthday",
+    "medicine",
+    "ticket",
+    "paisa wapas",
+    "ghar kharcha",
+    "chai paani",
+]
+MERCHANT_REMARKS = ["", "", "payment", "order", "bill", "purchase"]
+
+SELL_ITEMS = [
+    "iPhone 15 (used)",
+    "gaming laptop",
+    "LED TV 55in",
+    "DSLR camera",
+    "refrigerator",
+    "sofa set",
+    "royal enfield spare parts",
+    "air conditioner",
+    "washing machine",
+    "tablet",
+    "office chairs x6",
+    "bridal lehenga",
+    "cycle (geared)",
+]

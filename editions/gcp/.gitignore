@@ -1,0 +1,3 @@
+# ADK local session/artifact storage created by `adk web` / `adk api_server`
+**/.adk/
+deploy/.last_image

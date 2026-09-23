@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync --all-extras
+      - run: uv run ruff check src tests evals ui
+      - run: uv run pytest
+      - name: Golden-set evaluation (showcase + demo)
+        run: |
+          uv run python -m wapsi.synth --size showcase --out data/generated/showcase
+          uv run python -m wapsi.synth --size demo --seed 7 --out data/generated/demo
+          uv run python -m evals.harness --world showcase
+          uv run python -m evals.harness --world demo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: evals/reports/

@@ -1,0 +1,141 @@
+{
+  "summary": {
+    "world": "heldout-101",
+    "scorer": "heuristic",
+    "cases": 45,
+    "mule_P": 0.9832,
+    "mule_R": 1.0,
+    "inn_P": 1.0,
+    "inn_R": 0.6,
+    "disp_acc": 0.9716,
+    "hold_exact": 1.0,
+    "str_ground_acc": 0.9556,
+    "n_disp_fail": 4
+  },
+  "report": {
+    "world": "heldout-101",
+    "generated_at": "2026-09-16T18:10:06.309315+00:00",
+    "config": {
+      "rule": "PRO_RATA",
+      "llm": "fake-llm",
+      "scorer": "heuristic",
+      "search": true
+    },
+    "cases": 45,
+    "adversarial_cases": 4,
+    "metrics": {
+      "traced_amount_recall": 1.0,
+      "totals_abs_error_inr": 0.26,
+      "hold_exact_match_rate": 1.0,
+      "over_hold_inr": 0.0,
+      "false_freeze_count": 0,
+      "disposition_accuracy": 0.9716,
+      "process_accuracy": 1.0,
+      "str_ground_accuracy": 0.9556,
+      "escalation_precision": 1.0,
+      "escalation_recall": 1.0,
+      "role_precision": {
+        "MULE": 0.9832,
+        "INNOCENT_HOLDER": 1.0,
+        "MERCHANT": 1.0,
+        "INTERMEDIARY": 1.0
+      },
+      "role_recall": {
+        "MULE": 1.0,
+        "INNOCENT_HOLDER": 0.6,
+        "MERCHANT": 1.0,
+        "INTERMEDIARY": 1.0
+      },
+      "draft_verification_pass_rate": 1.0,
+      "draft_numeric_accuracy": 1.0,
+      "citation_validity": 1.0,
+      "llm_only_hallucination_rate": null,
+      "llm_prose_fallback_rate": 1.0,
+      "injection_flag_recall": 0.5,
+      "injection_leaks": 0,
+      "p50_time_to_hold_plan_s": 0.1729,
+      "p95_time_to_hold_plan_s": 0.5327,
+      "p95_total_s": 0.5336
+    },
+    "baseline": {
+      "whole_account_freeze_inr": 810007430.68,
+      "wapsi_hold_inr": 3488646.01,
+      "accounts_frozen_baseline": 118,
+      "accounts_held": 98
+    },
+    "per_typology": {
+      "T10_NODAL_POOL": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T1_FANOUT_CASHOUT": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T2_CHAIN_LAYERING": {
+        "cases": 4,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T3_MERCHANT_WASH": {
+        "cases": 4,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T4_CRYPTO_EXIT": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T5_CROSS_BANK_HOP": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T6_TRIANGULATION": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 0.6923
+      },
+      "T7_MULTI_VICTIM": {
+        "cases": 3,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T8_DORMANT_BURST": {
+        "cases": 4,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      },
+      "T9_DEVICE_CLUSTER": {
+        "cases": 5,
+        "hold_exact_match_rate": 1.0,
+        "disposition_accuracy": 1.0
+      }
+    },
+    "failures": [
+      {
+        "case_id": "CASE-10209260083546",
+        "check": "disposition",
+        "detail": "HB01-7706200491: got HOLD_AMOUNT expected HOLD_AMOUNT_NO_ESCALATION"
+      },
+      {
+        "case_id": "CASE-20809260083562",
+        "check": "disposition",
+        "detail": "HB01-4359960871: got HOLD_AMOUNT expected HOLD_AMOUNT_NO_ESCALATION"
+      },
+      {
+        "case_id": "CASE-20908260083517",
+        "check": "disposition",
+        "detail": "HB01-1667153190: got HOLD_AMOUNT expected HOLD_AMOUNT_NO_ESCALATION"
+      },
+      {
+        "case_id": "CASE-30309260083549",
+        "check": "disposition",
+        "detail": "HB01-7814851374: got HOLD_AMOUNT expected HOLD_AMOUNT_NO_ESCALATION"
+      }
+    ]
+  }
+}

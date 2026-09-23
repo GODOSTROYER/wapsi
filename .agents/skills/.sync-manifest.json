@@ -1,0 +1,11 @@
+{
+  "source": ".claude/skills",
+  "skills": [
+    "lien-calculator",
+    "money-trail-tracer",
+    "sop-citer",
+    "str-drafter",
+    "synth-fraud-ledger",
+    "wapsi-eval"
+  ]
+}

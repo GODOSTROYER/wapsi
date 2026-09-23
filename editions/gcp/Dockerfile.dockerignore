@@ -1,0 +1,24 @@
+# BuildKit uses this file for `docker build -f editions/gcp/Dockerfile .` (context = repository root)
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.adk
+.git
+.github
+.venv
+.pytest_tmp
+.claude
+.agents
+.env
+.env.*
+data/generated
+data/docs/raw
+data/golden
+models
+*.ckpt
+*.safetensors
+editions/snowflake
+editions/amd
+tests
+.streamlit/secrets.toml

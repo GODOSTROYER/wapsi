@@ -1,0 +1,262 @@
+{
+  "note": "Figures and time limits taken verbatim from the MHA/I4C SOP (02.01.2026) as circulated by the High Court of Uttarakhand, plus the FIU-IND FAQ for the STR deadline. pdf_page = physical page of the downloaded PDF; printed_page = the SOP's own 'Page N of 98' label (pdf_page - 2). Verify with: uv run python -m wapsi.search.check_citations",
+  "source_url": "https://cdnbbsr.s3waas.gov.in/s3bc7f621451b4f5df308a8e098112185d/uploads/2026/06/202606181689326167.pdf",
+  "facts": [
+    {
+      "fact_id": "CFCFRMS_AMOUNT_SAVED",
+      "value": 7647,
+      "unit": "INR crore",
+      "para": "2",
+      "doc_id": "sop-2026",
+      "pdf_page": 11,
+      "printed_page": 9,
+      "quote": "prevent crime proceeds amounting to ₹ 7,647 Crore out of the reported ₹ 52,969 Crore",
+      "display": "₹7,647 crore",
+      "period": "April 2021 to November 2025"
+    },
+    {
+      "fact_id": "CFCFRMS_AMOUNT_REPORTED",
+      "value": 52969,
+      "unit": "INR crore",
+      "para": "2",
+      "doc_id": "sop-2026",
+      "pdf_page": 11,
+      "printed_page": 9,
+      "quote": "out of the reported ₹ 52,969 Crore from going into the hands of cybercriminals from April 2021 to November 2025",
+      "display": "₹52,969 crore",
+      "period": "April 2021 to November 2025"
+    },
+    {
+      "fact_id": "CFCFRMS_AMOUNT_RESTORED",
+      "value": 167,
+      "unit": "INR crore",
+      "para": "2",
+      "doc_id": "sop-2026",
+      "pdf_page": 11,
+      "printed_page": 9,
+      "quote": "the amount restored so far is only ₹ 167 Crore, about 2.18% of the total money saved",
+      "display": "₹167 crore",
+      "period": "April 2021 to November 2025"
+    },
+    {
+      "fact_id": "CFCFRMS_RESTORED_SHARE_OF_SAVED",
+      "value": 2.18,
+      "unit": "percent",
+      "para": "2",
+      "doc_id": "sop-2026",
+      "pdf_page": 11,
+      "printed_page": 9,
+      "quote": "about 2.18% of the total money saved",
+      "display": "2.18%",
+      "note": "167 / 7,647 = 2.18%: a share of the money saved (held), not of the money reported"
+    },
+    {
+      "fact_id": "KYC_UPDATE_AFTER_HOLD",
+      "value": 1,
+      "unit": "week",
+      "para": "6.1(k)",
+      "doc_id": "sop-2026",
+      "pdf_page": 19,
+      "printed_page": 17,
+      "quote": "of the beneficiary account holder within 1 week of reporting."
+    },
+    {
+      "fact_id": "GRIEVANCE_FILING_DAYS",
+      "value": 7,
+      "unit": "calendar days",
+      "para": "10.1(a)",
+      "doc_id": "sop-2026",
+      "pdf_page": 39,
+      "printed_page": 37,
+      "quote": "submit such a grievance at the earliest and not beyond 07 calendar days from the day the aggrieved person complains."
+    },
+    {
+      "fact_id": "IO_DECISION_DAYS",
+      "value": 15,
+      "unit": "calendar days",
+      "para": "10.1(d)",
+      "doc_id": "sop-2026",
+      "pdf_page": 40,
+      "printed_page": 38,
+      "quote": "remove the hold on the reported amount within 15 calendar days of the receipt of the grievance."
+    },
+    {
+      "fact_id": "DGO_REVIEW_DAYS",
+      "value": 15,
+      "unit": "calendar days",
+      "para": "10.1(f)",
+      "doc_id": "sop-2026",
+      "pdf_page": 40,
+      "printed_page": 38,
+      "quote": "update her decision on the Grievance Redressal Module within 15 calendar days of being notified."
+    },
+    {
+      "fact_id": "BANK_DATA_DAYS",
+      "value": 2,
+      "unit": "calendar days",
+      "para": "10.1(f)",
+      "doc_id": "sop-2026",
+      "pdf_page": 41,
+      "printed_page": 39,
+      "quote": "Banks and FIs should furnish the requested information at the earliest and not later than 2 calendar days"
+    },
+    {
+      "fact_id": "HOLD_LAPSE_DAYS_AFTER_GRIEVANCE",
+      "value": 90,
+      "unit": "calendar days",
+      "para": "10.1",
+      "doc_id": "sop-2026",
+      "pdf_page": 41,
+      "printed_page": 39,
+      "quote": "are received within 90 calendar days of the grievance being submitted by the bank",
+      "note": "Para 10.1 counts 90 days from the bank submitting the grievance; the bank intimates the LEA within the last 15 of those days"
+    },
+    {
+      "fact_id": "HOLD_LAPSE_INTIMATION_DAYS",
+      "value": 15,
+      "unit": "calendar days before expiry",
+      "para": "10.1",
+      "doc_id": "sop-2026",
+      "pdf_page": 41,
+      "printed_page": 39,
+      "quote": "intimation will be sent to the SHO at least 15 calendar days before the date of expiry of the 90 calendar days"
+    },
+    {
+      "fact_id": "HOLD_EXTENSION_DAYS",
+      "value": 90,
+      "unit": "additional calendar days",
+      "para": "10.1",
+      "doc_id": "sop-2026",
+      "pdf_page": 41,
+      "printed_page": 39,
+      "quote": "they may ask for an extension for continuation for up to 90 additional calendar days."
+    },
+    {
+      "fact_id": "HOLD_LAPSE_DAYS_ANNEX_I",
+      "value": 90,
+      "unit": "calendar days",
+      "para": "Annexure-I, 3(d)",
+      "doc_id": "sop-2026",
+      "pdf_page": 62,
+      "printed_page": 60,
+      "quote": "the bank may remove the hold, after completion of 90 calendar days from the date of amount put on hold.",
+      "note": "The Annexure-I notice counts 90 days from the date the amount was put on hold (Para 10.1 counts from the grievance)"
+    },
+    {
+      "fact_id": "P1_THRESHOLD_INR",
+      "value": 50000,
+      "unit": "INR",
+      "para": "11, Process 1(a)-(b)",
+      "doc_id": "sop-2026",
+      "pdf_page": 45,
+      "printed_page": 43,
+      "quote": "Interim custody of amounts above Rs. 50,000 put on hold or under seizure can be given u/s 106(3) of the BNSS 2023"
+    },
+    {
+      "fact_id": "P1_NOTICE_DAYS",
+      "value": 7,
+      "unit": "calendar days",
+      "para": "11, Process 1(i)",
+      "doc_id": "sop-2026",
+      "pdf_page": 46,
+      "printed_page": 44,
+      "quote": "within a period of 7 calendar days, shall issue a notice (physical or electronic) to the account holder"
+    },
+    {
+      "fact_id": "P1_REPLY_DAYS",
+      "value": 15,
+      "unit": "calendar days",
+      "para": "11, Process 1(ii)",
+      "doc_id": "sop-2026",
+      "pdf_page": 46,
+      "printed_page": 44,
+      "quote": "The account holder may be given up to 15 calendar days to appear and justify her position"
+    },
+    {
+      "fact_id": "P1_REMIT_DAYS",
+      "value": 15,
+      "unit": "calendar days",
+      "para": "11, Process 1(v)",
+      "doc_id": "sop-2026",
+      "pdf_page": 47,
+      "printed_page": 45,
+      "quote": "the bank will give custody of the disputed money to the victim, ascertaining the account number of the victim from CFCFRMS, within 15 calendar days"
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_BALANCE_INR",
+      "value": 206543,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 97,
+      "printed_page": 95,
+      "quote": "The available Balance was 2,06,543."
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_SHARE_X_INR",
+      "value": 40695.08,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 98,
+      "printed_page": 96,
+      "quote": "X 16.12.2024 15.12.2024 50,000 2,06,543 50,000 40,695.08",
+      "note": "complainant X, disputed 50,000"
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_SHARE_V_INR",
+      "value": 69446.97,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 98,
+      "printed_page": 96,
+      "quote": "V 16.12.2024 15.12.2024 85,326 1,56,543 85,326 69,446.97",
+      "note": "complainant V, disputed 85,326"
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_SHARE_Y_INR",
+      "value": 40695.08,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 98,
+      "printed_page": 96,
+      "quote": "Y 17.12.2024 15.12.2024 50,000 71,217 50,000 40,695.08",
+      "note": "complainant Y, disputed 50,000"
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_SHARE_Z_INR",
+      "value": 24417.05,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 98,
+      "printed_page": 96,
+      "quote": "Z 17.12.2024 15.12.2024 30,000 21,217 21,217 24,417.05",
+      "note": "complainant Z, disputed 30,000"
+    },
+    {
+      "fact_id": "ANNEX_V_ILL2_SHARE_W_INR",
+      "value": 31288.82,
+      "unit": "INR",
+      "para": "Annexure-V, Illustration 2",
+      "doc_id": "sop-2026",
+      "pdf_page": 98,
+      "printed_page": 96,
+      "quote": "W 17.12.2024 15.12.2024 38,443 0 0 31,288.82",
+      "note": "complainant W, disputed 38,443"
+    },
+    {
+      "fact_id": "STR_DUE_WORKING_DAYS",
+      "value": 7,
+      "unit": "working days",
+      "para": "PML Rules, Rule 8 (FIU-IND FAQ)",
+      "doc_id": "fiu-faq",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "not later than seven working days on being satisfied that the transaction is suspicious",
+      "note": "The consolidated Rule 8(2) text (pmlr-2005, PDF page 10) says 'promptly'; the 7-working-day limit is from the FAQ"
+    }
+  ]
+}

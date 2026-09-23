@@ -1,0 +1,80 @@
+{
+  "description": "Closed (gazetted) holidays for Central Government administrative offices at Delhi/New Delhi (DoPT Annexure-I), used by wapsi.domain.calendar as a national approximation of bank holidays. Sundays and 2nd/4th Saturdays are computed in code, not listed here.",
+  "caveats": [
+    "Bank holidays are declared under s.25 of the Negotiable Instruments Act, 1881 and vary by State; RBI publishes a state-wise list. DoPT O.M. para 10 says bank holidays are regulated by Department of Financial Services instructions.",
+    "Id-ul-Fitr, Id-ul-Zuha, Muharram and Id-e-Milad dates may change with moon sighting (DoPT O.M. para 5.1); known changes are applied below.",
+    "Years not listed fall back to the fixed-date national holidays only (26 Jan, 15 Aug, 2 Oct)."
+  ],
+  "retrieved": "2026-09-16",
+  "sources": {
+    "DOPT-2026": {
+      "title": "DoPT O.M. F.No.12/2/2023-JCA dated 03.07.2025: Holidays to be observed in Central Government Offices during the year 2026 (Annexure-I)",
+      "url": "https://dopt.gov.in/sites/default/files/Holidays%20to%20be%20observed%20in%20Central%20Government%20Offices%20during%20the%20year%202026.pdf"
+    },
+    "DOPT-2026-AMBEDKAR": {
+      "title": "DoPT O.M. F.No.12/4/2020-JCA dated 09.04.2026: Declaration of holiday on 14th April 2026 (Birthday of Dr. B.R. Ambedkar), all Central Government offices throughout India",
+      "url": "https://dopt.gov.in/sites/default/files/Declaration%20of%20Holiday%20on%2014.04.2026%20-%20Birthday%20of%20Dr.%20B.R.%20Ambedkar.pdf"
+    },
+    "DOPT-2026-BAKRID-CHANGE": {
+      "title": "DoPT O.M. F.No.12/3/2023-JCA dated 22.05.2026: change of Id-ul-Zuha (Bakrid) holiday from 27.05.2026 to 28.05.2026 (Delhi/New Delhi offices)",
+      "url": "https://www.staffnews.in/2026/05/change-in-the-date-of-holiday-on-account-of-id-u-zuha-bakrid.html"
+    },
+    "DOPT-2027": {
+      "title": "DoPT O.M. F.No.12/2/2023-JCA dated 16.07.2026: Holidays to be observed in Central Government Offices during the year 2027 (Annexure-I)",
+      "url": "https://dopt.gov.in/sites/default/files/Holiday%20list%202027.PDF"
+    }
+  },
+  "years": {
+    "2026": {
+      "status": "published",
+      "holidays": [
+        {"date": "2026-01-26", "name": "Republic Day", "source": "DOPT-2026"},
+        {"date": "2026-03-04", "name": "Holi", "source": "DOPT-2026"},
+        {"date": "2026-03-21", "name": "Id-ul-Fitr", "source": "DOPT-2026"},
+        {"date": "2026-03-26", "name": "Ram Navami", "source": "DOPT-2026"},
+        {"date": "2026-03-31", "name": "Mahavir Jayanti", "source": "DOPT-2026"},
+        {"date": "2026-04-03", "name": "Good Friday", "source": "DOPT-2026"},
+        {"date": "2026-04-14", "name": "Birthday of Dr. B.R. Ambedkar", "source": "DOPT-2026-AMBEDKAR"},
+        {"date": "2026-05-01", "name": "Budha Purnima", "source": "DOPT-2026"},
+        {"date": "2026-05-28", "name": "Id-ul-Zuha (Bakrid)", "source": "DOPT-2026-BAKRID-CHANGE",
+         "note": "Annexure-I listed 27-05-2026; moved to 28-05-2026"},
+        {"date": "2026-06-26", "name": "Muharram", "source": "DOPT-2026"},
+        {"date": "2026-08-15", "name": "Independence Day", "source": "DOPT-2026"},
+        {"date": "2026-08-26", "name": "Milad-un-Nabi or Id-e-Milad (Birthday of Prophet Mohammad)", "source": "DOPT-2026"},
+        {"date": "2026-09-04", "name": "Janmashtami (Vaishnava)", "source": "DOPT-2026"},
+        {"date": "2026-10-02", "name": "Mahatma Gandhi's Birthday", "source": "DOPT-2026"},
+        {"date": "2026-10-20", "name": "Dussehra", "source": "DOPT-2026"},
+        {"date": "2026-11-08", "name": "Diwali (Deepavali)", "source": "DOPT-2026"},
+        {"date": "2026-11-24", "name": "Guru Nanak's Birthday", "source": "DOPT-2026"},
+        {"date": "2026-12-25", "name": "Christmas Day", "source": "DOPT-2026"}
+      ]
+    },
+    "2027": {
+      "status": "published",
+      "holidays": [
+        {"date": "2027-01-26", "name": "Republic Day", "source": "DOPT-2027"},
+        {"date": "2027-03-10", "name": "Id-ul-Fitr", "source": "DOPT-2027"},
+        {"date": "2027-03-23", "name": "Holi", "source": "DOPT-2027"},
+        {"date": "2027-03-26", "name": "Good Friday", "source": "DOPT-2027"},
+        {"date": "2027-04-15", "name": "Ram Navami", "source": "DOPT-2027"},
+        {"date": "2027-04-19", "name": "Mahavir Jayanti", "source": "DOPT-2027"},
+        {"date": "2027-05-17", "name": "Id-ul-Zuha (Bakrid)", "source": "DOPT-2027"},
+        {"date": "2027-05-20", "name": "Budha Purnima", "source": "DOPT-2027"},
+        {"date": "2027-06-16", "name": "Muharram", "source": "DOPT-2027"},
+        {"date": "2027-08-15", "name": "Independence Day", "source": "DOPT-2027"},
+        {"date": "2027-08-15", "name": "Milad-un-Nabi or Id-e-Milad (Prophet Mohammad's Birthday)", "source": "DOPT-2027"},
+        {"date": "2027-08-25", "name": "Janmashtami (Vaishnav)", "source": "DOPT-2027"},
+        {"date": "2027-10-02", "name": "Mahatma Gandhi's Birthday", "source": "DOPT-2027"},
+        {"date": "2027-10-09", "name": "Dussehra (Vijaya Dashmi)", "source": "DOPT-2027"},
+        {"date": "2027-10-29", "name": "Diwali (Deepavali)", "source": "DOPT-2027"},
+        {"date": "2027-11-14", "name": "Guru Nanak's Birthday", "source": "DOPT-2027"},
+        {"date": "2027-12-25", "name": "Christmas Day", "source": "DOPT-2027"}
+      ]
+    }
+  },
+  "fixed_national_holidays": [
+    {"month": 1, "day": 26, "name": "Republic Day"},
+    {"month": 8, "day": 15, "name": "Independence Day"},
+    {"month": 10, "day": 2, "name": "Mahatma Gandhi's Birthday"}
+  ]
+}

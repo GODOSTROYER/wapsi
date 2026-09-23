@@ -1,0 +1,16 @@
+# Cloud Build: build and push the Wapsi GCP image (context = repository root).
+#   gcloud builds submit --region=asia-south1 --config=editions/gcp/deploy/cloudbuild.yaml \
+#     --substitutions=_IMAGE=asia-south1-docker.pkg.dev/PROJECT_ID/wapsi/wapsi-gcp:TAG .
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args: ["build", "-f", "editions/gcp/Dockerfile", "-t", "${_IMAGE}", "--label", "app=wapsi", "."]
+images: ["${_IMAGE}"]
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+timeout: 1200s
+substitutions:
+  _IMAGE: asia-south1-docker.pkg.dev/${PROJECT_ID}/wapsi/wapsi-gcp:latest

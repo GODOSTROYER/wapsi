@@ -1,0 +1,53 @@
+{#- Enhanced due diligence memo for a possible innocent holder (SOP Para 5(xii), 10.1). -#}
+# Enhanced due diligence memo: A/c No. {{ s.account_id }}
+
+- **Case:** {{ c.case_id }}
+- **Complaint(s):** {{ s.ncrp_ids }}
+- **Assessment:** possible innocent holder, account operated without the holder's knowledge or connivance [SOP-5-XII]
+- **Planned action:** {{ s.disposition }} (hold the amount only; no escalation; no STR)
+
+## Facts
+
+{% if c.has_holder_name %}
+- Account holder: {{ s.holder_name }}; KYC tier {{ c.kyc_tier }}; city {{ c.city }}.
+{% else %}
+- Account holder: not on record; KYC tier {{ c.kyc_tier }}; city {{ c.city }}.
+{% endif %}
+- Account type {{ c.account_type }}; {{ c.layer_word }}-layer recipient in the money trail.
+- Disputed credit received vide UTR/TRX ID {{ s.utrs }} on {{ s.inflow_dates }}; victim money received {{ s.disputed_amount }}.
+- Balance at assessment {{ s.balance_now }}; amount held {{ s.hold_amount }}.
+{% for r in c.remarks %}
+- Payer's remark on a disputed credit (as entered by the payer): "{{ r }}"
+{% endfor %}
+
+## Indicators of bona fides
+
+{% for r in c.reasons %}
+- {{ r }}
+{% else %}
+- No classifier reasons were recorded.
+{% endfor %}
+- DoT Financial Fraud Risk Indicator: {{ c.fri }}; earlier NCRP reports on this account: {{ c.prior_reports }}.
+{% if c.shared_device %}
+- A device on this account is also linked to other accounts; check this before closing the review.
+{% else %}
+- No device on this account is shared with other accounts.
+{% endif %}
+
+## Assessment
+
+{{ prose }}
+
+## Recommendation
+
+- Keep the amount-specific hold of {{ s.hold_amount }}; do not freeze the account and do not escalate [SOP-9-1] [SOP-5-IX].
+- Do not file an STR on this account on the present facts; re-assess if new information emerges.
+- Advise the holder to file a grievance with documents that support the credit (for example a rent agreement or an invoice) [SOP-10-1].
+- Complete enhanced due diligence (KYC refresh, source of the credit, relationship with the remitter) and record the outcome on CFCFRMS [SOP-10-1].
+
+## Timelines [SOP-10-1]
+
+- Grievance by the holder: within 7 days.
+- Decision on the grievance by the Investigating Officer: within 15 days.
+- Escalation to the DGO if unresolved: within 15 days.
+- Lapse of the hold: after 90 days unless continued; intimate the Law Enforcement Agency before the lapse (around day 75).

@@ -1,0 +1,504 @@
+{
+  "oldfeat": {
+    "model": "Z:\\Projects\\Hakathon\\wapsi\\evals\\reports\\classify-xgb-demo-oldfeat.json",
+    "heldout": {
+      "101": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 0.8889,
+            "recall": 0.8,
+            "f1-score": 0.8421,
+            "support": 10.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9923,
+            "recall": 0.9974,
+            "f1-score": 0.9948,
+            "support": 386.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 36.0
+          },
+          "MULE": {
+            "precision": 1.0,
+            "recall": 0.9915,
+            "f1-score": 0.9957,
+            "support": 117.0
+          }
+        },
+        "accuracy": 0.9928,
+        "macro_f1": 0.9665,
+        "confusion_matrix": [
+          [
+            8,
+            0,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            385,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            36,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            116
+          ]
+        ],
+        "n": 552,
+        "mule_auc": 0.9999
+      },
+      "202": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 0.8571,
+            "recall": 1.0,
+            "f1-score": 0.9231,
+            "support": 6.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9965,
+            "recall": 0.9931,
+            "f1-score": 0.9948,
+            "support": 290.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 35.0
+          },
+          "MULE": {
+            "precision": 0.9894,
+            "recall": 0.9894,
+            "f1-score": 0.9894,
+            "support": 94.0
+          }
+        },
+        "accuracy": 0.993,
+        "macro_f1": 0.9815,
+        "confusion_matrix": [
+          [
+            6,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            288,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            35,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            93
+          ]
+        ],
+        "n": 428,
+        "mule_auc": 0.9998
+      },
+      "303": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 0.875,
+            "recall": 0.875,
+            "f1-score": 0.875,
+            "support": 8.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9913,
+            "recall": 0.9971,
+            "f1-score": 0.9942,
+            "support": 342.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 31.0
+          },
+          "MULE": {
+            "precision": 1.0,
+            "recall": 0.9815,
+            "f1-score": 0.9907,
+            "support": 108.0
+          }
+        },
+        "accuracy": 0.9919,
+        "macro_f1": 0.972,
+        "confusion_matrix": [
+          [
+            7,
+            0,
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            341,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            31,
+            0
+          ],
+          [
+            0,
+            0,
+            2,
+            0,
+            106
+          ]
+        ],
+        "n": 492,
+        "mule_auc": 0.9998
+      }
+    }
+  },
+  "newfeat": {
+    "model": "Z:\\Projects\\Hakathon\\wapsi\\evals\\reports\\classify-xgb-demo-newfeat.json",
+    "heldout": {
+      "101": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 0.7273,
+            "recall": 0.8,
+            "f1-score": 0.7619,
+            "support": 10.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9922,
+            "recall": 0.9922,
+            "f1-score": 0.9922,
+            "support": 386.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 36.0
+          },
+          "MULE": {
+            "precision": 1.0,
+            "recall": 0.9915,
+            "f1-score": 0.9957,
+            "support": 117.0
+          }
+        },
+        "accuracy": 0.9891,
+        "macro_f1": 0.95,
+        "confusion_matrix": [
+          [
+            8,
+            0,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            3,
+            0,
+            383,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            36,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            116
+          ]
+        ],
+        "n": 552,
+        "mule_auc": 1.0
+      },
+      "202": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 0.8571,
+            "recall": 1.0,
+            "f1-score": 0.9231,
+            "support": 6.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9966,
+            "recall": 0.9966,
+            "f1-score": 0.9966,
+            "support": 290.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 35.0
+          },
+          "MULE": {
+            "precision": 1.0,
+            "recall": 0.9894,
+            "f1-score": 0.9947,
+            "support": 94.0
+          }
+        },
+        "accuracy": 0.9953,
+        "macro_f1": 0.9829,
+        "confusion_matrix": [
+          [
+            6,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            289,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            35,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            93
+          ]
+        ],
+        "n": 428,
+        "mule_auc": 0.9999
+      },
+      "303": {
+        "classes": [
+          "INNOCENT_HOLDER",
+          "INTERMEDIARY",
+          "LEGIT",
+          "MERCHANT",
+          "MULE"
+        ],
+        "per_class": {
+          "INNOCENT_HOLDER": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 8.0
+          },
+          "INTERMEDIARY": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3.0
+          },
+          "LEGIT": {
+            "precision": 0.9971,
+            "recall": 1.0,
+            "f1-score": 0.9985,
+            "support": 342.0
+          },
+          "MERCHANT": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 31.0
+          },
+          "MULE": {
+            "precision": 1.0,
+            "recall": 0.9907,
+            "f1-score": 0.9953,
+            "support": 108.0
+          }
+        },
+        "accuracy": 0.998,
+        "macro_f1": 0.9988,
+        "confusion_matrix": [
+          [
+            8,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            342,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            31,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            107
+          ]
+        ],
+        "n": 492,
+        "mule_auc": 1.0
+      }
+    }
+  }
+}

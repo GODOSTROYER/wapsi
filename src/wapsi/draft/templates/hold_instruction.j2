@@ -1,0 +1,71 @@
+{#- Internal hold instruction from the nodal officer to operations (SOP Para 9.1 / Annexure-I).
+    Every amount, account id, UTR and date comes from `s` (slots). `c` carries words and flags only. -#}
+# Hold instruction: A/c No. {{ s.account_id }}
+
+- **From:** Nodal Officer (Cyber Fraud Cell), {{ c.home_bank_name }}
+- **To:** Branch Operations, {{ c.home_bank_name }}
+- **Case:** {{ c.case_id }}
+- **Complaint(s):** {{ s.ncrp_ids }}
+{% if c.has_holder_name %}
+- **Account holder:** {{ s.holder_name }}
+{% endif %}
+- **Planned action:** {{ s.disposition }}
+
+## Hold to be placed
+
+A notice under Section 168 read with Section 94 of the Bharatiya Nagarik Suraksha Sanhita has been received through CFCFRMS for the complaint(s) above [BNSS-168] [BNSS-94]. As per the SOP, please put on hold the amount equivalent to the disputed amount received in A/c No. {{ s.account_id }} vide UTR/TRX ID {{ s.utrs }} on {{ s.inflow_dates }} [SOP-9-1] [SOP-ANNEX-I].
+
+| Item | Value |
+|---|---|
+| Disputed amount received | {{ s.disputed_amount }} |
+| Balance at assessment | {{ s.balance_now }} |
+| Victim money still in the account | {{ s.tainted_amount }} |
+| **Hold amount** | **{{ s.hold_amount }}** |
+{% if c.has_forward_hold %}
+| Forward hold on future credits | {{ s.forward_hold_amount }} |
+{% endif %}
+
+{% if c.mode == "pool" %}
+The merchant's order for this payment is not delivered. Cancel the order and keep {{ s.hold_amount }} on hold in the pool / nodal account for this payment instead of restricting the merchant's account [SOP-9-2].
+{% elif c.mode == "intermediary" %}
+A/c No. {{ s.account_id }} is a {{ c.intermediary_label }} account operated for a payment aggregator or other intermediary, and CFCFRMS has notified action against it. Hold only the disputed amount of {{ s.hold_amount }} in this nodal / pool / escrow account [SOP-9-1-III]. Do not suspend digital banking or seize the account; operations for other customers' funds continue [SOP-9-1-III]. No forward hold is marked on nodal, pool or escrow accounts [SOP-9-1-I].
+{% elif c.mode == "forward_only" %}
+No victim money is available in the account now, so no amount is to be held today (hold amount {{ s.hold_amount }}). Mark only the forward hold described below.
+{% else %}
+Place the hold for {{ s.hold_amount }} only: the victim money still in the account, capped at the available balance.
+{% endif %}
+This is an amount-specific hold, not a freeze of the account; other funds and digital banking remain available [SOP-5-IX] [SOP-9-1] [SOP-ANNEX-I]. High Courts have indicated that a lien on the identifiable disputed amount, rather than a whole-account freeze, is the proper course [CASE-NEELKANTH] [CASE-SHREE-BALAJI].
+{% if c.has_forward_hold %}
+
+## Forward hold (first-layer account)
+
+A/c No. {{ s.account_id }} is a first-layer account and its balance is below the disputed amount [SOP-DEF-FIRST-LAYER]. Forward holds are placed only on first-layer accounts, never on nodal, pool or escrow accounts [SOP-9-1-I]. Mark a forward hold on future credits up to {{ s.forward_hold_amount }}: the victim money this account has already sent to cash-out points or to untraced destinations. A forward hold is not money in hand and is not counted as recoverable.
+{% endif %}
+{% if c.is_innocent %}
+
+## Innocent-holder handling
+
+The account appears to have been operated without the knowledge, connivance or consent of the account holder [SOP-5-XII]. Hold the amount only: no escalation and no STR. An enhanced due diligence memo accompanies this instruction, and the holder may file a grievance for review of the hold [SOP-10-1].
+{% endif %}
+{% if c.escalate %}
+
+## Escalation flag: human decision required
+
+This account is flagged ESCALATE_S106_CANDIDATE because {{ c.escalation_basis }}. The flag is advisory and does not change the hold above, which stays amount-specific. Seizure under Section 106 BNSS needs a registered FIR, and a debit freeze of the account needs an order of the Magistrate under Section 107 BNSS [BNSS-106] [BNSS-107]. Banks may only place the disputed amount under lien [CASE-KARTIK-CHATUR]. The nodal officer must decide before any further step is taken.
+{% elif c.requires_human %}
+
+## Human review required
+
+The hold plan marks this decision for human review before it is executed.
+{% endif %}
+
+## Basis for the assessment
+
+{% for r in c.reasons %}
+- {{ r }}
+{% else %}
+- No classifier reasons were recorded.
+{% endfor %}
+- Plan reason codes: {{ c.reason_codes }}
+
+_Prepared by Wapsi for the nodal officer's approval. Do not execute before approval._

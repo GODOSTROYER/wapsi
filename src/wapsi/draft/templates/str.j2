@@ -1,0 +1,119 @@
+{#- Case-level Suspicious Transaction Report modelled on FINnet 2.0 sheets. Subjects are home-bank MULE / UNKNOWN
+    accounts only; innocent holders, merchants, intermediaries and victims are never listed as subjects. -#}
+# Suspicious Transaction Report (FINnet 2.0 sheets, modelled): {{ c.case_id }}
+
+> Confidential draft for the Principal Officer. Do not disclose to any account holder that this report is being made.
+
+## Part A: Reporting entity
+
+- **Name:** {{ c.home_bank_name }}
+- **Bank code:** {{ c.home_bank_id }}
+- **Category:** banking company (synthetic data)
+- **Linked complaint(s):** {{ s.ncrp_ids }}
+- **Subject accounts:** {{ c.subject_count }}
+
+## Part B: Grounds of suspicion
+
+{% if c.has_ground %}
+Ground under Rule 2(1)(g) of the PML (Maintenance of Records) Rules: **{{ s.str_ground }}**. The transactions {{ c.ground_text }} [PMLR-2-1-G].
+{% else %}
+Ground under Rule 2(1)(g) of the PML (Maintenance of Records) Rules: to be selected by the Principal Officer [PMLR-2-1-G].
+{% endif %}
+
+{{ prose }}
+
+The report is to be furnished to FIU-IND within 7 working days of arriving at the suspicion [PMLR-8].
+
+## Part C: Individual detail sheets
+
+{% for p in c.subjects %}
+### A/c No. {{ s[p.acct ~ "/account_id"] }}
+
+{% if p.has_name %}
+- **Name:** {{ s[p.acct ~ "/holder_name"] }}
+{% else %}
+- **Name:** not on record
+{% endif %}
+- **Assessed role:** {{ p.role }}
+- **KYC tier:** {{ p.kyc_tier }}; **city:** {{ p.city }}
+- **DoT Financial Fraud Risk Indicator:** {{ p.fri }}; **earlier NCRP reports:** {{ p.prior_reports }}
+- **Indicators:**
+{% for r in p.reasons %}
+  - {{ r }}
+{% else %}
+  - none recorded
+{% endfor %}
+
+{% endfor %}
+## Part D: Account detail
+
+| A/c No. | Bank | Type | Layer | Victim money received | Balance at assessment | Held | Forward hold |
+|---|---|---|---|---|---|---|---|
+{% for p in c.subjects %}
+| {{ s[p.acct ~ "/account_id"] }} | {{ s[p.acct ~ "/bank_id"] }} | {{ p.account_type }} | {{ p.layer_word }} | {{ s[p.acct ~ "/disputed_amount"] }} | {{ s[p.acct ~ "/balance_now"] }} | {{ s[p.acct ~ "/hold_amount"] }} | {% if p.has_fwd %}{{ s[p.acct ~ "/forward_hold_amount"] }}{% else %}none{% endif %} |
+{% endfor %}
+
+## Part E: Transaction detail sheet
+
+| Date and time | UTR/TRX ID | Channel | From | To | Amount | Victim money |
+|---|---|---|---|---|---|---|
+{% for t in c.txns %}
+| {{ s["edge_ts:" ~ t.txn] }} | {{ s["edge_utr:" ~ t.txn] }} | {{ t.channel }} | {% if t.from_key %}{{ s[t.from_key] }}{% else %}{{ t.from_text }}{% endif %} | {% if t.to_key %}{{ s[t.to_key] }}{% else %}{{ t.to_text }}{% endif %} | {{ s["edge_amount:" ~ t.txn] }} | {{ s["edge_tainted:" ~ t.txn] }} |
+{% endfor %}
+
+Counterparties that are not subjects of this report (innocent holders, merchants, nodal / pool accounts) are not identified.
+
+## Part F: Narrative
+
+### Fund flow by layer
+
+**Victims.**
+{% for v in c.victims %}
+- Complaint {{ v.ncrp }}, reported at {{ s["reported_at:" ~ v.ncrp] }}: {{ s["complaint_amount:" ~ v.ncrp] }} claimed; victim A/c No. {{ s["victim_account:" ~ v.ncrp] }}.
+{% endfor %}
+
+{% for layer in c.layers %}
+**{{ layer.word|capitalize }} layer.**
+{% for a in layer["items"] %}
+{% if a.kind == "subject" %}
+- A/c No. {{ s[a.acct ~ "/account_id"] }} (subject) received {{ s[a.acct ~ "/disputed_amount"] }} of victim money; {{ s[a.acct ~ "/hold_amount"] }} is on hold.
+{% elif a.kind == "other_bank" %}
+- A/c No. {{ s[a.acct ~ "/account_id"] }} at {{ a.bank_name }} received {{ s[a.acct ~ "/disputed_amount"] }} of victim money{% if a.is_outbound %}; a hold of {{ s[a.acct ~ "/tainted_amount"] }} is requested through CFCFRMS{% endif %}.
+{% else %}
+- A non-subject account ({{ a.label }}) received {% for t in a.edges %}{{ s["edge_tainted:" ~ t] }}{% if not loop.last %} and {% endif %}{% else %}an unstated amount{% endfor %} of victim money; {{ a.note }}.
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+### Cash-out points
+
+{% for x in c.cash_outs %}
+- {{ s["edge_tainted:" ~ x.txn] }} of victim money in a {{ x.kind }} of {{ s["edge_amount:" ~ x.txn] }} at {{ x.where }} on {{ s["edge_ts:" ~ x.txn] }} (UTR/TRX ID {{ s["edge_utr:" ~ x.txn] }}), from {% if x.from_key %}A/c No. {{ s[x.from_key] }}{% else %}{{ x.from_text }}{% endif %}.
+{% else %}
+- No cash-out was traced.
+{% endfor %}
+- Total cashed out: {{ s.total_cashed_out }}.
+
+### Beneficiary identification
+
+{% for p in c.holding_subjects %}
+- A/c No. {{ s[p ~ "/account_id"] }} still holds {{ s[p ~ "/hold_amount"] }} of victim money (on hold).
+{% endfor %}
+{% for b in c.beneficiaries %}
+- A/c No. {{ s[b.acct ~ "/account_id"] }} at {{ b.bank_name }}: {{ s[b.acct ~ "/tainted_amount"] }} requested on hold through CFCFRMS.
+{% endfor %}
+- Held at this bank in total: {{ s.total_hold }}; resting at other banks: {{ s.total_outbound }}.
+
+### Network linkage
+
+{% for d in c.devices %}
+- One device is shared by A/c No. {% for k in d.members %}{{ s[k] }}{% if not loop.last %}, {% endif %}{% endfor %}{% if d.masked %}, and by {{ d.masked }} non-subject account(s) in this case{% endif %}{% if d.outside %}, and by {{ d.outside }} account(s) outside this case{% endif %}.
+{% else %}
+- No device is shared between subject accounts.
+{% endfor %}
+{% for m in c.multi_victim %}
+- A/c No. {{ s[m.acct ~ "/account_id"] }} received money traced to {{ m.count }} different complaints ({{ m.ids }}).
+{% endfor %}
+{% if c.single_complaint %}
+- All subject accounts received money traced to the same complaint ({{ s.ncrp_ids }}).
+{% endif %}

@@ -1,0 +1,48 @@
+{#- Plain-language notice to the account holder (for nodal / pool / escrow accounts: the payment aggregator or
+    intermediary that operates the account). Never mentions any STR (tipping-off). -#}
+# Notice of an amount-specific hold on A/c No. {{ s.account_id }}
+
+{% if c.mode == "intermediary" %}
+To: The payment aggregator / intermediary operating {{ c.intermediary_label }} account {{ s.account_id }}
+
+Dear Sir or Madam,
+{% elif c.has_holder_name %}
+Dear {{ s.holder_name }},
+{% else %}
+Dear Customer,
+{% endif %}
+
+{% if c.mode == "forward_only" %}
+We have marked a lien of up to {{ s.forward_hold_amount }} on future credits to your account {{ s.account_id }}. No amount already in your account is on hold now (hold amount {{ s.hold_amount }}).
+{% elif c.mode == "intermediary" %}
+We have placed a hold of {{ s.hold_amount }}, the disputed amount only, in the {{ c.intermediary_label }} account {{ s.account_id }} that we maintain for you [SOP-9-1-III].
+{% elif c.mode == "pool" %}
+A payment of the disputed money made to you is on hold: {{ s.hold_amount }} is being kept in the payment pool / nodal account while the undelivered order is cancelled [SOP-9-2].
+{% else %}
+We have placed a hold of {{ s.hold_amount }} on your account {{ s.account_id }}.
+{% endif %}
+The hold relates to a credit received vide UTR/TRX ID {{ s.utrs }} on {{ s.inflow_dates }}. That credit is disputed in cyber-fraud complaint(s) {{ s.ncrp_ids }}, registered on the National Cybercrime Reporting Portal or the 1930 helpline and sent to us by the Law Enforcement Agency through CFCFRMS with a notice under Section 168 read with Section 94 BNSS [SOP-9-1] [BNSS-94].
+{% if c.has_forward_hold and c.mode != "forward_only" %}
+In addition, as the account is a first-layer account, a lien of up to {{ s.forward_hold_amount }} is marked on future credits to the account [SOP-9-1-I].
+{% endif %}
+
+{% if c.mode == "intermediary" %}
+**Only this amount is on hold.** Digital banking on the account is not suspended and the account is not seized: operations for your other customers' funds continue as usual [SOP-9-1-III] [SOP-5-IX].
+
+## What you can do
+
+- If the credit relates to a genuine transaction processed for one of your merchants or customers, you can raise a grievance with the Investigating Officer of the Law Enforcement Agency, through the NCRP grievance facility or through our branch, with documents that show the purpose of the credit [SOP-10-1].
+{% else %}
+**Only this amount is on hold. Your account is not frozen:** you can continue to use the rest of your balance, UPI, net banking and cards [SOP-5-IX].
+
+## What you can do
+
+- If the credit was genuine (for example rent, salary or payment for goods or services), you can raise a grievance with the Investigating Officer of the Law Enforcement Agency, through the NCRP grievance facility or through our branch, with documents that show the purpose of the credit [SOP-10-1].
+{% endif %}
+- The SOP sets timelines for deciding grievances and provides for the hold to lapse after 90 days unless it is continued as the SOP provides [SOP-10-1].
+- For help, visit your home branch or write to the Nodal Officer (Cyber Fraud Cell), {{ c.home_bank_name }}.
+
+We are informing you of this hold as the SOP and the FIU-IND circular of 02.06.2025 permit: telling an account holder about such a hold is not tipping-off [SOP-9-1-II] [FIU-CIRC-2025-06-02].
+
+Nodal Officer (Cyber Fraud Cell)
+{{ c.home_bank_name }}

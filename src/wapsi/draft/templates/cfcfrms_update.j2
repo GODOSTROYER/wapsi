@@ -1,0 +1,51 @@
+{#- Case-level CFCFRMS update. Per-account values use account-qualified slots "<account_id>/<key>". -#}
+# CFCFRMS case update: {{ c.case_id }}
+
+- **Reporting bank:** {{ c.home_bank_name }} (bank code {{ c.home_bank_id }})
+- **Complaint(s):** {{ s.ncrp_ids }}
+- **Restoration process:** {{ s.restoration_process }}
+- **Apportionment rule:** {{ c.rule_text }}
+
+## Summary
+
+{{ prose }}
+
+## Account-wise action
+
+| A/c No. | Bank | Layer | Assessed role | Disposition | Victim money received | Held / requested | Forward hold | Action |
+|---|---|---|---|---|---|---|---|---|
+{% for r in c.rows %}
+| {{ s[r.acct ~ "/account_id"] }} | {% if r.has_state %}{{ s[r.acct ~ "/bank_id"] }}{% else %}{{ r.bank_text }}{% endif %} | {{ r.layer_word }} | {{ r.role }} | {{ s[r.acct ~ "/disposition"] }} | {% if r.has_state %}{{ s[r.acct ~ "/disputed_amount"] }}{% else %}not traced{% endif %} | {% if r.amount_kind == "hold" %}{{ s[r.acct ~ "/hold_amount"] }} held{% elif r.amount_kind == "request" %}{{ s[r.acct ~ "/tainted_amount"] }} requested{% else %}none{% endif %} | {% if r.has_fwd %}{{ s[r.acct ~ "/forward_hold_amount"] }}{% else %}none{% endif %} | {{ r.action }}{% if r.flag %} ({{ r.flag }}){% endif %} |
+{% endfor %}
+
+## Case totals
+
+| Item | Amount |
+|---|---|
+| Total reported stolen | {{ s.total_stolen }} |
+| Held at this bank | {{ s.total_hold }} |
+| Resting at other banks (trace) | {{ s.total_outbound }} |
+| Cashed out (ATM / crypto) | {{ s.total_cashed_out }} |
+| Forward holds marked (not money in hand) | {{ s.total_forward_hold }} |
+| **Total recoverable (holds + outbound requests)** | **{{ s.total_recoverable }}** |
+| Whole-account freeze of the touched accounts would have immobilised | {{ s.baseline_freeze_amount }} |
+
+## Per-complaint position
+
+| Complaint | Reported at | Amount claimed | Recoverable |
+|---|---|---|---|
+{% for v in c.victims %}
+| {{ v.ncrp }} | {{ s["reported_at:" ~ v.ncrp] }} | {{ s["complaint_amount:" ~ v.ncrp] }} | {% if v.has_recoverable %}{{ s["victim_amount:" ~ v.ncrp] }}{% else %}none{% endif %} |
+{% endfor %}
+
+## Notes
+
+- All holds are amount-specific; no account is frozen [SOP-5-IX] [SOP-9-1].
+- Nodal, pool and escrow accounts: only the disputed amount is held, digital banking is not suspended and the account is not seized [SOP-9-1-III]. Forward holds are marked only on first-layer accounts, never on nodal, pool or escrow accounts [SOP-9-1-I].
+- Payments to merchants for delivered goods are updated without a hold; undelivered orders are cancelled and the amount is held in the pool / nodal account [SOP-9-2].
+{% if c.has_outbound %}
+- Hold requests for accounts at other banks are raised through CFCFRMS [SOP-6].
+{% endif %}
+{% if c.escalations %}
+- Human decision required: an s.106 escalation flag is raised on A/c No. {% for a in c.escalations %}{{ s[a ~ "/account_id"] }}{% if not loop.last %}, {% endif %}{% endfor %}; see the hold instruction(s) [BNSS-106].
+{% endif %}

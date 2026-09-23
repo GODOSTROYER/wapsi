@@ -1,0 +1,28 @@
+{
+  "labels": {"app": "wapsi", "use": "complaint-intake"},
+  "filterConfig": {
+    "piAndJailbreakFilterSettings": {
+      "filterEnforcement": "ENABLED",
+      "confidenceLevel": "MEDIUM_AND_ABOVE"
+    },
+    "maliciousUriFilterSettings": {
+      "filterEnforcement": "ENABLED"
+    },
+    "raiSettings": {
+      "raiFilters": [
+        {"filterType": "DANGEROUS", "confidenceLevel": "HIGH"},
+        {"filterType": "HARASSMENT", "confidenceLevel": "HIGH"},
+        {"filterType": "HATE_SPEECH", "confidenceLevel": "MEDIUM_AND_ABOVE"},
+        {"filterType": "SEXUALLY_EXPLICIT", "confidenceLevel": "MEDIUM_AND_ABOVE"}
+      ]
+    },
+    "sdpSettings": {
+      "basicConfig": {"filterEnforcement": "ENABLED"}
+    }
+  },
+  "templateMetadata": {
+    "logTemplateOperations": true,
+    "logSanitizeOperations": false,
+    "multiLanguageDetection": {"enableMultiLanguageDetection": true}
+  }
+}
