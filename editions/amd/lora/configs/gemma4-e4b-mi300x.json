@@ -1,0 +1,38 @@
+{
+  "name": "gemma4-e4b-mi300x",
+  "description": "Fast run: Gemma 4 E4B (effective ~4B parameters plus per-layer embeddings) on one MI300X. Minutes per epoch: run it first to validate the whole event pipeline, then launch the 31B run.",
+  "model": "google/gemma-4-E4B-it",
+  "device": "cuda",
+  "dtype": "bf16",
+  "attn_implementation": "sdpa",
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": "attn_mlp",
+  "max_seq_len": 8192,
+  "batch_size": 8,
+  "eval_batch_size": 8,
+  "grad_accum": 2,
+  "epochs": 3,
+  "lr": 0.0002,
+  "lr_scheduler": "cosine",
+  "warmup": 0.03,
+  "eval_steps": 25,
+  "logging_steps": 5,
+  "save_steps": 0,
+  "gradient_checkpointing": true,
+  "packing": false,
+  "loss_type": "chunked_nll",
+  "max_eval_examples": 200,
+  "seed": 42,
+  "model_notes": [
+    "Verify the exact Hub repo id and licence on the model card. Middle option: the 12B checkpoint with batch_size 4 / grad_accum 4.",
+    "Per-layer-embedding projections (per_layer_*) and audio/vision towers are never adapted; the detection summary lists them as excluded."
+  ],
+  "estimates": {
+    "status": "ESTIMATES ONLY - replace with measured numbers during 12-18 Oct",
+    "memory": "bf16 weights incl. per-layer embeddings ~15-20 GB; activations at 8 x 8192 with checkpointing ~20-30 GB; expected peak well under 80 GB.",
+    "wall_clock_per_epoch": "~5-15 min for ~6M tokens (6 x ~4e9 effective x 6e6 = ~1.4e17 FLOPs at an assumed 15-30% MFU)."
+  },
+  "serve": "vllm serve /models/wapsi-gemma4-e4b-merged --served-model-name wapsi-gemma4-e4b-lora --dtype bfloat16 --max-model-len 16384 --gpu-memory-utilization 0.3 --port 8001"
+}

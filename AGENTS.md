@@ -112,7 +112,11 @@ uv run streamlit run ui/app.py             # local UI
 
 ## Originality and event boundaries
 - AI Builder Cup: only work created on or after 2026-09-01 (repo created 2026-09-16).
-- AMD ACT III: AMD-specific work (ROCm GNN training, LoRA fine-tune, vLLM-ROCm serving, benchmarks) is built
-  during 12–18 Oct 2026 only, under `editions/amd/`. Tag `amd-baseline` at kickoff. See `docs/originality.md`.
+- AMD ACT III: AMD edition code under `editions/amd/` is prepared before the event and disclosed in
+  `docs/originality.md`; every run on AMD hardware (GNN training, LoRA fine-tune, merged model, vLLM-ROCm serving,
+  benchmarks) and every reported GPU number happens during 12–18 Oct 2026. Tag `amd-baseline` at kickoff. Label CPU
+  development numbers as such; never report GPU results from before the event. Never commit commit-date rewrites.
+- Training data: do not use Gemini outputs to train other models (Gemini API terms); the LoRA teacher is the open
+  model itself (verifier-filtered self-distillation). Gemini is an evaluation reference only.
 - Snowflake CoCo: Snowflake-native work (`editions/snowflake/`) is built in CoCo sessions; keep evidence in
   `editions/snowflake/coco-sessions/`.

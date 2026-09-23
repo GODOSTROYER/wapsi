@@ -1,0 +1,288 @@
+{
+  "schema": "wapsi.lora.dataset/1",
+  "created_at": "2026-09-23T15:08:01Z",
+  "synthetic_only": true,
+  "note": "Pipeline output. With a fake teacher these counts check the plumbing; they are not model results.",
+  "teacher": {
+    "spec": "fake",
+    "name": "fake-teacher",
+    "style_guide": false,
+    "temperature": 0.0,
+    "sample_temperature": 0.7,
+    "samples_per_request": 1
+  },
+  "worlds": {
+    "demo": {
+      "role": "train",
+      "seed": "7",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 39,
+      "cases_planned": 39,
+      "plan_seconds": 6.6
+    },
+    "full": {
+      "role": "train",
+      "seed": "7",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 268,
+      "cases_planned": 268,
+      "plan_seconds": 46.7
+    },
+    "heldout-101": {
+      "role": "heldout",
+      "seed": "101",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 45,
+      "cases_planned": 45,
+      "plan_seconds": 7.6
+    },
+    "heldout-202": {
+      "role": "heldout",
+      "seed": "202",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 36,
+      "cases_planned": 36,
+      "plan_seconds": 6.5
+    },
+    "heldout-303": {
+      "role": "heldout",
+      "seed": "303",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 40,
+      "cases_planned": 40,
+      "plan_seconds": 7.3
+    },
+    "heldout-404": {
+      "role": "heldout",
+      "seed": "404",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 43,
+      "cases_planned": 43,
+      "plan_seconds": 7.5
+    },
+    "heldout-505": {
+      "role": "heldout",
+      "seed": "505",
+      "generator_version": "wapsi-synth/1.0",
+      "cases_total": 38,
+      "cases_planned": 38,
+      "plan_seconds": 6.4
+    }
+  },
+  "split_rule": "test = held-out worlds (unseen seeds); val = sha256(world:case_id) bucket < val_frac",
+  "filters": [
+    "drafter_accepted: validate_prose passed without falling back (retry allowed; re-checked independently)",
+    "verifier_passed: verify_draft on the substituted draft has no blocking error",
+    "injection_ignored: no canary phrase and no copied complaint text in the answer",
+    "coverage: key-fact placeholder coverage >= min_coverage",
+    "ground_named: STR grounds name the Rule 2(1)(g) ground in words",
+    "length: word count within the task range widened by length_slack",
+    "scrub: no secret-like tokens; synthetic worlds only (generator_version checked)",
+    "dedupe: identical message lists kept once"
+  ],
+  "requests": {
+    "requests": 3183,
+    "accepted": 3150,
+    "rejected": 33,
+    "acceptance_rate": 0.9896,
+    "by_task": {
+      "case_summary": {
+        "requests": 1527,
+        "accepted": 1494,
+        "first_try": 1494,
+        "rejected": 33,
+        "acceptance_rate": 0.9784
+      },
+      "edd_rationale": {
+        "requests": 270,
+        "accepted": 270,
+        "first_try": 270,
+        "acceptance_rate": 1.0
+      },
+      "str_grounds": {
+        "requests": 1386,
+        "accepted": 1386,
+        "first_try": 1386,
+        "acceptance_rate": 1.0
+      }
+    }
+  },
+  "rejections": {
+    "by_reason": {
+      "length_out_of_range": 33
+    },
+    "by_task": {
+      "case_summary": {
+        "length_out_of_range": 33
+      }
+    },
+    "drafter_issue_codes": {},
+    "verifier_errors": {}
+  },
+  "splits": {
+    "train": {
+      "examples": 2095,
+      "cases": 271,
+      "worlds": {
+        "demo": 276,
+        "full": 1819
+      },
+      "by_task": {
+        "str_grounds": 906,
+        "case_summary": 1000,
+        "edd_rationale": 189
+      },
+      "by_variant": {
+        "clean": 697,
+        "tempting": 701,
+        "injection": 697
+      },
+      "by_source": {
+        "teacher_first_try": 1689,
+        "synthetic_correction": 406
+      },
+      "by_task_variant": {
+        "case_summary/clean": 327,
+        "case_summary/injection": 339,
+        "case_summary/tempting": 334,
+        "edd_rationale/clean": 63,
+        "edd_rationale/injection": 60,
+        "edd_rationale/tempting": 66,
+        "str_grounds/clean": 307,
+        "str_grounds/injection": 298,
+        "str_grounds/tempting": 301
+      }
+    },
+    "val": {
+      "examples": 285,
+      "cases": 36,
+      "worlds": {
+        "demo": 34,
+        "full": 251
+      },
+      "by_task": {
+        "str_grounds": 125,
+        "case_summary": 138,
+        "edd_rationale": 22
+      },
+      "by_variant": {
+        "clean": 95,
+        "tempting": 93,
+        "injection": 97
+      },
+      "by_source": {
+        "teacher_first_try": 225,
+        "synthetic_correction": 60
+      },
+      "by_task_variant": {
+        "case_summary/clean": 44,
+        "case_summary/injection": 49,
+        "case_summary/tempting": 45,
+        "edd_rationale/clean": 8,
+        "edd_rationale/injection": 7,
+        "edd_rationale/tempting": 7,
+        "str_grounds/clean": 43,
+        "str_grounds/injection": 41,
+        "str_grounds/tempting": 41
+      }
+    },
+    "test": {
+      "examples": 1236,
+      "cases": 202,
+      "worlds": {
+        "heldout-101": 276,
+        "heldout-202": 225,
+        "heldout-303": 243,
+        "heldout-404": 264,
+        "heldout-505": 228
+      },
+      "by_task": {
+        "str_grounds": 555,
+        "case_summary": 582,
+        "edd_rationale": 99
+      },
+      "by_variant": {
+        "clean": 412,
+        "tempting": 412,
+        "injection": 412
+      },
+      "by_source": {
+        "teacher_first_try": 1236
+      },
+      "by_task_variant": {
+        "case_summary/clean": 194,
+        "case_summary/injection": 194,
+        "case_summary/tempting": 194,
+        "edd_rationale/clean": 33,
+        "edd_rationale/injection": 33,
+        "edd_rationale/tempting": 33,
+        "str_grounds/clean": 185,
+        "str_grounds/injection": 185,
+        "str_grounds/tempting": 185
+      }
+    }
+  },
+  "tasks": [
+    "str_grounds",
+    "edd_rationale",
+    "case_summary"
+  ],
+  "variants": [
+    "clean",
+    "tempting",
+    "injection"
+  ],
+  "prompt_chars": {
+    "count": 3616,
+    "mean": 9776.2981,
+    "p50": 9232.0,
+    "p95": 14393.0,
+    "max": 19502.0
+  },
+  "target_words": {
+    "str_grounds": {
+      "count": 1586,
+      "mean": 64.616,
+      "p50": 63.0,
+      "p95": 72.0,
+      "max": 80.0
+    },
+    "edd_rationale": {
+      "count": 310,
+      "mean": 77.9484,
+      "p50": 78.0,
+      "p95": 78.0,
+      "max": 78.0
+    },
+    "case_summary": {
+      "count": 1720,
+      "mean": 45.5779,
+      "p50": 43.0,
+      "p95": 58.0,
+      "max": 58.0
+    }
+  },
+  "files": {
+    "train.jsonl": {
+      "lines": 2095,
+      "sha256": "380af9ce9b9ba35da604221721392015e1265161a8424761b48be1ceb9158e5e"
+    },
+    "val.jsonl": {
+      "lines": 285,
+      "sha256": "00b2f1c90a21ef96f1572551b2ecc544ecbfdbc26648e9325d9592343d9154d9"
+    },
+    "test.jsonl": {
+      "lines": 1236,
+      "sha256": "888f89fdfe352590df937be87987d032f17d4d792d3940d0a2af0c07bfb5af1d"
+    },
+    "rejections.jsonl": {
+      "lines": 33,
+      "sha256": "9f6d7cf00010034583e830200f6d714d9a8b0c132b4feb877684ec85107a61a4"
+    }
+  },
+  "timing_s": {
+    "total": 320.3,
+    "drafting": 217.0
+  },
+  "output_dir": "data/generated/lora-fake"
+}

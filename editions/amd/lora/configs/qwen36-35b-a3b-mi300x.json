@@ -1,0 +1,40 @@
+{
+  "name": "qwen36-35b-a3b-mi300x",
+  "description": "Fallback: Qwen3.6-35B-A3B (MoE, ~3B active parameters; hybrid Gated-DeltaNet + full attention) on one MI300X. Thinking is disabled through the chat template for training and serving.",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "device": "cuda",
+  "dtype": "bf16",
+  "attn_implementation": "sdpa",
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": "attn_mlp",
+  "max_seq_len": 8192,
+  "batch_size": 2,
+  "eval_batch_size": 2,
+  "grad_accum": 8,
+  "epochs": 2,
+  "lr": 0.0001,
+  "lr_scheduler": "cosine",
+  "warmup": 0.03,
+  "eval_steps": 25,
+  "logging_steps": 5,
+  "save_steps": 100,
+  "gradient_checkpointing": true,
+  "packing": false,
+  "loss_type": "chunked_nll",
+  "chat_template_kwargs": {"enable_thinking": false},
+  "max_eval_examples": 200,
+  "seed": 42,
+  "model_notes": [
+    "Verify the exact Hub repo id and licence on the model card.",
+    "Routed experts are fused 3-D tensors in transformers 5 (not nn.Linear): LoRA adapts full attention (q/k/v/o), the linear-attention projections (in_proj_qkv / in_proj_z / out_proj) and the shared-expert MLP; the detection summary reports how many fused expert tensors were skipped.",
+    "Serve with thinking disabled too: pass chat_template_kwargs {\"enable_thinking\": false} per request, or set a server-side default if your vLLM version supports one (check vllm serve --help)."
+  ],
+  "estimates": {
+    "status": "ESTIMATES ONLY - replace with measured numbers during 12-18 Oct",
+    "memory": "bf16 weights 35e9 x 2 B = ~70 GB; LoRA on attention + shared experts needs < 1 GB of optimizer state; activations at 2 x 8192 with checkpointing ~10-20 GB; expected peak ~90-110 GB. fp32 merge ~140 GB (fits).",
+    "wall_clock_per_epoch": "~10-40 min for ~6M tokens: only ~3B parameters are active per token (~1.1e17 FLOPs), but eager MoE routing in HF is far from peak; measure the first 20 steps before committing."
+  },
+  "serve": "vllm serve /models/wapsi-qwen36-merged --served-model-name wapsi-qwen36-lora --dtype bfloat16 --max-model-len 16384 --gpu-memory-utilization 0.5 --port 8001"
+}

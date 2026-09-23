@@ -1,0 +1,33 @@
+{
+  "name": "tiny-cpu",
+  "description": "Offline CPU smoke test: randomly initialised 2-layer Llama-layout model (hidden 64) with a byte-level BPE tokenizer trained on the dataset itself. Exercises the exact train -> merge -> evaluate code path; numbers from it are pipeline checks, never model results.",
+  "tiny": true,
+  "tiny_arch": "llama",
+  "tiny_hidden_size": 64,
+  "tiny_layers": 2,
+  "tiny_vocab_size": 2048,
+  "device": "cpu",
+  "dtype": "fp32",
+  "lora_r": 8,
+  "lora_alpha": 16,
+  "lora_dropout": 0.0,
+  "target_modules": "attn_mlp",
+  "max_seq_len": 16384,
+  "batch_size": 2,
+  "grad_accum": 1,
+  "max_steps": 24,
+  "lr": 0.005,
+  "lr_scheduler": "constant",
+  "warmup": 0,
+  "eval_steps": 12,
+  "logging_steps": 4,
+  "save_steps": 0,
+  "gradient_checkpointing": false,
+  "packing": false,
+  "loss_type": "nll",
+  "max_eval_examples": 16,
+  "seed": 42,
+  "estimates": {
+    "wall_clock": "ESTIMATE: well under a minute on a laptop CPU for 24 steps"
+  }
+}

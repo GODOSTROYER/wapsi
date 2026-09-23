@@ -1,0 +1,42 @@
+{
+  "name": "gemma4-31b-mi300x",
+  "description": "Quality run: Gemma 4 31B instruction-tuned, bf16 LoRA on one AMD Instinct MI300X (192 GB HBM3, ROCm PyTorch). Merge afterwards (vLLM has no LoRA runtime for Gemma 4).",
+  "model": "google/gemma-4-31B-it",
+  "device": "cuda",
+  "dtype": "bf16",
+  "attn_implementation": "sdpa",
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": "attn_mlp",
+  "max_seq_len": 8192,
+  "batch_size": 2,
+  "eval_batch_size": 2,
+  "grad_accum": 8,
+  "epochs": 2,
+  "lr": 0.0001,
+  "lr_scheduler": "cosine",
+  "warmup": 0.03,
+  "weight_decay": 0.0,
+  "eval_steps": 25,
+  "logging_steps": 5,
+  "save_steps": 100,
+  "gradient_checkpointing": true,
+  "packing": false,
+  "loss_type": "chunked_nll",
+  "max_eval_examples": 200,
+  "seed": 42,
+  "model_notes": [
+    "Verify the exact Hub repo id and the licence / gating on the model card before downloading (hf auth login with your own token on the box; never commit it).",
+    "The published checkpoint is expected to be multimodal (Gemma4ForConditionalGeneration). train.py loads the class named in config.json, adapts only language-model projections (vision/audio towers are excluded and listed) and merge.py saves the same class, so vLLM serves the merged model like the base. If the multimodal class misbehaves in training, try --model-class Gemma4ForCausalLM and confirm vLLM serves the result.",
+    "max_seq_len 8192 rather than 4096: drafter requests are 9.2k chars at p50, 14.4k at p95 and 19.5k at most in the pipeline-check dataset (roughly 3-6k tokens); 4096 would drop the largest multi-layer STR cases. train.py --dry-run prints exact token counts with the real tokenizer; lower it if almost nothing exceeds 4096.",
+    "batch 2 x grad_accum 8 = 16 sequences per optimizer step (same tokens per micro-batch as 4 x 4096)."
+  ],
+  "estimates": {
+    "status": "ESTIMATES ONLY - replace with the measured numbers in train_metrics.json during 12-18 Oct",
+    "memory": "weights 31e9 x 2 B = ~62 GB (+ ~1 GB vision tower); LoRA r=16 on q/k/v/o/gate/up/down ~0.1-0.15e9 params, fp32 params+grads+Adam ~2 GB; activations with gradient checkpointing at 2 x 8192 tokens ~10-15 GB; chunked NLL keeps the 262k-vocabulary logits small. Expected peak ~80-95 GB of 192 GB: room to raise batch_size to 4, or to keep a small vLLM instance resident (--gpu-memory-utilization <= 0.4) only if really needed.",
+    "wall_clock_per_epoch": "~40-60 min for ~6M training tokens (6 x 31e9 x 6e6 = ~1.1e18 FLOPs at an assumed 25-40% of MI300X bf16 dense peak); plausible range 30-120 min. Tokens per epoch scale with --samples and the teacher's acceptance rate.",
+    "merge": "fp32 merge needs ~124 GB (fits in 192 GB); saved as bf16 (~62 GB on disk)."
+  },
+  "serve": "vllm serve /models/wapsi-gemma4-31b-merged --served-model-name wapsi-gemma4-31b-lora --dtype bfloat16 --max-model-len 16384 --gpu-memory-utilization 0.45 --port 8001"
+}
