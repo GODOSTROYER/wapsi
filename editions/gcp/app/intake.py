@@ -1,7 +1,10 @@
 """Multimodal complaint intake: a PDF or screenshot of an NCRP / 1930 notice -> structured complaint fields.
 
-Cloud mode sends the Cloud Storage object to Gemini (``Part.from_uri``) with a JSON schema. Demo mode accepts
-``demo://complaint/<ncrp_id>`` and reads the fields from the ledger, so the flow runs offline.
+Cloud mode sends the Cloud Storage object to Gemini with a JSON schema: by URI (``Part.from_uri``) on Agent
+Platform, or, on the Gemini API (``aistudio`` backend, which cannot read ``gs://`` with an API key), as inline
+bytes downloaded with the service's own credentials (``roles/storage.objectViewer`` on the intake bucket; files up
+to ``MAX_INLINE_BYTES``). ``demo://complaint/<ncrp_id>`` works in every mode: it reads the fields from the ledger,
+so the flow runs offline and on the free profile without an intake bucket.
 
 Everything extracted from a document is untrusted: string fields are screened by the guard, the narrative is
 returned sanitized inside untrusted-text markers, and extracted values are cross-checked against the ledger
@@ -13,8 +16,10 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
+from urllib.parse import quote
 
 from wapsi.adapters.gemini_llm import parse_json_text, response_text
+from wapsi.adapters.llm_openai_compat import LLMError
 from wapsi.money import fmt_inr
 from wapsi.timeutil import fmt_ist, utcnow
 
@@ -67,23 +72,56 @@ SYSTEM = (
 PROMPT = "Extract the complaint fields from this document as JSON matching the schema."
 
 
+MAX_INLINE_BYTES = 20 * 1024 * 1024  # the Gemini API accepts up to 50 MB of inline PDF; complaints are small
+
+
+def _gcs_bytes(uri: str, max_bytes: int = MAX_INLINE_BYTES) -> bytes:
+    """Download a ``gs://`` object with Application Default Credentials (Cloud Run service account)."""
+    import google.auth  # lazy
+    from google.auth.transport.requests import AuthorizedSession
+
+    m = GCS_RE.match(uri)
+    if not m:
+        raise ValueError("not a gs:// URI")
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/devstorage.read_only"])
+    session = AuthorizedSession(creds)
+    url = f"https://storage.googleapis.com/storage/v1/b/{m.group(1)}/o/{quote(m.group(2), safe='')}"
+    meta = session.get(url, timeout=30)
+    meta.raise_for_status()
+    if int(meta.json().get("size") or 0) > max_bytes:
+        raise ValueError(f"upload is larger than {max_bytes} bytes")
+    resp = session.get(url, params={"alt": "media"}, timeout=60)
+    resp.raise_for_status()
+    return resp.content[: max_bytes + 1]
+
+
 def _extract_with_gemini(uri: str, mime: str) -> tuple[dict[str, Any], str]:
     from google.genai import types  # lazy
 
     svc = get_services()
+    backend = svc.settings.gemini_backend
     client = svc.extractor
     if client is None:
         from wapsi.adapters.gemini_llm import GeminiLLM
 
-        client = GeminiLLM(svc.settings.model, project=svc.settings.project, location=svc.settings.location).client
+        client = GeminiLLM(svc.settings.model, project=svc.settings.project, location=svc.settings.location,
+                           backend=backend).client
         svc.extractor = client
+    if backend == "vertex":
+        document = types.Part.from_uri(file_uri=uri, mime_type=mime)
+        labels: dict[str, str] | None = {"app": "wapsi", "step": "intake"}
+    else:  # Gemini API: no gs:// access with an API key, and no request labels
+        data = _gcs_bytes(uri)
+        if len(data) > MAX_INLINE_BYTES:
+            raise ValueError("upload too large")
+        document = types.Part.from_bytes(data=data, mime_type=mime)
+        labels = None
     resp = client.models.generate_content(
         model=svc.settings.model,
-        contents=[types.Content(role="user", parts=[types.Part.from_uri(file_uri=uri, mime_type=mime),
-                                                     types.Part.from_text(text=PROMPT)])],
+        contents=[types.Content(role="user", parts=[document, types.Part.from_text(text=PROMPT)])],
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM, temperature=0.0, response_mime_type="application/json",
-            response_json_schema=EXTRACTION_SCHEMA, labels={"app": "wapsi", "step": "intake"},
+            response_json_schema=EXTRACTION_SCHEMA, labels=labels,
         ),
     )
     data = parse_json_text(response_text(resp))
@@ -162,6 +200,8 @@ def extract_complaint(file_uri: str, tool_context: Any = None) -> dict[str, Any]
             fields, extractor = _extract_with_gemini(uri, MIME[ext])
     except KeyError:
         return {"status": "error", "error": "no such complaint in the ledger"}
+    except LLMError as exc:  # e.g. missing Gemini API key: the message is safe to show and says what to do
+        return {"status": "error", "error": f"extraction failed: {exc}"[:600]}
     except Exception as exc:  # noqa: BLE001 - report extraction failures to the officer
         return {"status": "error", "error": f"extraction failed: {type(exc).__name__}"}
 

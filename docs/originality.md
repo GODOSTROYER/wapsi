@@ -1,23 +1,26 @@
 # Originality and build timeline
 
 Wapsi is being entered in three hackathons. This file records what was built when, so each event's
-originality rules can be checked against the git history.
+originality rules can be checked against the git history. Commit dates are never rewritten.
 
-| Date (IST) | What | Where |
+| Dates (IST) | What | Where |
 |---|---|---|
 | 2026-09-16 | Repository created; shared data contracts, showcase fixtures, AGENTS.md | `src/wapsi/{models,ports,config,money,timeutil,citations}.py`, `src/wapsi/fixtures/` |
-| 2026-09-16 → | Portable core: tracing, taint apportionment, hold plan, classifier (heuristic + XGBoost), drafter, verifier, clocks, docs search, synthetic world, UI | `src/wapsi/`, `ui/`, `evals/` |
-| 2026-09-16 → 2026-10-04 | Snowflake-native edition, built in Snowflake CoCo sessions | `editions/snowflake/` |
-| 2026-10-04 → 2026-10-18 | Google Cloud edition (ADK agents on Cloud Run, Gemini, Gemma on Cloud Run GPU) | `editions/gcp/` |
-| 2026-10-12 → 2026-10-18 | AMD edition (ROCm GraphSAGE training, Gemma LoRA fine-tune, vLLM-ROCm serving, benchmarks). Baseline tag `amd-baseline` at kickoff. | `editions/amd/` |
+| 2026-09-16 → 2026-09-23 | Portable core: tracing, taint apportionment, hold plan, classifier (heuristic + XGBoost), drafter, verifier, clocks, legal corpus search, synthetic world and golden sets, pipeline, evaluation harness, Streamlit UI, CoCo skills and playbook, Google Cloud edition scaffold | `src/wapsi/`, `ui/`, `evals/`, `.claude/skills/`, `editions/snowflake/` (playbook only), `editions/gcp/` |
+| 2026-09-23 → 2026-10-04 | Snowflake-native edition, built in Snowflake CoCo sessions | `editions/snowflake/` |
+| 2026-10-04 → 2026-10-18 | Google Cloud edition completed and deployed (ADK agents on Cloud Run, Gemini) | `editions/gcp/` |
+| 2026-09-23 → 2026-10-11 | **AMD edition code prepared before the event** (disclosed): vLLM-ROCm serving scripts and docker-compose, benchmark suite, pure-PyTorch GraphSAGE mule scorer (trained and evaluated on CPU only), Gemma LoRA fine-tuning / merge / evaluation pipeline (tested on tiny CPU models only) | `editions/amd/` |
+| 2026-10-12 → 2026-10-18 | **AMD work during the event window**: all runs on AMD Instinct MI300X — GNN training, LoRA fine-tuning, merged model, vLLM-ROCm serving, benchmarks and every reported GPU number; plus any new features built during the event. Baseline tag `amd-baseline` is created at kickoff so judges can diff exactly what was added during the event. | `editions/amd/` |
 
 ## Rules this satisfies
-- **AI Builder Cup:** no code predates the programme launch (2026-09-01); the first commit is 2026-09-16.
-- **Snowflake CoCo GCC:** Snowflake-native components are built with CoCo; session evidence in
+- **AI Builder Cup:** no code predates the programme launch (2026-09-01); the first commit is dated 2026-09-23 and
+  work started 2026-09-16.
+- **Snowflake CoCo GCC:** Snowflake-native components are built with CoCo; session evidence is kept in
   `editions/snowflake/coco-sessions/`.
-- **lablab.ai AMD ACT III:** the AMD-specific AI work (GNN training, fine-tuning, ROCm serving, benchmarks) is
-  built during the event window; everything that existed at kickoff is under the `amd-baseline` tag and is
-  disclosed here.
+- **lablab.ai AMD ACT III:** the pre-event AMD code is disclosed above and is identifiable in the git history
+  before the `amd-baseline` tag. No model training, fine-tuning, serving or benchmark on AMD hardware happens before
+  12 Oct, and no GPU results are reported from before the event. CPU development numbers in the repo are labelled as
+  such.
 
 All data is synthetic. Public legal texts are fetched at build time and are not redistributed beyond short
 attributed quotes.

@@ -1,0 +1,3 @@
+# Checkpoints are produced by training runs (CPU dev now, MI300X during 12-18 Oct 2026); not committed.
+*
+!.gitignore

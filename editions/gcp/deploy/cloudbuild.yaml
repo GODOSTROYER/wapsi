@@ -1,16 +1,21 @@
 # Cloud Build: build and push the Wapsi GCP image (context = repository root).
 #   gcloud builds submit --region=asia-south1 --config=editions/gcp/deploy/cloudbuild.yaml \
-#     --substitutions=_IMAGE=asia-south1-docker.pkg.dev/PROJECT_ID/wapsi/wapsi-gcp:TAG .
+#     --substitutions=_IMAGE=asia-south1-docker.pkg.dev/PROJECT_ID/wapsi/wapsi-gcp:TAG,_BAKE_WORLD=1 .
+# No build machine option here: the default e2-standard-2 machine is the one covered by the Cloud Build free tier
+# (2,500 build-minutes a month). The paid profile passes --machine-type=e2-highcpu-8 on the command line.
+# _BAKE_WORLD=1 generates the ~2 MB synthetic demo world into the image (/app/data/world) so WAPSI_LEDGER=parquet
+# works without BigQuery.
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
     env: ["DOCKER_BUILDKIT=1"]
-    args: ["build", "-f", "editions/gcp/Dockerfile", "-t", "${_IMAGE}", "--label", "app=wapsi", "."]
+    args: ["build", "-f", "editions/gcp/Dockerfile", "-t", "${_IMAGE}", "--build-arg", "BAKE_WORLD=${_BAKE_WORLD}",
+           "--label", "app=wapsi", "."]
 images: ["${_IMAGE}"]
 options:
   dynamicSubstitutions: true
   logging: CLOUD_LOGGING_ONLY
-  machineType: E2_HIGHCPU_8
-timeout: 1200s
+timeout: 1800s
 substitutions:
   _IMAGE: asia-south1-docker.pkg.dev/${PROJECT_ID}/wapsi/wapsi-gcp:latest
+  _BAKE_WORLD: "1"

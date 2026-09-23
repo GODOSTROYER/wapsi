@@ -1,0 +1,1634 @@
+{
+  "label": "CPU dev numbers (development laptop, CPU only) - NOT MI300X results",
+  "date": "2026-09-23",
+  "generated_at": "2026-09-23T15:00:47.068340+00:00",
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.2",
+    "torch": "2.14.0+cpu",
+    "device": "cpu",
+    "threads": 4
+  },
+  "gnn_checkpoint": {
+    "path": "editions/amd/gnn/checkpoints/cpu-dev-base",
+    "name": "cpu-dev-base",
+    "model": {
+      "node_dim": 44,
+      "edge_dim": 20,
+      "hidden": 64,
+      "edge_hidden": 32,
+      "layers": 2,
+      "dropout": 0.1,
+      "temporal": false,
+      "time_dim": 8
+    },
+    "graph_config": {
+      "lookback_days": 30.0,
+      "horizon_hours": 72.0,
+      "max_neighbors": 10,
+      "max_device_peers": 5,
+      "hops": 1,
+      "include_device_edges": true,
+      "drop_features": []
+    },
+    "worlds": {
+      "train": [
+        "data/generated/demo",
+        "data/generated/gnn-1001",
+        "data/generated/gnn-1002",
+        "data/generated/gnn-1003",
+        "data/generated/gnn-1004",
+        "data/generated/gnn-1005",
+        "data/generated/gnn-1006",
+        "data/generated/gnn-1007",
+        "data/generated/gnn-1008",
+        "data/generated/gnn-1009",
+        "data/generated/gnn-1010"
+      ],
+      "val": [
+        "data/generated/gnn-2001",
+        "data/generated/gnn-2002"
+      ],
+      "test": [
+        "data/generated/heldout-404",
+        "data/generated/heldout-505"
+      ]
+    },
+    "drop_features": []
+  },
+  "gnn_ablated_checkpoint": "editions/amd/gnn/checkpoints/cpu-dev-noext",
+  "protocol": "GNN weights fitted on the train worlds, early stopping on the val worlds, test worlds scored once. xgb-same-train uses the same train worlds. heldout-101..505 existed before this work and their heuristic / XGBoost reports are in evals/reports, so they are not untouched for the heuristic's hand-tuning; they were never used to fit or tune the GNN.",
+  "scorer_prep_s": 23.3,
+  "primary": {
+    "worlds": {
+      "heldout-404": {
+        "heuristic-v2": {
+          "scorer": "heuristic-v2",
+          "cases": 43,
+          "mule": {
+            "precision": 0.9918,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 0.9959,
+            "tp": 121,
+            "fp": 1,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.8333,
+            "support": 6,
+            "f1": 0.9091,
+            "tp": 5,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 0.9929,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 0.9767,
+          "mean_classify_s": 0.1925,
+          "disposition_failures": [
+            "CASE-20808260050020 HB01-3089895534: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-demo": {
+          "scorer": "xgb:demo-newfeat",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 1.0,
+            "tp": 121,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1594,
+          "disposition_failures": []
+        },
+        "xgb-same-train": {
+          "scorer": "xgb-same-train",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 1.0,
+            "tp": 121,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1374,
+          "disposition_failures": []
+        },
+        "gnn": {
+          "scorer": "gnn:cpu-dev-base",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 1.0,
+            "tp": 121,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3848,
+          "disposition_failures": []
+        },
+        "heuristic-v2-noext": {
+          "scorer": "heuristic-v2-noext",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 0.9917,
+            "support": 121,
+            "f1": 0.9958,
+            "tp": 120,
+            "fp": 0,
+            "fn": 1
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.8333,
+            "support": 6,
+            "f1": 0.9091,
+            "tp": 5,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 2,
+          "disposition_accuracy": 0.9929,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.188,
+          "disposition_failures": [
+            "CASE-20808260050020 HB01-3089895534: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-same-train-noext": {
+          "scorer": "xgb-same-train-noext",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 1.0,
+            "tp": 121,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1151,
+          "disposition_failures": []
+        },
+        "gnn-noext": {
+          "scorer": "gnn:cpu-dev-noext-noext",
+          "cases": 43,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 121,
+            "f1": 1.0,
+            "tp": 121,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 140,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3659,
+          "disposition_failures": []
+        }
+      },
+      "heldout-505": {
+        "heuristic-v2": {
+          "scorer": "heuristic-v2",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.875,
+            "support": 8,
+            "f1": 0.9333,
+            "tp": 7,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 0.9907,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1551,
+          "disposition_failures": [
+            "CASE-10508260056337 HB01-2652345386: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-demo": {
+          "scorer": "xgb:demo-newfeat",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.875,
+            "support": 8,
+            "f1": 0.9333,
+            "tp": 7,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 0.9907,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1452,
+          "disposition_failures": [
+            "CASE-10508260056337 HB01-7453353354: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-same-train": {
+          "scorer": "xgb-same-train",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1122,
+          "disposition_failures": []
+        },
+        "gnn": {
+          "scorer": "gnn:cpu-dev-base",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.326,
+          "disposition_failures": []
+        },
+        "heuristic-v2-noext": {
+          "scorer": "heuristic-v2-noext",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.875,
+            "support": 8,
+            "f1": 0.9333,
+            "tp": 7,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 0.9907,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1423,
+          "disposition_failures": [
+            "CASE-10508260056337 HB01-2652345386: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-same-train-noext": {
+          "scorer": "xgb-same-train-noext",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.108,
+          "disposition_failures": []
+        },
+        "gnn-noext": {
+          "scorer": "gnn:cpu-dev-noext-noext",
+          "cases": 38,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 92,
+            "f1": 1.0,
+            "tp": 92,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 108,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.2951,
+          "disposition_failures": []
+        }
+      }
+    },
+    "pooled": {
+      "heuristic-v2": {
+        "mule": {
+          "precision": 0.9953,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 0.9976,
+          "tp": 213,
+          "fp": 1,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 0.8571,
+          "support": 14,
+          "f1": 0.9231,
+          "tp": 12,
+          "fp": 0,
+          "fn": 2
+        },
+        "disposition_accuracy": 0.9919,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 1,
+        "over_hold_inr": 0.0
+      },
+      "xgb-demo": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 1.0,
+          "tp": 213,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 0.9286,
+          "support": 14,
+          "f1": 0.963,
+          "tp": 13,
+          "fp": 0,
+          "fn": 1
+        },
+        "disposition_accuracy": 0.996,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 1,
+        "over_hold_inr": 0.0
+      },
+      "xgb-same-train": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 1.0,
+          "tp": 213,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 14,
+          "f1": 1.0,
+          "tp": 14,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "gnn": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 1.0,
+          "tp": 213,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 14,
+          "f1": 1.0,
+          "tp": 14,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "heuristic-v2-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 0.9953,
+          "support": 213,
+          "f1": 0.9976,
+          "tp": 212,
+          "fp": 0,
+          "fn": 1
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 0.8571,
+          "support": 14,
+          "f1": 0.9231,
+          "tp": 12,
+          "fp": 0,
+          "fn": 2
+        },
+        "disposition_accuracy": 0.9919,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 3,
+        "over_hold_inr": 0.0
+      },
+      "xgb-same-train-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 1.0,
+          "tp": 213,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 14,
+          "f1": 1.0,
+          "tp": 14,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "gnn-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 213,
+          "f1": 1.0,
+          "tp": 213,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 14,
+          "f1": 1.0,
+          "tp": 14,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 248,
+        "cases": 81,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      }
+    }
+  },
+  "secondary": {
+    "worlds": {
+      "heldout-101": {
+        "heuristic-v2": {
+          "scorer": "heuristic-v2",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.9,
+            "support": 10,
+            "f1": 0.9474,
+            "tp": 9,
+            "fp": 0,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 0.9929,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1574,
+          "disposition_failures": [
+            "CASE-20809260083562 HB01-4359960871: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-demo": {
+          "scorer": "xgb:demo-newfeat",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 0.9915,
+            "support": 117,
+            "f1": 0.9957,
+            "tp": 116,
+            "fp": 0,
+            "fn": 1
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1224,
+          "disposition_failures": []
+        },
+        "xgb-same-train": {
+          "scorer": "xgb-same-train",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1212,
+          "disposition_failures": []
+        },
+        "gnn": {
+          "scorer": "gnn:cpu-dev-base",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3527,
+          "disposition_failures": []
+        },
+        "heuristic-v2-noext": {
+          "scorer": "heuristic-v2-noext",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1467,
+          "disposition_failures": []
+        },
+        "xgb-same-train-noext": {
+          "scorer": "xgb-same-train-noext",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1162,
+          "disposition_failures": []
+        },
+        "gnn-noext": {
+          "scorer": "gnn:cpu-dev-noext-noext",
+          "cases": 45,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 117,
+            "f1": 1.0,
+            "tp": 117,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 10,
+            "f1": 1.0,
+            "tp": 10,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 141,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3656,
+          "disposition_failures": []
+        }
+      },
+      "heldout-202": {
+        "heuristic-v2": {
+          "scorer": "heuristic-v2",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1683,
+          "disposition_failures": []
+        },
+        "xgb-demo": {
+          "scorer": "xgb:demo-newfeat",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1529,
+          "disposition_failures": []
+        },
+        "xgb-same-train": {
+          "scorer": "xgb-same-train",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1247,
+          "disposition_failures": []
+        },
+        "gnn": {
+          "scorer": "gnn:cpu-dev-base",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3664,
+          "disposition_failures": []
+        },
+        "heuristic-v2-noext": {
+          "scorer": "heuristic-v2-noext",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 0.9892,
+            "support": 93,
+            "f1": 0.9946,
+            "tp": 92,
+            "fp": 0,
+            "fn": 1
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1403,
+          "disposition_failures": []
+        },
+        "xgb-same-train-noext": {
+          "scorer": "xgb-same-train-noext",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1061,
+          "disposition_failures": []
+        },
+        "gnn-noext": {
+          "scorer": "gnn:cpu-dev-noext-noext",
+          "cases": 36,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 93,
+            "f1": 1.0,
+            "tp": 93,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 6,
+            "f1": 1.0,
+            "tp": 6,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 110,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3044,
+          "disposition_failures": []
+        }
+      },
+      "heldout-303": {
+        "heuristic-v2": {
+          "scorer": "heuristic-v2",
+          "cases": 40,
+          "mule": {
+            "precision": 0.9907,
+            "recall": 1.0,
+            "support": 107,
+            "f1": 0.9953,
+            "tp": 107,
+            "fp": 1,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 0.75,
+            "support": 8,
+            "f1": 0.8571,
+            "tp": 6,
+            "fp": 0,
+            "fn": 2
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 0.984,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 0.975,
+          "mean_classify_s": 0.1976,
+          "disposition_failures": [
+            "CASE-21508260049627 HB01-1877884517: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)",
+            "CASE-21708260049629 HB01-2514336274: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-demo": {
+          "scorer": "xgb:demo-newfeat",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 0.9907,
+            "support": 107,
+            "f1": 0.9953,
+            "tp": 106,
+            "fp": 0,
+            "fn": 1
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 1,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1544,
+          "disposition_failures": []
+        },
+        "xgb-same-train": {
+          "scorer": "xgb-same-train",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 107,
+            "f1": 1.0,
+            "tp": 107,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1157,
+          "disposition_failures": []
+        },
+        "gnn": {
+          "scorer": "gnn:cpu-dev-base",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 107,
+            "f1": 1.0,
+            "tp": 107,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3229,
+          "disposition_failures": []
+        },
+        "heuristic-v2-noext": {
+          "scorer": "heuristic-v2-noext",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 0.9813,
+            "support": 107,
+            "f1": 0.9906,
+            "tp": 105,
+            "fp": 0,
+            "fn": 2
+          },
+          "innocent_holder": {
+            "precision": 0.875,
+            "recall": 0.875,
+            "support": 8,
+            "f1": 0.875,
+            "tp": 7,
+            "fp": 1,
+            "fn": 1
+          },
+          "scorer_auc_mule_vs_legit": 0.9988,
+          "sent_to_officer_unknown": 2,
+          "disposition_accuracy": 0.984,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1514,
+          "disposition_failures": [
+            "CASE-20809260049659 HB01-1189746765: HOLD_AMOUNT_NO_ESCALATION (expected HOLD_AMOUNT)",
+            "CASE-21508260049627 HB01-1877884517: HOLD_AMOUNT (expected HOLD_AMOUNT_NO_ESCALATION)"
+          ]
+        },
+        "xgb-same-train-noext": {
+          "scorer": "xgb-same-train-noext",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 107,
+            "f1": 1.0,
+            "tp": 107,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.1034,
+          "disposition_failures": []
+        },
+        "gnn-noext": {
+          "scorer": "gnn:cpu-dev-noext-noext",
+          "cases": 40,
+          "mule": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 107,
+            "f1": 1.0,
+            "tp": 107,
+            "fp": 0,
+            "fn": 0
+          },
+          "innocent_holder": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 8,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+          },
+          "scorer_auc_mule_vs_legit": 1.0,
+          "sent_to_officer_unknown": 0,
+          "disposition_accuracy": 1.0,
+          "disposition_n": 125,
+          "hold_exact_match_rate": 1.0,
+          "over_hold_inr": 0.0,
+          "str_ground_accuracy": 1.0,
+          "mean_classify_s": 0.3164,
+          "disposition_failures": []
+        }
+      }
+    },
+    "pooled": {
+      "heuristic-v2": {
+        "mule": {
+          "precision": 0.9969,
+          "recall": 1.0,
+          "support": 317,
+          "f1": 0.9984,
+          "tp": 317,
+          "fp": 1,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 0.875,
+          "support": 24,
+          "f1": 0.9333,
+          "tp": 21,
+          "fp": 0,
+          "fn": 3
+        },
+        "disposition_accuracy": 0.992,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 2,
+        "over_hold_inr": 0.0
+      },
+      "xgb-demo": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 0.9937,
+          "support": 317,
+          "f1": 0.9968,
+          "tp": 315,
+          "fp": 0,
+          "fn": 2
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 24,
+          "f1": 1.0,
+          "tp": 24,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 2,
+        "over_hold_inr": 0.0
+      },
+      "xgb-same-train": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 317,
+          "f1": 1.0,
+          "tp": 317,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 24,
+          "f1": 1.0,
+          "tp": 24,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "gnn": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 317,
+          "f1": 1.0,
+          "tp": 317,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 24,
+          "f1": 1.0,
+          "tp": 24,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "heuristic-v2-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 0.9905,
+          "support": 317,
+          "f1": 0.9952,
+          "tp": 314,
+          "fp": 0,
+          "fn": 3
+        },
+        "innocent_holder": {
+          "precision": 0.9583,
+          "recall": 0.9583,
+          "support": 24,
+          "f1": 0.9583,
+          "tp": 23,
+          "fp": 1,
+          "fn": 1
+        },
+        "disposition_accuracy": 0.9947,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 3,
+        "over_hold_inr": 0.0
+      },
+      "xgb-same-train-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 317,
+          "f1": 1.0,
+          "tp": 317,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 24,
+          "f1": 1.0,
+          "tp": 24,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      },
+      "gnn-noext": {
+        "mule": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 317,
+          "f1": 1.0,
+          "tp": 317,
+          "fp": 0,
+          "fn": 0
+        },
+        "innocent_holder": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 24,
+          "f1": 1.0,
+          "tp": 24,
+          "fp": 0,
+          "fn": 0
+        },
+        "disposition_accuracy": 1.0,
+        "disposition_n": 376,
+        "cases": 121,
+        "sent_to_officer_unknown": 0,
+        "over_hold_inr": 0.0
+      }
+    }
+  },
+  "diagnostics": {
+    "note": "Node-level test metrics (trail accounts of heldout-404/505) from each checkpoint's metrics.json; CPU dev numbers, NOT MI300X. Explains why the pipeline comparison is saturated.",
+    "cpu-dev-base": {
+      "features": "all features",
+      "best_epoch": 4,
+      "train_s": 10.0,
+      "test_pooled_seed": {
+        "n": 248,
+        "n_mule": 213,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "val_seed": {
+        "n": 269,
+        "n_mule": 224,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "peak_mem_mb": 456.8,
+      "median_edges_per_s": 62533.6
+    },
+    "cpu-dev-noext": {
+      "features": "fri_risk / mulehunter_score / ncrp_prior_reports zeroed",
+      "best_epoch": 16,
+      "train_s": 42.6,
+      "test_pooled_seed": {
+        "n": 248,
+        "n_mule": 213,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "val_seed": {
+        "n": 269,
+        "n_mule": 224,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "peak_mem_mb": 457.1,
+      "median_edges_per_s": 22002.6
+    },
+    "cpu-dev-structure-only": {
+      "features": "all 33 account_features zeroed: degree statistics + edges only",
+      "best_epoch": 25,
+      "train_s": 38.7,
+      "test_pooled_seed": {
+        "n": 248,
+        "n_mule": 213,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "val_seed": {
+        "n": 269,
+        "n_mule": 224,
+        "auc": 1.0,
+        "ap": 1.0,
+        "mule_precision": 1.0,
+        "mule_recall": 1.0,
+        "mule_f1": 1.0
+      },
+      "peak_mem_mb": 457.2,
+      "median_edges_per_s": 38187.7
+    },
+    "best_single_feature_test_auc": {
+      "hist_distinct_payers_90d": 0.986,
+      "g_in_txns": 0.98,
+      "mulehunter_score": 0.964
+    },
+    "test_trail_label_counts": {
+      "MULE": 213,
+      "INNOCENT_HOLDER": 14,
+      "MERCHANT": 12,
+      "INTERMEDIARY": 9
+    },
+    "full_world_costs_cpu": {
+      "parquet_ledger_load_s": 7.5,
+      "world_graph_build_s": 13.6,
+      "world_graph_nodes": 59989,
+      "world_graph_edges": 1715506,
+      "full_batch_fwd_bwd_s_4_threads": 11.8,
+      "case_graph_s_per_case": 0.67
+    }
+  }
+}

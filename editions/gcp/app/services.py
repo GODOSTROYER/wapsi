@@ -3,9 +3,11 @@
 Demo mode (zero cloud access): showcase ledger (or ``WAPSI_WORLD`` Parquet), ``InMemoryCaseStore``, ``FakeLLM``,
 ``RulesGuard``, local BM25 docs index, recording action sink.
 
-Cloud mode: ``BigQueryLedger``, ``FirestoreCaseStore``, ``GeminiLLM`` (Agent Platform) for draft prose, or Gemma 4
-on Cloud Run GPU when ``WAPSI_PRIVATE_LLM_URL`` is set, ``ModelArmorGuard`` (falls back to ``RulesGuard``) when a
-template is configured. Google clients are created lazily on first use, so building services never calls out.
+Cloud mode: ``BigQueryLedger`` (or ``ParquetLedger`` with ``WAPSI_LEDGER=parquet``), ``FirestoreCaseStore``,
+``GeminiLLM`` for draft prose (Gemini API key by default, Agent Platform with ``WAPSI_GEMINI_BACKEND=vertex``), or
+Gemma 4 on Cloud Run GPU when ``WAPSI_PRIVATE_LLM_URL`` is set (paid add-on), ``ModelArmorGuard`` (falls back to
+``RulesGuard``) when a template is configured. Google clients are created lazily on first use, so building
+services never calls out.
 """
 
 from __future__ import annotations
@@ -60,6 +62,21 @@ def _demo_ledger(settings: GcpSettings) -> Ledger:
     return showcase_ledger()
 
 
+def _cloud_ledger(settings: GcpSettings) -> Ledger:
+    """BigQuery (default) or a Parquet world baked into the image / mounted from Cloud Storage."""
+    if settings.ledger == "parquet":
+        from wapsi.adapters.parquet_ledger import ParquetLedger
+
+        if not settings.world_path or not Path(settings.world_path, "transactions.parquet").exists():
+            raise ValueError(f"WAPSI_LEDGER=parquet but WAPSI_WORLD={settings.world_path!r} has no "
+                             "transactions.parquet (build the image with BAKE_WORLD=1 or mount the world bucket)")
+        return ParquetLedger(settings.world_path)
+    from wapsi.adapters.bigquery_ledger import BigQueryLedger
+
+    assert settings.project is not None
+    return BigQueryLedger(settings.project, settings.bq_dataset, location=settings.region)
+
+
 def build_services(settings: GcpSettings | None = None) -> Services:
     settings = settings or load_settings()
     configure_signing_key(settings.role_signing_key)
@@ -78,12 +95,11 @@ def build_services(settings: GcpSettings | None = None) -> Services:
             sink=RecordingActionSink(),
         )
 
-    from wapsi.adapters.bigquery_ledger import BigQueryLedger
     from wapsi.adapters.firestore_store import FirestoreCaseStore
     from wapsi.adapters.gemini_llm import GeminiLLM, gemma_private_llm
 
     assert settings.project is not None
-    ledger = BigQueryLedger(settings.project, settings.bq_dataset, location=settings.region)
+    ledger = _cloud_ledger(settings)
     store = FirestoreCaseStore(project=settings.project, database=settings.firestore_database,
                                collection=settings.cases_collection)
     if settings.private_llm_url:
@@ -91,7 +107,7 @@ def build_services(settings: GcpSettings | None = None) -> Services:
                                      id_token_audience=settings.private_llm_url.rstrip("/").removesuffix("/v1"))
     else:
         llm = GeminiLLM(settings.draft_model or settings.model, project=settings.project,
-                        location=settings.location)
+                        location=settings.location, backend=settings.gemini_backend)
     guard: Guard = RulesGuard()
     ma = settings.model_armor()
     if ma is not None:

@@ -13,7 +13,10 @@
 ``AuditLogPlugin`` writes one structured JSON log line per tool call (Cloud Logging picks these up from stdout on
 Cloud Run) and appends an ``AuditEvent`` to the case in the case store.
 
-``MemoryPlugin`` saves the finished session to the memory service (Memory Bank on Agent Runtime, or in-memory).
+``MemoryPlugin`` saves the finished session to the memory service (in-memory, Firestore, or Memory Bank).
+
+``ModelQuotaPlugin`` answers with a plain-language notice when Gemini returns 429 (free-tier rate limit or daily
+quota) after the client's own retries, instead of failing the run.
 """
 
 from __future__ import annotations
@@ -226,6 +229,31 @@ class AuditLogPlugin(BasePlugin):
                                      error: Exception) -> dict[str, Any] | None:
         self._record(tool, tool_args, tool_context, "exception", error=f"{type(error).__name__}: {error}")
         return None
+
+
+class ModelQuotaPlugin(BasePlugin):
+    """Turns a Gemini 429 (free-tier rate limit or daily quota) into a plain-language reply instead of a 500.
+
+    The google-genai client has already retried (``agent.GEMINI_RETRY``). Other model errors are left to ADK.
+    """
+
+    def __init__(self, name: str = "wapsi_quota") -> None:
+        super().__init__(name=name)
+        self.events: list[dict[str, Any]] = []
+
+    async def on_model_error_callback(self, *, callback_context: Any, llm_request: Any,
+                                      error: Exception) -> Any | None:
+        from google.adk.models.llm_response import LlmResponse
+
+        from wapsi.adapters.gemini_llm import quota_hint
+
+        hint = quota_hint(error, getattr(llm_request, "model", None))
+        if hint is None:
+            return None
+        self.events = (self.events + [{"agent": getattr(callback_context, "agent_name", None),
+                                       "model": getattr(llm_request, "model", None)}])[-100:]
+        log.warning("Gemini quota: %s", hint)
+        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text=f"[Wapsi] {hint}")]))
 
 
 class MemoryPlugin(BasePlugin):

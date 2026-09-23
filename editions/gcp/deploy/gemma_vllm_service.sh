@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
+# OPTIONAL PAID ADD-ON, OFF BY DEFAULT. Not part of the free-trial deployment (cloudrun.sh PROFILE=free).
+#
 # Private tier: Gemma 4 served by vLLM on Cloud Run GPU (OpenAI-compatible API at <url>/v1).
 # Wapsi uses it for draft prose over the case fact sheet (victim PII stays on a service we control) when
 # WAPSI_PRIVATE_LLM_URL is set on the API service; WAPSI_AGENT_ON_PRIVATE=1 also runs the agents on it.
+# Private Gemma inference is otherwise covered by the AMD edition (editions/amd).
 #
 # NOT run by CI. Follows the Cloud Run "Run Gemma 4 with vLLM" guide/codelab (image, flags, startup probe).
-# Needs billing upgraded (the free trial blocks GPUs) and Cloud Run GPU quota in the chosen region.
+# Needs billing upgraded (the free trial blocks GPUs and quota increases) and Cloud Run GPU quota in the chosen
+# region, so it refuses to run unless ALLOW_GPU=1.
 #
 #   export PROJECT_ID=wapsi-aibc
-#   TIER=l4  bash editions/gcp/deploy/gemma_vllm_service.sh   # default: NVIDIA L4, us-central1, gemma-4-E4B-it
-#   TIER=rtx bash editions/gcp/deploy/gemma_vllm_service.sh   # RTX PRO 6000, asia-south2 (Delhi) data residency
+#   ALLOW_GPU=1 TIER=l4  bash editions/gcp/deploy/gemma_vllm_service.sh   # NVIDIA L4, us-central1, gemma-4-E4B-it
+#   ALLOW_GPU=1 TIER=rtx bash editions/gcp/deploy/gemma_vllm_service.sh   # RTX PRO 6000, asia-south2 (Delhi)
 #
 # Cost guardrails: scale to zero by default (MIN_INSTANCES=0, MAX_INSTANCES small). During judging set
 # MIN_INSTANCES=1: a cold start can take ~4 minutes (the startup probe allows 240 s). An idle GPU instance
 # is billed for every second it is up, so switch it back off after judging:
 #   gcloud run services update wapsi-gemma --region REGION --min-instances 0
 set -euo pipefail
+
+if [[ "${ALLOW_GPU:-0}" != "1" ]]; then
+  cat >&2 <<'EOF'
+Gemma on Cloud Run GPU is an optional paid add-on and is OFF by default.
+The Google Cloud free trial blocks GPUs and quota increases. After upgrading billing and getting Cloud Run GPU
+quota, re-run with ALLOW_GPU=1 and deploy the API with PROFILE=paid GEMMA_URL=<service url>.
+EOF
+  exit 2
+fi
 
 PROJECT_ID="${PROJECT_ID:?set PROJECT_ID}"
 TIER="${TIER:-l4}"
@@ -89,7 +102,7 @@ Gemma 4 (${MODEL}) on ${GPU_TYPE} in ${REGION}: ${URL}
 Allow the Wapsi API to call it and point the API at it:
   gcloud run services add-iam-policy-binding ${SERVICE} --region ${REGION} \\
     --member=serviceAccount:wapsi-api@${PROJECT_ID}.iam.gserviceaccount.com --role=roles/run.invoker
-  GEMMA_URL=${URL} GEMMA_REGION=${REGION} bash editions/gcp/deploy/cloudrun.sh deploy
+  PROFILE=paid GEMMA_URL=${URL} GEMMA_REGION=${REGION} bash editions/gcp/deploy/cloudrun.sh deploy
 Smoke test (your own identity needs roles/run.invoker):
   curl -s -H "Authorization: Bearer \$(gcloud auth print-identity-token)" -H 'Content-Type: application/json' \\
     ${URL}/v1/chat/completions -d '{"model":"${MODEL}","messages":[{"role":"user","content":"Say ok"}]}'

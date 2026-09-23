@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .config import GcpSettings, load_settings
+from .config import FIRESTORE_URI, GcpSettings, load_settings
 from .identity import ROLES, granted_state, role_for_email, strip_protected
+from .memory import register_firestore_services
 from .services import build_services, get_services, set_services
 
 log = logging.getLogger("wapsi.gcp.server")
@@ -192,6 +193,8 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
     settings = settings or load_settings()
     _configure_logging()
     set_services(services or build_services(settings))
+    if FIRESTORE_URI in (settings.session_service_uri(), settings.memory_service_uri()):
+        register_firestore_services(settings)
 
     adk_app: FastAPI = get_fast_api_app(
         agents_dir=str(AGENTS_DIR),
@@ -205,7 +208,7 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
         trigger_oidc_audience=os.environ.get("WAPSI_TRIGGER_AUDIENCE") or None,
         trigger_oidc_service_accounts=[s for s in os.environ.get("WAPSI_TRIGGER_SERVICE_ACCOUNTS", "").split(",")
                                        if s.strip()] or None,
-        otel_to_cloud=not settings.demo_mode,
+        otel_to_cloud=settings.otel_enabled(),
     )
 
     summary = settings.public_summary()

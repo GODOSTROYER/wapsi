@@ -35,7 +35,15 @@ COPY editions/gcp ./editions/gcp
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra gcp --extra ui --extra docs
 
-# 3. unprivileged runtime user; the app never writes to its own tree
+# 3. optional: the synthetic demo world (~2 MB, seed 7: the same world `cloudrun.sh data` loads into BigQuery),
+#    so WAPSI_LEDGER=parquet WAPSI_WORLD=/app/data/world runs without BigQuery. BAKE_WORLD=0 skips it.
+ARG BAKE_WORLD=1
+RUN if [ "${BAKE_WORLD}" = "1" ]; then \
+      /app/.venv/bin/python -m wapsi.synth --size demo --seed 7 --out /app/data/world --golden-dir '' \
+      && rm -rf /app/data/world/golden; \
+    fi
+
+# 4. unprivileged runtime user; the app never writes to its own tree
 RUN groupadd --system --gid 10001 wapsi \
  && useradd --system --uid 10001 --gid wapsi --home-dir /home/wapsi --create-home wapsi \
  && chown -R root:root /app && chmod -R a+rX /app

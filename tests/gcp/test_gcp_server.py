@@ -139,8 +139,9 @@ def test_pubsub_trigger_runs_case_pipeline(client):
 
 def test_settings_from_env():
     s = GcpSettings.from_env({})
-    assert s.demo_mode and s.location == "global" and s.region == "asia-south1" and s.model == "gemini-3.5-flash"
+    assert s.demo_mode and s.location == "global" and s.region == "asia-south1" and s.model == "gemini-3.8-flash"
     assert s.memory_service_uri() is None and s.model_armor() is None
+    assert s.gemini_backend == "aistudio" and s.ledger == "bigquery" and s.adk_store == "memory"
 
     env = {"WAPSI_PROJECT": "wapsi-aibc", "WAPSI_BQ_DATASET": "ledger", "WAPSI_MODEL": "gemini-3.6-flash",
            "WAPSI_MODEL_ARMOR_TEMPLATE": "wapsi-intake", "WAPSI_MEMORY_BANK_ID": "789",
@@ -160,6 +161,34 @@ def test_settings_from_env():
     summary = c.public_summary()
     assert summary["ledger"] == "bigquery" and summary["guard"] == "model_armor+rules"
     assert "ravi" not in json.dumps(summary)
+    assert summary["gemini_backend"] == "aistudio" and summary["context_cache"] is False
+
+
+def test_free_trial_defaults_are_off_for_paid_features(monkeypatch):
+    key = "AIzaSy-healthz-must-not-leak"
+    monkeypatch.setenv("GEMINI_API_KEY", key)
+    c = load_settings({"WAPSI_PROJECT": "wapsi-aibc"})
+    assert c.gemini_backend == "aistudio" and c.model == "gemini-3.8-flash"
+    assert c.private_llm_url is None  # Gemma on Cloud Run GPU: off
+    assert c.memory_bank_id is None and c.memory_service_uri() is None  # Memory Bank: off
+    assert c.model_armor_template is None and c.model_armor() is None  # Model Armor: optional
+    assert c.ledger == "bigquery" and not c.context_cache_enabled() and c.otel_enabled()
+    summary = c.public_summary()
+    assert summary["gemini_api_key_set"] is True and key not in json.dumps(summary)
+    assert summary["private_llm"] is False and summary["memory"] == "in_memory" and summary["guard"] == "rules"
+    assert key not in repr(c)
+
+    vertex = load_settings({"WAPSI_PROJECT": "p", "WAPSI_GEMINI_BACKEND": "vertex", "WAPSI_CONTEXT_CACHE": "0",
+                            "WAPSI_OTEL_TO_CLOUD": "0", "WAPSI_ADK_STORE": "firestore"})
+    assert vertex.gemini_backend == "vertex" and not vertex.context_cache_enabled() and not vertex.otel_enabled()
+    assert vertex.public_summary()["gemini_api_key_set"] is None and vertex.memory_kind() == "firestore"
+    assert load_settings({"WAPSI_PROJECT": "p", "WAPSI_GEMINI_BACKEND": "vertex"}).context_cache_enabled()
+    parquet = load_settings({"WAPSI_PROJECT": "p", "WAPSI_LEDGER": "parquet", "WAPSI_WORLD": "/app/data/world"})
+    assert parquet.ledger == "parquet" and parquet.public_summary()["ledger"] == "parquet"
+    for bad in ({"WAPSI_GEMINI_BACKEND": "openai"}, {"WAPSI_LEDGER": "csv"}, {"WAPSI_ADK_STORE": "redis"},
+                {"WAPSI_LEDGER": "parquet"}):
+        with pytest.raises(ValueError):
+            load_settings({"WAPSI_PROJECT": "p", **bad})
 
 
 def test_cloud_services_wiring_is_lazy():
@@ -169,10 +198,13 @@ def test_cloud_services_wiring_is_lazy():
     from wapsi.adapters.model_armor_guard import ModelArmorGuard
 
     settings = GcpSettings(demo_mode=False, project="wapsi-aibc", model_armor_template="wapsi-intake")
-    svc = build_services(settings)
+    svc = build_services(settings)  # no Gemini API key needed until the first call
     assert isinstance(svc.ledger, BigQueryLedger) and svc.ledger._client is None
     assert isinstance(svc.store, FirestoreCaseStore) and svc.store._client is None
     assert isinstance(svc.llm, GeminiLLM) and svc.llm._client is None
+    assert svc.llm.backend == "aistudio" and svc.llm.name == "gemini-api:gemini-3.8-flash"
+    vertex = build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", gemini_backend="vertex"))
+    assert vertex.llm.backend == "vertex" and vertex.llm.project == "wapsi-aibc"
     assert isinstance(svc.guard, ModelArmorGuard) and svc.guard._client is None
     assert svc.guard.template == "projects/wapsi-aibc/locations/asia-south1/templates/wapsi-intake"
 
@@ -180,3 +212,17 @@ def test_cloud_services_wiring_is_lazy():
                                          private_llm_url="https://gemma-x.a.run.app/v1"))
     assert isinstance(private.llm, PrivateGemmaLLM)
     assert private.llm._auth.audience == "https://gemma-x.a.run.app"
+
+
+def test_parquet_ledger_replaces_bigquery(tmp_path):
+    from wapsi.adapters.parquet_ledger import ParquetLedger
+    from wapsi.synth.__main__ import main as synth_main
+
+    world = tmp_path / "world"
+    assert synth_main(["--size", "showcase", "--seed", "7", "--out", str(world), "--golden-dir", ""]) == 0
+    svc = build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", ledger="parquet",
+                                     world_path=str(world)))
+    assert isinstance(svc.ledger, ParquetLedger)
+    with pytest.raises(ValueError, match="BAKE_WORLD"):
+        build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", ledger="parquet",
+                                   world_path=str(tmp_path / "missing")))

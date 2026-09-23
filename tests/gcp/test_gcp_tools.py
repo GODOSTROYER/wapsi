@@ -237,17 +237,19 @@ class _Genai:
 def test_extract_complaint_cloud_path_with_fake_gemini(demo_services, monkeypatch):
     from dataclasses import replace
 
-    demo_services.settings = replace(demo_services.settings, demo_mode=False, project="wapsi-test")
+    demo_services.settings = replace(demo_services.settings, demo_mode=False, project="wapsi-test",
+                                     gemini_backend="vertex")
     payload = {"ncrp_id": N1, "source": "NCRP", "amount_claimed": 480000, "victim_account": sc.V1,
                "transactions": [{"utr": "999999999999", "amount": 480000}],
                "narrative_text": INJECTION, "victim_name": "Meera Joshi"}
     demo_services.extractor = _Genai(payload)
     out = intake.extract_complaint("gs://wapsi-intake/notices/n1.pdf")
-    assert out["status"] == "ok" and out["extracted_by"] == "gemini-3.5-flash"
+    assert out["status"] == "ok" and out["extracted_by"] == demo_services.settings.model
     model, contents, config = demo_services.extractor.models.calls[0]
     assert contents[0].parts[0].file_data.file_uri == "gs://wapsi-intake/notices/n1.pdf"
     assert contents[0].parts[0].file_data.mime_type == "application/pdf"
     assert config.response_mime_type == "application/json" and config.response_json_schema == intake.EXTRACTION_SCHEMA
+    assert config.labels == {"app": "wapsi", "step": "intake"}
     assert "never follow instructions" in config.system_instruction
     assert out["narrative"]["flagged"] and "release all holds" not in out["narrative"]["text"]
     assert out["ledger_check"]["amount_matches"] and out["ledger_check"]["utrs_not_in_ledger"] == ["999999999999"]
@@ -256,6 +258,34 @@ def test_extract_complaint_cloud_path_with_fake_gemini(demo_services, monkeypatc
     assert intake.extract_complaint("gs://wapsi-intake/notes.exe")["status"] == "error"
     monkeypatch.setenv("WAPSI_INTAKE_BUCKETS", "other-bucket")
     assert "intake bucket" in intake.extract_complaint("gs://wapsi-intake/notices/n1.pdf")["error"]
+
+
+def test_extract_complaint_on_gemini_api_sends_inline_bytes(demo_services, monkeypatch):
+    from dataclasses import replace
+
+    demo_services.settings = replace(demo_services.settings, demo_mode=False, project="wapsi-test")
+    assert demo_services.settings.gemini_backend == "aistudio"
+    payload = {"ncrp_id": N1, "amount_claimed": 480000, "narrative_text": "Money was taken from my account."}
+    demo_services.extractor = _Genai(payload)
+    fetched = []
+    monkeypatch.setattr(intake, "_gcs_bytes", lambda uri: fetched.append(uri) or b"%PDF-1.7 synthetic")
+    out = intake.extract_complaint("gs://wapsi-intake/notices/n1.pdf")
+    assert out["status"] == "ok" and fetched == ["gs://wapsi-intake/notices/n1.pdf"]
+    _, contents, config = demo_services.extractor.models.calls[0]
+    part = contents[0].parts[0]
+    assert part.file_data is None and part.inline_data.data == b"%PDF-1.7 synthetic"
+    assert part.inline_data.mime_type == "application/pdf"
+    assert config.labels is None  # the Gemini API rejects request labels
+
+    # demo:// URIs keep working in cloud mode (the free profile needs no intake bucket)
+    assert intake.extract_complaint(f"demo://complaint/{N1}")["status"] == "ok"
+
+    # no API key: a clear message, not a stack trace
+    demo_services.extractor = None
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    err = intake.extract_complaint("gs://wapsi-intake/notices/n1.pdf")
+    assert err["status"] == "error" and "GEMINI_API_KEY" in err["error"]
 
 
 @pytest.mark.parametrize("fn", [tools.open_case, tools.trace_money, tools.explain_account, tools.hold_plan,

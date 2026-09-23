@@ -18,6 +18,15 @@ dependencies = [
 ml = ["scikit-learn>=1.4", "xgboost>=2.0"]
 docs = ["pypdf>=4.2"]
 ui = ["streamlit>=1.38", "plotly>=5.20"]
+amd = [
+    "torch>=2.9",
+    "transformers>=4.56",
+    "peft>=0.17",
+    "trl>=0.23",
+    "accelerate>=1.10",
+    "datasets>=4.0",
+    "safetensors>=0.6",
+]
 gcp = [
     "google-adk>=2.9",
     "google-cloud-bigquery>=3.25",

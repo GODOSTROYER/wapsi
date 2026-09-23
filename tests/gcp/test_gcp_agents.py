@@ -16,7 +16,7 @@ from editions.gcp.app import workflow as wf
 from editions.gcp.app.config import GcpSettings
 from editions.gcp.app.demo_model import DemoScriptedLlm
 from editions.gcp.app.identity import granted_state
-from editions.gcp.app.plugins import AuditLogPlugin, MemoryPlugin, WapsiGuardPlugin
+from editions.gcp.app.plugins import AuditLogPlugin, MemoryPlugin, ModelQuotaPlugin, WapsiGuardPlugin
 from wapsi.fixtures import showcase as sc
 
 CASE1 = f"CASE-{sc.N1}"
@@ -37,7 +37,7 @@ def test_demo_app_constructs_offline(demo_services):
     assert _tool_names(root) == TOOLS
     intake = root.sub_agents[0]
     assert intake.name == "wapsi_intake" and _tool_names(intake) == {"extract_complaint"}
-    assert [type(p) for p in app.plugins] == [WapsiGuardPlugin, AuditLogPlugin, MemoryPlugin]
+    assert [type(p) for p in app.plugins] == [WapsiGuardPlugin, AuditLogPlugin, MemoryPlugin, ModelQuotaPlugin]
     text = root.instruction
     for rule in ("UNTRUSTED", "Never state a number", "verification_report", "supervisor", "Never invent"):
         assert rule in text
@@ -45,10 +45,10 @@ def test_demo_app_constructs_offline(demo_services):
     assert app.context_cache_config is None
 
 
-def test_cloud_app_constructs_without_network(demo_services, monkeypatch):
+def test_cloud_app_on_agent_platform_constructs_without_network(demo_services, monkeypatch):
     for k in ("GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"):
         monkeypatch.delenv(k, raising=False)
-    settings = GcpSettings(demo_mode=False, project="wapsi-test", model="gemini-3.5-flash")
+    settings = GcpSettings(demo_mode=False, project="wapsi-test", model="gemini-3.5-flash", gemini_backend="vertex")
     app = agent_mod.build_app(settings)
     assert app.root_agent.model == "gemini-3.5-flash"
     assert app.root_agent.sub_agents[0].model == "gemini-3.5-flash"
@@ -60,6 +60,61 @@ def test_cloud_app_constructs_without_network(demo_services, monkeypatch):
     monkeypatch.setenv("WAPSI_AGENT_ON_PRIVATE", "1")
     private = agent_mod.build_model(replace(settings, private_llm_url="https://gemma.example.run.app"))
     assert type(private).__name__ == "LiteLlm" and private.model == "openai/google/gemma-4-E4B-it"
+
+
+def test_cloud_app_on_gemini_api_key_is_the_default(demo_services, monkeypatch):
+    from google.adk.models import Gemini
+
+    key = "AIzaSy-agent-test-key-123"
+    for k in ("GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_LOCATION", "GOOGLE_API_KEY", "WAPSI_AGENT_ON_PRIVATE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", key)
+    settings = GcpSettings(demo_mode=False, project="wapsi-test")
+    assert settings.gemini_backend == "aistudio" and settings.model == "gemini-3.8-flash"
+    app = agent_mod.build_app(settings)
+    model = app.root_agent.model
+    assert isinstance(model, Gemini) and model.model == "gemini-3.8-flash"
+    assert app.root_agent.sub_agents[0].model is model
+    assert model.client_kwargs == {"vertexai": False, "api_key": key}
+    assert 429 in model.retry_options.http_status_codes and model.retry_options.attempts == 4
+    assert key not in repr(model) and key not in model.model_dump_json()  # client_kwargs is excluded
+    assert app.context_cache_config is None  # explicit caching stays off on the free tier
+    import os
+
+    assert "GOOGLE_GENAI_USE_VERTEXAI" not in os.environ  # the aistudio path does not touch the Vertex env vars
+
+    from google import genai
+
+    seen = {}
+    monkeypatch.setattr(genai, "Client", lambda **kw: seen.update(kw) or "client")
+    assert model.api_client == "client"  # what ADK builds on first use: Gemini API, not Vertex
+    assert seen["vertexai"] is False and seen["api_key"] == key
+
+    other = agent_mod.build_model(replace(settings, model="gemini-3.5-flash-lite"))
+    assert other.model == "gemini-3.5-flash-lite"
+    cached = agent_mod.build_app(replace(settings, context_cache=True))
+    assert cached.context_cache_config is not None
+
+    monkeypatch.delenv("GEMINI_API_KEY")
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        agent_mod.build_model(settings)
+
+
+def test_model_quota_plugin_turns_429_into_a_reply():
+    import types as pytypes
+
+    from google.genai import errors as genai_errors
+
+    plugin = ModelQuotaPlugin()
+    req = pytypes.SimpleNamespace(model="gemini-3.8-flash")
+    ctx = pytypes.SimpleNamespace(agent_name="wapsi_officer")
+    err = genai_errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED"}})
+    resp = asyncio.run(plugin.on_model_error_callback(callback_context=ctx, llm_request=req, error=err))
+    text = resp.content.parts[0].text
+    assert text.startswith("[Wapsi]") and "rate limited" in text and "gemini-3.8-flash" in text
+    assert plugin.events == [{"agent": "wapsi_officer", "model": "gemini-3.8-flash"}]
+    other = genai_errors.ClientError(400, {"error": {"code": 400, "message": "bad", "status": "X"}})
+    assert asyncio.run(plugin.on_model_error_callback(callback_context=ctx, llm_request=req, error=other)) is None
 
 
 def test_module_level_app_and_workflow_objects(demo_services):
@@ -342,3 +397,35 @@ def test_memory_service_selection(monkeypatch):
     assert (svc._project, svc._location, svc._agent_engine_id) == ("wapsi-test", "asia-south1", "456")
     assert cloud.memory_service_uri() == (
         "agentengine://projects/wapsi-test/locations/asia-south1/reasoningEngines/456")
+
+
+def test_memory_bank_is_off_by_default_and_firestore_is_opt_in(monkeypatch):
+    from google.adk.cli.service_registry import get_service_registry
+    from google.adk.integrations.firestore.firestore_memory_service import FirestoreMemoryService
+    from google.adk.integrations.firestore.firestore_session_service import FirestoreSessionService
+    from google.adk.memory import InMemoryMemoryService
+    from google.cloud import firestore
+
+    from editions.gcp.app import memory
+
+    cloud = GcpSettings(demo_mode=False, project="wapsi-test")
+    assert cloud.memory_bank_id is None and cloud.adk_store == "memory"
+    assert cloud.memory_service_uri() is None and cloud.memory_kind() == "in_memory"
+    assert isinstance(memory.build_memory_service(cloud), InMemoryMemoryService)
+
+    clients = []
+
+    class _FakeAsyncClient:
+        def __init__(self, **kwargs):
+            clients.append(kwargs)
+
+    monkeypatch.setattr(firestore, "AsyncClient", _FakeAsyncClient)
+    fs = replace(cloud, adk_store="firestore", firestore_database="wapsi-db")
+    assert fs.memory_service_uri() == fs.session_service_uri() == "firestore://" and fs.memory_kind() == "firestore"
+    assert isinstance(memory.build_memory_service(fs), FirestoreMemoryService)
+    memory.register_firestore_services(fs)
+    registry = get_service_registry()
+    assert isinstance(registry.create_session_service("firestore://"), FirestoreSessionService)
+    assert isinstance(registry.create_memory_service("firestore://"), FirestoreMemoryService)
+    assert clients and all(c == {"project": "wapsi-test", "database": "wapsi-db"} for c in clients)
+    assert GcpSettings(demo_mode=True, adk_store="firestore").memory_service_uri() is None
