@@ -1,0 +1,21 @@
+{
+  "_fixture": "hand-written from the documented amd-smi process JSON shape; synthetic pids and sizes, not a measurement.",
+  "gpu_data": [
+    {
+      "gpu": 0,
+      "process_list": [
+        {"process_info": {"name": "python3", "pid": 4101,
+          "memory_usage": {"gtt_mem": {"value": 2097152, "unit": "B"}, "cpu_mem": {"value": 1048576, "unit": "B"},
+                           "vram_mem": {"value": 107374182400, "unit": "B"}},
+          "mem_usage": {"value": 107374182400, "unit": "B"},
+          "usage": {"gfx": {"value": 0, "unit": "ns"}, "enc": {"value": 0, "unit": "ns"}}}},
+        {"process_info": {"name": "python3", "pid": 4202,
+          "memory_usage": {"gtt_mem": {"value": 0, "unit": "B"}, "cpu_mem": {"value": 0, "unit": "B"},
+                           "vram_mem": {"value": 28991029248, "unit": "B"}},
+          "mem_usage": {"value": 28991029248, "unit": "B"}}},
+        {"process_info": {"name": "uvicorn", "pid": 4303,
+          "memory_usage": {"vram_mem": {"value": 4294967296, "unit": "B"}}}}
+      ]
+    }
+  ]
+}

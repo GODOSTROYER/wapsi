@@ -3999,6 +3999,10 @@ amd = [
     { name = "transformers" },
     { name = "trl" },
 ]
+amd-app = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 docs = [
     { name = "pypdf" },
 ]
@@ -4029,6 +4033,7 @@ dev = [
 requires-dist = [
     { name = "accelerate", marker = "extra == 'amd'", specifier = ">=1.10" },
     { name = "datasets", marker = "extra == 'amd'", specifier = ">=4.0" },
+    { name = "fastapi", marker = "extra == 'amd-app'", specifier = ">=0.115" },
     { name = "google-adk", marker = "extra == 'gcp'", specifier = ">=2.9" },
     { name = "google-cloud-bigquery", marker = "extra == 'gcp'", specifier = ">=3.25" },
     { name = "google-cloud-firestore", marker = "extra == 'gcp'", specifier = ">=2.19" },
@@ -4049,9 +4054,10 @@ requires-dist = [
     { name = "torch", marker = "extra == 'amd'", specifier = ">=2.9" },
     { name = "transformers", marker = "extra == 'amd'", specifier = ">=4.56" },
     { name = "trl", marker = "extra == 'amd'", specifier = ">=0.23" },
+    { name = "uvicorn", marker = "extra == 'amd-app'", specifier = ">=0.30" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0" },
 ]
-provides-extras = ["ml", "docs", "ui", "amd", "gcp"]
+provides-extras = ["ml", "docs", "ui", "amd", "amd-app", "gcp"]
 
 [package.metadata.requires-dev]
 dev = [

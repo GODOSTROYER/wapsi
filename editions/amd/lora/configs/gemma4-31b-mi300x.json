@@ -38,5 +38,5 @@
     "wall_clock_per_epoch": "~40-60 min for ~6M training tokens (6 x 31e9 x 6e6 = ~1.1e18 FLOPs at an assumed 25-40% of MI300X bf16 dense peak); plausible range 30-120 min. Tokens per epoch scale with --samples and the teacher's acceptance rate.",
     "merge": "fp32 merge needs ~124 GB (fits in 192 GB); saved as bf16 (~62 GB on disk)."
   },
-  "serve": "vllm serve /models/wapsi-gemma4-31b-merged --served-model-name wapsi-gemma4-31b-lora --dtype bfloat16 --max-model-len 16384 --gpu-memory-utilization 0.45 --port 8001"
+  "serve": "vllm serve /models/wapsi-gemma-4-31b-str-merged --served-model-name wapsi-gemma4-31b-lora --dtype bfloat16 --max-model-len 16384 --gpu-memory-utilization 0.45 --port 8001"
 }

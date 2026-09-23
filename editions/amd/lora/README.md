@@ -163,7 +163,7 @@ python -m editions.amd.lora.train --config gemma4-31b-mi300x --data data/generat
 ### 3. Merge (fp32 merge, bf16 save; the reload is checked against the adapter)
 
 ```bash
-python -m editions.amd.lora.merge --run models/lora/gemma4-31b --out /models/wapsi-gemma4-31b-merged \
+python -m editions.amd.lora.merge --run models/lora/gemma4-31b --out /models/wapsi-gemma-4-31b-str-merged \
     --device cuda --merge-dtype fp32 --save-dtype bf16
 ```
 
@@ -172,7 +172,7 @@ python -m editions.amd.lora.merge --run models/lora/gemma4-31b --out /models/wap
 ```bash
 vllm serve /models/gemma-4-31B-it --served-model-name base --dtype bfloat16 --max-model-len 16384 \
     --gpu-memory-utilization 0.45 --port 8000 &
-vllm serve /models/wapsi-gemma4-31b-merged --served-model-name tuned --dtype bfloat16 --max-model-len 16384 \
+vllm serve /models/wapsi-gemma-4-31b-str-merged --served-model-name tuned --dtype bfloat16 --max-model-len 16384 \
     --gpu-memory-utilization 0.45 --port 8001 &
 python -m editions.amd.lora.evaluate \
     --base "openai:http://localhost:8000/v1|base" --tuned "openai:http://localhost:8001/v1|tuned" \

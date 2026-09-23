@@ -1,0 +1,9 @@
+[
+  {
+    "GPU": 0,
+    "USAGE": {"GFX_ACTIVITY": "12 %", "UMC_ACTIVITY": "3 %", "MM_ACTIVITY": "N/A"},
+    "POWER": {"SOCKET_POWER": "140 W", "THROTTLE_STATUS": "UNTHROTTLED"},
+    "TEMPERATURE": {"EDGE": "N/A", "HOTSPOT": "40 C", "MEM": "33 C"},
+    "MEM_USAGE": {"TOTAL_VRAM": "196592 MB", "USED_VRAM": "283 MB", "FREE_VRAM": "196309 MB"}
+  }
+]

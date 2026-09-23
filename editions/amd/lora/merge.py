@@ -1,7 +1,7 @@
 """Merge a LoRA adapter into its base model and export a plain Hugging Face checkpoint for vLLM.
 
     uv run python -m editions.amd.lora.merge --run models/lora/tiny --out models/lora/tiny-merged
-    python -m editions.amd.lora.merge --run models/lora/gemma4-31b --out /models/wapsi-gemma4-31b-merged \
+    python -m editions.amd.lora.merge --run models/lora/gemma4-31b --out /models/wapsi-gemma-4-31b-str-merged \
         --device cuda --merge-dtype fp32 --save-dtype bf16
 
 vLLM has no LoRA runtime for Gemma 4, so the adapter is folded into the weights (``merge_and_unload``) and saved

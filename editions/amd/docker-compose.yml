@@ -1,0 +1,215 @@
+# Wapsi, AMD edition: two LLMs + a GNN + the app on ONE AMD Instinct MI300X (192 GB), all on-prem.
+#
+#   On the droplet (see RUNBOOK.md):   cd editions/amd && cp .env.example .env && serving/pull_and_pin.sh
+#                                      docker compose up -d            # COMPOSE_PROFILES=gpu[,verifier][,gnn]
+#   Laptop demo (no GPU, FakeLLM):     docker compose -f editions/amd/docker-compose.yml --profile demo up --build
+#
+# Profiles
+#   gpu       llm (vLLM-ROCm, merged Gemma 4 31B STR checkpoint) + app (pipeline, API, Streamlit UI)
+#   verifier  verifier-llm: second, smaller model used as an independent LLM judge (Gemma 4 E4B)
+#   gnn       gnn: GraphSAGE mule scorer (editions/amd/gnn; POST /score on 8081)
+#   demo      app-demo: WAPSI_DEMO_MODE=1, no GPU, no model downloads
+# Start order on the GPU: llm (0.55 of VRAM) -> verifier-llm (0.15) -> gnn -> app, via depends_on + healthchecks.
+# Every port binds to 127.0.0.1 unless .env says otherwise; expose 8501 only behind a DigitalOcean Cloud Firewall
+# (Docker's published ports bypass UFW). Secrets (HF_TOKEN, VLLM_API_KEY, WAPSI_API_TOKEN) come from the shell.
+
+name: ${COMPOSE_PROJECT_NAME:-wapsi-amd}
+
+x-rocm: &rocm
+  devices:
+    - /dev/kfd
+    - /dev/dri
+  group_add:
+    - video
+  ipc: host
+  security_opt:
+    - seccomp=unconfined
+
+x-vllm-env: &vllm-env
+  HF_TOKEN: ${HF_TOKEN:-}
+  HF_HOME: /root/.cache/huggingface
+  VLLM_API_KEY: ${VLLM_API_KEY:-}
+  VLLM_PORT: "8000"
+  VLLM_ATTENTION_BACKEND: ${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
+  VLLM_ATTENTION_FLAG: ${VLLM_ATTENTION_FLAG:-1}
+  VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-64}
+  VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-}
+  VLLM_KV_CACHE_DTYPE: ${VLLM_KV_CACHE_DTYPE:-}
+  VLLM_EXTRA_ARGS: ${VLLM_EXTRA_ARGS:-}
+
+# /v1/models answers only once the weights are loaded and the engine is warm (minutes for a 31B model).
+x-vllm-healthcheck: &vllm-healthcheck
+  test:
+    - CMD
+    - python3
+    - -c
+    - >-
+      import os, urllib.request as u;
+      k = os.environ.get('VLLM_API_KEY');
+      h = {'Authorization': 'Bearer ' + k} if k else {};
+      u.urlopen(u.Request('http://127.0.0.1:8000/v1/models', headers=h), timeout=5)
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 30m
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: editions/amd/app/Dockerfile
+    args:
+      PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
+      UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.8}
+  image: wapsi-amd-app:local
+  read_only: true
+  tmpfs:
+    - /tmp
+    - /home/wapsi
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=4); u.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=4)"
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 120s
+  restart: unless-stopped
+
+services:
+  llm:
+    <<: *rocm
+    image: ${VLLM_IMAGE:-rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0}
+    profiles: ["gpu"]
+    entrypoint: ["bash", "/opt/wapsi/serving/start_llm.sh", "serve"]
+    environment:
+      <<: *vllm-env
+      WAPSI_LLM_PROFILE: ${WAPSI_LLM_PROFILE:-gemma4-merged}
+      WAPSI_LLM_MODEL: ${WAPSI_LLM_MODEL:-/models/wapsi-gemma-4-31b-str-merged}
+      WAPSI_LLM_SERVED_NAME: ${WAPSI_LLM_SERVED_NAME:-wapsi-llm}
+      VLLM_GPU_UTIL: ${VLLM_GPU_UTIL:-0.55}
+      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-16384}
+    volumes:
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
+      - ${WAPSI_MODELS_DIR:-/mnt/models}:/models:ro
+      - ./serving:/opt/wapsi/serving:ro
+    ports:
+      - "${LLM_BIND:-127.0.0.1}:8000:8000"
+    healthcheck: *vllm-healthcheck
+    restart: unless-stopped
+
+  verifier-llm:
+    <<: *rocm
+    image: ${VLLM_IMAGE:-rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0}
+    profiles: ["verifier"]
+    entrypoint: ["bash", "/opt/wapsi/serving/start_llm.sh", "serve", "verifier"]
+    environment:
+      <<: *vllm-env
+      WAPSI_VERIFIER_MODEL_ID: ${WAPSI_VERIFIER_MODEL_ID:-google/gemma-4-E4B-it}
+      WAPSI_VERIFIER_SERVED_NAME: ${WAPSI_VERIFIER_SERVED_NAME:-wapsi-verifier}
+      VERIFIER_GPU_UTIL: ${VERIFIER_GPU_UTIL:-0.15}
+      VERIFIER_MAX_MODEL_LEN: ${VERIFIER_MAX_MODEL_LEN:-8192}
+    volumes:
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
+      - ./serving:/opt/wapsi/serving:ro
+    ports:
+      - "${LLM_BIND:-127.0.0.1}:8001:8000"
+    healthcheck: *vllm-healthcheck
+    depends_on:
+      llm:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  gnn:
+    <<: *rocm
+    # Dockerfile and service: editions/amd/gnn (FastAPI, POST /score, GET /healthz). It runs as uid 10001, so it
+    # also needs the render group for /dev/kfd and /dev/dri.
+    group_add:
+      - video
+      - render
+    build:
+      context: ../..
+      dockerfile: editions/amd/gnn/Dockerfile
+    image: wapsi-amd-gnn:local
+    profiles: ["gnn"]
+    environment:
+      WAPSI_WORLD: /data/world
+      WAPSI_GNN_ARTIFACTS: /artifacts
+      WAPSI_GNN_MODEL: ${WAPSI_GNN_MODEL:-}
+      WAPSI_GNN_DEVICE: ${WAPSI_GNN_DEVICE:-auto}
+      PORT: "8081"
+    volumes:
+      - ${WAPSI_WORLD_DIR:-../../data/generated/demo}:/data/world:ro
+      - ${WAPSI_GNN_ARTIFACTS_DIR:-./gnn/checkpoints}:/artifacts:ro
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8081/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 5m
+    depends_on:
+      llm:
+        condition: service_healthy
+        required: false
+      verifier-llm:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  app:
+    <<: *app
+    profiles: ["gpu"]
+    environment:
+      WAPSI_DEMO_MODE: ${WAPSI_DEMO_MODE:-0}
+      WAPSI_LLM_BASE_URL: http://llm:8000/v1
+      WAPSI_LLM_MODEL: ${WAPSI_LLM_SERVED_NAME:-wapsi-llm}
+      WAPSI_LLM_API_KEY: ${VLLM_API_KEY:-}
+      WAPSI_LLM_TIMEOUT_S: ${WAPSI_LLM_TIMEOUT_S:-120}
+      WAPSI_LLM_JSON_MODE: ${WAPSI_LLM_JSON_MODE:-json_schema}
+      WAPSI_VERIFIER_BASE_URL: ${WAPSI_VERIFIER_BASE_URL:-}
+      WAPSI_VERIFIER_MODEL: ${WAPSI_VERIFIER_SERVED_NAME:-wapsi-verifier}
+      WAPSI_GNN_URL: ${WAPSI_GNN_URL:-}
+      WAPSI_GNN_TIMEOUT_S: ${WAPSI_GNN_TIMEOUT_S:-15}
+      WAPSI_WORLD: /data/world
+      WAPSI_STATE_DIR: /state
+      WAPSI_API_TOKEN: ${WAPSI_API_TOKEN:-}
+      WAPSI_UI_SEED_LIMIT: ${WAPSI_UI_SEED_LIMIT:-3}
+    volumes:
+      - ${WAPSI_WORLD_DIR:-../../data/generated/demo}:/data/world:ro
+      - ../../data/golden:/app/data/golden:ro
+      - ../../data/generated:/app/data/generated:ro
+      - ./bench/results:/app/editions/amd/bench/results
+      - wapsi-state:/state
+    ports:
+      - "${WAPSI_UI_BIND:-127.0.0.1}:8501:8501"
+      - "${WAPSI_API_BIND:-127.0.0.1}:8080:8080"
+    depends_on:
+      llm:
+        condition: service_healthy
+      verifier-llm:
+        condition: service_healthy
+        required: false
+      gnn:
+        condition: service_healthy
+        required: false
+
+  app-demo:
+    <<: *app
+    profiles: ["demo"]
+    environment:
+      WAPSI_DEMO_MODE: "1"
+      WAPSI_STATE_DIR: /state
+      WAPSI_UI_SEED_LIMIT: "3"
+    volumes:
+      - wapsi-demo-state:/state
+    ports:
+      - "${WAPSI_UI_BIND:-127.0.0.1}:8501:8501"
+      - "${WAPSI_API_BIND:-127.0.0.1}:8080:8080"
+
+volumes:
+  wapsi-state:
+  wapsi-demo-state:
