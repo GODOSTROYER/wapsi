@@ -68,18 +68,27 @@ the fix for most interrupted runs.
 | 7 | `secrets` | `wapsi-gemini-api-key` from your `GEMINI_API_KEY` (kept if it exists; `-UpdateKey` adds a version) and a random role-signing key; read access for the two runtime accounts only |
 | 8 | `firestore` | the `(default)` Firestore database in Native mode (the case store; free tier) |
 | 9 | `bigquery` | builds the judging world (demo seed 7 + the showcase cases, about 2 MB) and loads it into dataset `wapsi`, with dataset-level read access for the runtime accounts |
-| 10 | `build` | `gcloud builds submit` on the free-tier build machine to Artifact Registry; the image also bakes the judging world |
+| 10 | `build` | makes sure the docs search index is built here (`python -m wapsi.search.bake --fetch`, skipped when `data/docs/index` exists), then `gcloud builds submit` on the free-tier build machine to Artifact Registry; the image bakes the judging world and the docs index (so `search_sop` and the citation corpus work on the judged URL) |
 | 11 | `deploy` | `wapsi-api` (ADK agents, 2 vCPU / 2 GiB) and `wapsi-ui` (Streamlit case room, 1 vCPU / 2 GiB), `--min-instances 1`, public, secrets mounted by reference, demo env (below) |
-| 12 | `smoke` | `GET /healthz`, `POST /demo/seed` (processes the showcase cases with Gemini; idempotent; re-processes a stored case whose prose fell back), `GET /demo/cases/CASE-31009260000101` (must have verified drafts; warns if any draft used the fallback paragraph), `GET` the UI health; prints the URLs |
+| 12 | `smoke` | `GET /healthz` (warns if the image serves the citations-only search corpus), `POST /demo/seed?reset=1` (processes the showcase cases with Gemini, or resets them to their freshly seeded state so every judge starts on a fresh case; re-processes a stored case whose prose fell back), `GET /demo/cases/CASE-31009260000101` (must have verified drafts; warns if any draft used the fallback paragraph), `GET` the UI health; prints the URLs |
 
 Run part of it with `-Only deploy,smoke` or `-Skip budget`. Without the `build` step, the last image built from
 this checkout is reused, or the one you name with `-Tag`.
 
 The deployed environment has no secrets in it:
-- `WAPSI_SEED_CASES=showcase`: the API processes the two showcase cases once and stores them in Firestore.
-  Cases already stored are never overwritten, except that the smoke step re-processes a case whose prose fell
-  back to the deterministic paragraphs (Gemini was unreachable, for example with a wrong key or model), onto its
-  history: the audit chain and earlier approvals are kept.
+- `WAPSI_SEED_CASES=showcase`: the API processes the two showcase cases once and stores them in Firestore,
+  with a snapshot of each (collection `demo_snapshots`). Start-up seeding never overwrites a stored case. The
+  smoke step re-processes a case whose prose fell back to the deterministic paragraphs (Gemini was unreachable,
+  for example with a wrong key or model) and resets both cases to their snapshot.
+- **One fresh case per judge.** Every visitor works on the same stored cases, so the UI's sidebar says
+  "Shared demo" and offers **Reset demo**: the showcase cases go back to their freshly seeded state (plan and
+  drafts as computed, nothing approved). A new session also resets them by itself when someone worked on them
+  and nobody has touched them for `WAPSI_DEMO_IDLE_RESET_MIN` minutes (default 30; `0` turns it off). The audit
+  log stays append-only: it keeps every earlier event, decisions included, and records each reset (`demo_reset`).
+- **One seeder at a time.** During a redeploy the old and the new revision both seed, and the UI resets from its
+  own service. A lease document in Firestore (`demo_locks/seed-showcase`, taken and released in transactions)
+  lets exactly one of them work; the others wait and then find the cases in place. A lease left by a stopped
+  instance expires after three minutes.
 - `WAPSI_TRUST_ROLE_HEADER=1` and `WAPSI_ADK_WEB=1`: there is no login, and the ADK dev UI is public. This is
   acceptable only because every record is synthetic. `-PrivateApi` keeps the agent API private.
 - `WAPSI_NOW=2026-09-16T11:00:00+05:30`: the SLA clocks read as in the showcase story. Use `-DemoNow ''` for the
@@ -158,6 +167,8 @@ uv run python -m evals.harness --world demo --llm gemini          # 39 cases, ab
 | BigQuery load: `quota project` warning or 403 | `gcloud auth application-default set-quota-project <PROJECT_ID>`, then `-Only bigquery` |
 | Firestore: database exists in Datastore mode | use a fresh project (a project's `(default)` database mode cannot be changed) |
 | smoke: `drafts use the deterministic fallback paragraph` | Gemini was not reached when the case was processed. Check `/healthz` (`gemini_api_key_set`) and the logs; fix the key (`-Only secrets,deploy,smoke -UpdateKey`) or the model (`-Model ... -Only deploy,smoke`); the smoke step then re-processes the case |
+| smoke: `the image serves the citations-only search corpus` | the docs index was neither uploaded nor downloadable at build time. Build it here (`uv run --extra docs python -m wapsi.search.bake --fetch`; it reuses `data/docs/raw` if present), then `-Only build,deploy,smoke` |
+| a judge sees decisions from an earlier visit | **Reset demo** in the UI's sidebar, or `-Only smoke` (it resets the showcase cases) |
 | smoke: `showcase case is not in the case store yet` | Gemini or BigQuery was slow: `-Only smoke` again in a minute; logs: `gcloud run services logs read wapsi-api --region asia-south1` |
 | `/healthz` says `gemini_api_key_set: false` | the secret is empty or missing: set `GEMINI_API_KEY`, then `-Only secrets,deploy -UpdateKey` |
 | Gemini 429 in the app or the eval | per-minute limit: wait a minute. Daily limit: resets at midnight Pacific, or use `-Model gemini-3.5-flash-lite` |

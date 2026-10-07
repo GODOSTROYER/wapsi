@@ -23,6 +23,13 @@ quotes in `citations.json`.
 
 Set `WAPSI_DOCS_DIR` to use a copy of this folder somewhere else (for example in a Cloud Run container).
 
+**Deployed images.** `uv run --extra docs python -m wapsi.search.bake [--fetch] [--prune-raw]` makes sure
+`index/` exists and is usable: it keeps an index that is already there, else builds it from `raw/`, else (with
+`--fetch`) downloads the sources first. The Cloud Run image runs it at build time (the one-command deploy uploads
+an index built on the deploying machine; the raw files are never put in the image), so `search_sop` and the
+citation corpus work on the deployed URL. When no index can be made it warns and exits 0, and the app's `/healthz`
+reports `docs_fallback: true`.
+
 ## Sources
 
 | id | document | used for |

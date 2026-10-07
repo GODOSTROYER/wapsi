@@ -339,6 +339,7 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     "hold_plan_built": "Hold plan built",
     "draft_created": "Draft created",
     "audit_chain_verified": "Audit chain verified",
+    "demo_reset": "Shared demo reset (fresh case for the next visitor)",
 }
 
 _ALL_MAPS: tuple[dict, ...] = (

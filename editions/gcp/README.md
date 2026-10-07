@@ -11,8 +11,10 @@ service does. All data is synthetic.
 
 > **One command:** [DEPLOY.md](DEPLOY.md) gets you a warm, public, seeded judging deployment with
 > `editions\gcp\deploy\deploy.ps1 -ProjectId <PROJECT_ID>` (or `deploy.sh --project-id`). It covers the
-> sign-ins, the key, troubleshooting and teardown. The rest of this page is the step-by-step `cloudrun.sh` path for
-> the paid profile and the optional pieces.
+> sign-ins, the key, troubleshooting and teardown. The image carries the docs search index, every judge starts on
+> a fresh showcase case (**Reset demo** in the UI's sidebar; idle demos reset themselves), and seeding is guarded
+> by a Firestore lease so a redeploy never seeds twice. The rest of this page is the step-by-step `cloudrun.sh`
+> path for the paid profile and the optional pieces.
 
 ## Free-trial setup (what you need)
 

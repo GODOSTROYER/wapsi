@@ -115,7 +115,7 @@ uv() { log "CALL uv $*"; }
 curl() {
   log "CALL curl $*"
   case "$*" in
-    *healthz*) echo '{"status":"ok","settings":{"gemini_api_key_set":true}}' ;;
+    *healthz*) echo "{\"status\":\"ok\",\"settings\":{\"gemini_api_key_set\":true},\"docs_fallback\":${DOCS_FALLBACK:-false}}" ;;
     *demo/seed*) echo '{"seed":{"state":"done"}}' ;;
     *demo/cases*) echo "{\"case_id\":\"CASE-31009260000101\",\"drafts_verified\":${VERIFIED:-7},\"drafts\":[{\"prose_fallback\":${FALLBACK:-false}},{\"prose_fallback\":false}]}" ;;
     *_stcore*) echo ok ;;
@@ -154,7 +154,7 @@ function global:uv { Log ("CALL uv " + ((@($args) | ForEach-Object { [string]$_ 
 function global:Invoke-RestMethod {
     param($Method, $Uri, $TimeoutSec)
     Log "CALL irm $Method $Uri"
-    if ($Uri -like '*healthz') { return [pscustomobject]@{ status = 'ok'; settings = [pscustomobject]@{ gemini_api_key_set = $true } } }
+    if ($Uri -like '*healthz') { return [pscustomobject]@{ status = 'ok'; settings = [pscustomobject]@{ gemini_api_key_set = $true }; docs_fallback = ($env:DOCS_FALLBACK -eq 'true') } }
     if ($Uri -like '*demo/seed*') { return [pscustomobject]@{ seed = [pscustomobject]@{ state = 'done' } } }
     if ($Uri -like '*demo/cases*') { return [pscustomobject]@{ case_id = 'CASE-31009260000101'; drafts_verified = [int]$env:VERIFIED; drafts = @([pscustomobject]@{ prose_fallback = ($env:FALLBACK -eq 'true') }, [pscustomobject]@{ prose_fallback = $false }) } }
 }
@@ -232,7 +232,8 @@ def test_dry_run_prints_every_step_runs_nothing_and_is_deterministic(tmp_path):
         "+ gcloud builds submit . --region=asia-south1 --config=editions/gcp/deploy/cloudbuild.yaml",
         "_IMAGE=asia-south1-docker.pkg.dev/wapsi-test/wapsi/wapsi-gcp:dryrun",
         '    WAPSI_SEED_CASES: "showcase"', '    WAPSI_DEMO_MODE: "0"', '    WAPSI_TRUST_ROLE_HEADER: "1"',
-        "+ GET <wapsi-api-url>/healthz", "+ POST <wapsi-api-url>/demo/seed?wait_s=240",
+        "+ uv run --extra docs python -m wapsi.search.bake --fetch",
+        "+ GET <wapsi-api-url>/healthz", "+ POST <wapsi-api-url>/demo/seed?wait_s=240&redo_fallback=1&reset=1",
         "+ GET <wapsi-api-url>/demo/cases/CASE-31009260000101", "+ GET <wapsi-ui-url>/_stcore/health",
         "Cloud Run warm instances (min-instances 1): 45.36 USD/month (1.51 USD/day)",
         "Dry run complete: nothing was executed.",
@@ -309,6 +310,15 @@ def _assert_live(out: str, calls: str):
     assert "CALL uv run --extra gcp python -m wapsi.adapters.bigquery_ledger load" in calls
     assert re.search(r"CALL gcloud builds submit \. .*_IMAGE=asia-south1-docker\.pkg\.dev/wapsi-test/wapsi/"
                      r"wapsi-gcp:t1,_BAKE_WORLD=1", calls)
+    # the docs index goes up with the source: found on disk, or baked here before the upload
+    assert "docs index found: data/docs/index" in out or \
+        "CALL uv run --extra docs python -m wapsi.search.bake --fetch" in calls
+    lines = calls.splitlines()
+    bake = [i for i, ln in enumerate(lines) if "wapsi.search.bake" in ln]
+    submit = next(i for i, ln in enumerate(lines) if "builds submit" in ln)
+    assert all(i < submit for i in bake)
+    assert "demo/seed?wait_s=240&redo_fallback=1&reset=1" in calls  # every judge starts on a fresh case
+    assert "citations-only search corpus" not in out
 
 
 @needs_bash
@@ -471,7 +481,7 @@ def test_bash_smoke_reseeds_fallback_prose_and_warns(tmp_path):
     rc, out, err, calls = run_sh(["--project-id", "wapsi-test", "--tag", "t1", "--only", "smoke"], tmp_path,
                                  FALLBACK="true")
     assert rc == 0, err
-    assert "demo/seed?wait_s=240&redo_fallback=1" in calls
+    assert "demo/seed?wait_s=240&redo_fallback=1&reset=1" in calls
     assert "WARNING: 1 of 2 drafts use the deterministic fallback paragraph (Gemini was not reached)" in out
     assert ("Judged URL (case room, no login): https://wapsi-ui-test.a.run.app/?page=case-room&case="
             "CASE-31009260000101") in out
@@ -484,7 +494,7 @@ def test_powershell_smoke_reseeds_fallback_prose_and_warns(tmp_path):
     rc, out, err, calls = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path,
                                  FALLBACK="true")
     assert rc == 0, out + err
-    assert "demo/seed?wait_s=240&redo_fallback=1" in calls
+    assert "demo/seed?wait_s=240&redo_fallback=1&reset=1" in calls
     assert "WARNING: 1 of 2 drafts use the deterministic fallback paragraph (Gemini was not reached)" in out
     assert "https://wapsi-ui-test.a.run.app/?page=case-room&case=CASE-31009260000101" in out
     rc, out, err, _ = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path)
@@ -497,3 +507,37 @@ def test_sh_avoids_bash4_only_syntax():
     text = SH.read_text(encoding="utf-8")
     for bad in (r"\$\{[A-Za-z_][A-Za-z_0-9]*(,,|\^\^)", r"\bmapfile\b", r"\breadarray\b", r"declare -A", r"local -n"):
         assert not re.search(bad, text), bad
+
+
+@needs_bash
+def test_bash_smoke_warns_when_the_image_lacks_the_docs_index(tmp_path):
+    rc, out, err, _ = run_sh(["--project-id", "wapsi-test", "--tag", "t1", "--only", "smoke"], tmp_path,
+                             DOCS_FALLBACK="true")
+    assert rc == 0, err
+    assert "WARNING: the image serves the citations-only search corpus" in out
+    assert "python -m wapsi.search.bake --fetch" in out
+
+
+@needs_ps
+def test_powershell_smoke_warns_when_the_image_lacks_the_docs_index(tmp_path):
+    rc, out, err, _ = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path,
+                             DOCS_FALLBACK="true")
+    assert rc == 0, out + err
+    assert "WARNING: the image serves the citations-only search corpus" in out
+    rc, out, err, _ = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path)
+    assert rc == 0 and "citations-only" not in out
+
+
+def test_image_bakes_the_docs_index():
+    """The Cloud Run image carries the docs search index (``python -m wapsi.search.bake``): after the corpus is
+    copied, before the image is locked down for the unprivileged user; Cloud Build passes the switch through."""
+    text = (ROOT / "editions" / "gcp" / "Dockerfile").read_text(encoding="utf-8")
+    bake = text.index("python -m wapsi.search.bake --fetch --prune-raw")
+    assert text.index("COPY data/docs ") < bake < text.index("USER 10001")
+    assert "ARG BAKE_DOCS_INDEX=1" in text and 'if [ "${BAKE_DOCS_INDEX}" = "1" ]' in text
+    build = (DEPLOY / "cloudbuild.yaml").read_text(encoding="utf-8")
+    assert '"BAKE_DOCS_INDEX=${_BAKE_DOCS_INDEX}"' in build and '_BAKE_DOCS_INDEX: "1"' in build
+    for ignore in (ROOT / ".gcloudignore", ROOT / "editions" / "gcp" / "Dockerfile.dockerignore"):
+        lines = [ln.strip().strip("/") for ln in ignore.read_text(encoding="utf-8").splitlines()]
+        assert "data/docs/index/text" in lines and "data/docs/raw" in lines  # never the documents' full text
+        assert not [ln for ln in lines if ln in ("data/docs/index", "data/docs", "data")], ignore

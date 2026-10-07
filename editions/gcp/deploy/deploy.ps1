@@ -78,6 +78,7 @@ $BuildSa = "wapsi-build@$ProjectId.iam.gserviceaccount.com"
 $GeminiSecret = 'wapsi-gemini-api-key'; $RoleSecret = 'wapsi-role-signing-key'
 $ImageBase = "$Region-docker.pkg.dev/$ProjectId/$Repo/wapsi-gcp"
 $WorldDir = 'data/generated/judging'
+$DocsIndex = 'data/docs/index'
 $Case = 'CASE-31009260000101'
 $KeyShown = '<GEMINI_API_KEY from your environment, never printed>'
 $G = @("--project=$ProjectId", '--quiet')
@@ -360,6 +361,13 @@ function Step-BigQuery {
 }
 
 function Step-Build {
+    # the docs search index travels with the source (it is gitignored, never committed); the image build validates
+    # it, or builds it from the public sources when it is missing (python -m wapsi.search.bake)
+    if (-not (IsDry) -and (Test-Path -LiteralPath (Join-Path $DocsIndex 'chunks.jsonl'))) {
+        Say "  docs index found: $DocsIndex (uploaded with the source; the image build validates it)"
+    } else {
+        Try-Run uv run --extra docs python -m wapsi.search.bake --fetch
+    }
     Run gcloud builds submit . "--region=$Region" --config=editions/gcp/deploy/cloudbuild.yaml `
         "--substitutions=_IMAGE=$Image,_BAKE_WORLD=1" "--service-account=projects/$ProjectId/serviceAccounts/$BuildSa" @G
     if (-not (IsDry)) { Write-Utf8 $LastImageFile "$Image`n" }
@@ -439,11 +447,15 @@ function Step-Smoke {
         if ($GeminiBackend -eq 'aistudio' -and -not $h.settings.gemini_api_key_set) {
             Say '  WARNING: the API does not see GEMINI_API_KEY (check the secret wapsi-gemini-api-key)'
         }
+        if ($h.docs_fallback -eq $true) {
+            Say '  WARNING: the image serves the citations-only search corpus (the docs index was not baked): build it here with   uv run --extra docs python -m wapsi.search.bake --fetch   then re-run with --only build,deploy,smoke'
+        }
         Say '  healthy'
     }
-    Say "+ POST $api/demo/seed?wait_s=240&redo_fallback=1"
+    # seeds the showcase cases, or resets them to their freshly seeded state: every judge starts on a fresh case
+    Say "+ POST $api/demo/seed?wait_s=240&redo_fallback=1&reset=1"
     if (-not (IsDry)) {
-        try { $null = Invoke-RestMethod -Method Post -Uri "$api/demo/seed?wait_s=240&redo_fallback=1" -TimeoutSec $SmokeTimeoutSec }
+        try { $null = Invoke-RestMethod -Method Post -Uri "$api/demo/seed?wait_s=240&redo_fallback=1&reset=1" -TimeoutSec $SmokeTimeoutSec }
         catch { Say '  WARNING: seeding did not answer in time; it continues in the background' }
     }
     Say "+ GET $api/demo/cases/$Case"

@@ -35,6 +35,7 @@ st.set_page_config(
 )
 
 from ui.components import html as h  # noqa: E402
+from ui.components.compat import stretch  # noqa: E402
 from ui.components.formatting import (  # noqa: E402
     ROLE_ACTORS,
     ROLE_BLURBS,
@@ -216,6 +217,31 @@ def _case_label(ds: ShowcaseDataSource, viewer: Viewer, case_id: str) -> str:
     return f"{who} · {amount}"
 
 
+def _on_demo_reset(ds: ShowcaseDataSource, actor: str, role: str) -> None:
+    out = ds.reset_demo(actor=actor, role=role)  # type: ignore[attr-defined]
+    flash(out.message, "success" if out.ok else "error")
+
+
+def _demo_reset_control(ds: ShowcaseDataSource, viewer: Viewer) -> None:
+    """Shared judging deployment only (the data source offers ``reset_demo``): every visitor works on the same
+    stored cases, so say so and offer a way back to a fresh case."""
+    if not callable(getattr(ds, "reset_demo", None)) or not getattr(ds, "demo_reset_enabled", False):
+        return
+    notice = getattr(ds, "demo_notice", None)
+    if notice:  # once per session: the session's start reset an idle demo
+        flash(notice, "info")
+        ds.demo_notice = None  # type: ignore[attr-defined]
+    n = int(getattr(ds, "demo_decisions", lambda: 0)() or 0)
+    state = (f"{n} decision{'s' if n != 1 else ''} recorded on the showcase cases so far." if n
+             else "No decisions recorded on the showcase cases yet.")
+    md(f'<div class="wp-foot" style="margin-top:1rem"><strong>Shared demo.</strong> Everyone who opens this link '
+       f"sees the same cases. {h.esc(state)}</div>")
+    st.button("Reset demo", key="demo_reset", on_click=_on_demo_reset, args=(ds, viewer.actor, viewer.role),
+              **stretch(st.button),
+              help="Put the showcase cases back to how they were first prepared: hold plan and drafts as computed, "
+                   "nothing approved. Earlier decisions stay in each case's audit log.")
+
+
 def _sidebar(ds: ShowcaseDataSource, viewer: Viewer, case_ids: list[str]) -> None:
     md('<div class="wp-brand"><div class="wp-brand-mark" aria-hidden="true">₹</div><div>'
        '<div class="wp-brand-name">Wapsi</div><div class="wp-brand-sub">Money-trail copilot</div></div></div>')
@@ -245,6 +271,7 @@ def _sidebar(ds: ShowcaseDataSource, viewer: Viewer, case_ids: list[str]) -> Non
     md(f'<div class="wp-foot"><span class="wp-mono">{h.esc(viewer.actor)}</span><br>'
        f"{h.esc(ROLE_BLURBS.get(viewer.role, ''))}</div>")
     _source_switch()
+    _demo_reset_control(ds, viewer)
     status = engine_status()
     n = len(case_ids)
     engine = {

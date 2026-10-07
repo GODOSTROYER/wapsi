@@ -190,6 +190,7 @@ All commands run from the repository root.
 | Hard world (15 typologies) | `uv run python -m wapsi.synth --size hard --seed 7 --out data/generated/hard` | `data/generated/hard/` (golden set in `data/generated/hard/golden/`) |
 | Download legal corpus | `uv run python -m wapsi.search.fetch` | `data/docs/raw/`, `data/docs/MANIFEST.md` |
 | Build search index | `uv run python -m wapsi.search.build` | `data/docs/index/`, `data/docs/MANIFEST.md` |
+| Bake the index for an image | `uv run --extra docs python -m wapsi.search.bake --fetch` | `data/docs/index/` (+ `bake.json`); `MANIFEST.md` untouched |
 | Check every quote | `uv run python -m wapsi.search.check_citations` | nothing (exit 1 on any mismatch) |
 | Regulatory radar documents | `uv run python -m wapsi.search.radar fetch`, then `radar verify [--write]` | `data/docs/raw/`; `--write` refreshes the rows' verification stamps in `data/docs/reg_radar.json` |
 | Audit-chain tamper drill | `uv run python -m wapsi.audit drill` | nothing (exit 0 only on PASS) |

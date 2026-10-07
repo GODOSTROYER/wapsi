@@ -4,6 +4,9 @@
 # .streamlit data/docs data/samples (the voice-intake samples) evals editions/gcp.
 # gitignore syntax: a pattern without a leading "/" matches at ANY depth ("docs/" would also drop data/docs), so
 # every top-level directory below is anchored with "/". tests/gcp/test_gcp_one_command_deploy.py checks the upload.
+# data/docs/index (the docs search index; gitignored by data/docs/.gitignore, which gcloud does not read: only the
+# root .gitignore is included below) IS uploaded when the deploying machine built it, so the image carries it
+# (python -m wapsi.search.bake); its extracted full texts (index/text/) are not needed at run time.
 .gcloudignore
 .git
 .gitignore
@@ -19,3 +22,4 @@
 /editions/amd/
 /data/golden/
 /data/docs/raw/
+/data/docs/index/text/

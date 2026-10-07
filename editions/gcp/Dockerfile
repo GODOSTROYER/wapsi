@@ -44,7 +44,18 @@ RUN if [ "${BAKE_WORLD}" = "1" ]; then \
       /app/.venv/bin/python -m editions.gcp.app.seed world --out /app/data/world; \
     fi
 
-# 4. unprivileged runtime user; the app never writes to its own tree
+# 4. the docs search index (BM25 over the public legal corpus), so search_sop and the citation corpus work on the
+#    deployed URL. data/docs/index is gitignored (the documents carry no open licence, so their text is never
+#    committed): the one-command deploy builds it on the deploying machine and uploads it with the source; when it
+#    is not in the build context it is built here from the public sources (polite, TLS-verified downloads; the raw
+#    files are not kept). If neither works the build still succeeds and the app serves the citations-only corpus;
+#    /healthz then reports docs_fallback: true. BAKE_DOCS_INDEX=0 skips it.
+ARG BAKE_DOCS_INDEX=1
+RUN if [ "${BAKE_DOCS_INDEX}" = "1" ]; then \
+      /app/.venv/bin/python -m wapsi.search.bake --fetch --prune-raw; \
+    fi
+
+# 5. unprivileged runtime user; the app never writes to its own tree
 RUN groupadd --system --gid 10001 wapsi \
  && useradd --system --uid 10001 --gid wapsi --home-dir /home/wapsi --create-home wapsi \
  && chown -R root:root /app && chmod -R a+rX /app

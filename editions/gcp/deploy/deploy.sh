@@ -80,6 +80,7 @@ BUILD_SA="wapsi-build@${PROJECT_ID}.iam.gserviceaccount.com"
 GEMINI_SECRET="wapsi-gemini-api-key" ROLE_SECRET="wapsi-role-signing-key"
 IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/wapsi-gcp"
 WORLD_DIR="data/generated/judging"
+DOCS_INDEX="data/docs/index"
 CASE="CASE-31009260000101"
 KEY_SHOWN="<GEMINI_API_KEY from your environment, never printed>"
 G=("--project=${PROJECT_ID}" --quiet)
@@ -312,6 +313,13 @@ step_bigquery() {
 }
 
 step_build() {
+  # the docs search index travels with the source (it is gitignored, never committed); the image build validates
+  # it, or builds it from the public sources when it is missing (python -m wapsi.search.bake)
+  if ! dry && [[ -f "${DOCS_INDEX}/chunks.jsonl" ]]; then
+    say "  docs index found: ${DOCS_INDEX} (uploaded with the source; the image build validates it)"
+  else
+    try uv run --extra docs python -m wapsi.search.bake --fetch
+  fi
   run gcloud builds submit . "--region=${REGION}" --config=editions/gcp/deploy/cloudbuild.yaml \
     "--substitutions=_IMAGE=${IMAGE},_BAKE_WORLD=1" "--service-account=projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA}" \
     "${G[@]}"
@@ -387,12 +395,16 @@ step_smoke() {
     if [[ "${GEMINI_BACKEND}" == "aistudio" ]] && ! grep -Eq '"gemini_api_key_set": *true' <<<"${h}"; then
       say "  WARNING: the API does not see GEMINI_API_KEY (check the secret wapsi-gemini-api-key)"
     fi
+    if grep -Eq '"docs_fallback": *true' <<<"${h}"; then
+      say "  WARNING: the image serves the citations-only search corpus (the docs index was not baked): build it here with   uv run --extra docs python -m wapsi.search.bake --fetch   then re-run with --only build,deploy,smoke"
+    fi
     say "  healthy"
   fi
-  say "+ POST ${API_URL}/demo/seed?wait_s=240&redo_fallback=1"
+  # seeds the showcase cases, or resets them to their freshly seeded state: every judge starts on a fresh case
+  say "+ POST ${API_URL}/demo/seed?wait_s=240&redo_fallback=1&reset=1"
   if ! dry; then
-    curl -fsS -X POST --max-time "${SMOKE_TIMEOUT}" "${API_URL}/demo/seed?wait_s=240&redo_fallback=1" >/dev/null || \
-      say "  WARNING: seeding did not answer in time; it continues in the background"
+    curl -fsS -X POST --max-time "${SMOKE_TIMEOUT}" "${API_URL}/demo/seed?wait_s=240&redo_fallback=1&reset=1" \
+      >/dev/null || say "  WARNING: seeding did not answer in time; it continues in the background"
   fi
   say "+ GET ${API_URL}/demo/cases/${CASE}"
   if ! dry; then

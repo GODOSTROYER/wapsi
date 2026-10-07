@@ -228,6 +228,9 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
             "settings": summary,
             "guard_fallbacks": len(getattr(guard, "fallback_events", []) or []),
             "docs_index": svc.search is not None,
+            # the citations-only corpus (no baked index: python -m wapsi.search.bake) or no search at all
+            "docs_fallback": svc.search is None or bool(getattr(svc.search, "fallback", False)),
+            "docs_chunks": len(svc.search) if svc.search is not None and hasattr(svc.search, "__len__") else 0,
             "seed": {"cases": seed or None, **seeding.as_dict()},
         }
 
@@ -290,10 +293,16 @@ def case_summary(bundle: Any) -> dict[str, Any]:
 def _add_demo_routes(app: Any, seeding: SeedState, seed: str) -> None:
     """Judging-deployment routes (synthetic data): ``GET /demo/status``, ``GET /demo/cases/{case_id}`` (read-only)
     and ``POST /demo/seed`` (idempotent: processes only showcase cases missing from the store; with
-    ``redo_fallback=1`` also those whose stored prose fell back to the deterministic paragraphs).
+    ``redo_fallback=1`` also those whose stored prose fell back to the deterministic paragraphs; with ``reset=1``
+    it restores the showcase cases to their freshly seeded state, so the next judge starts on a fresh case; the
+    audit log keeps every earlier event and records the reset).
 
     ``POST /demo/seed`` waits inside the request on purpose: Cloud Run allocates CPU to an instance only while a
-    request is in flight, so the deploy's smoke test drives the seeding to completion this way."""
+    request is in flight, so the deploy's smoke test drives the seeding to completion this way. A request that asks
+    for a reset or a redo while another run is in progress (the start-up seeding) waits for that run, then starts
+    its own; across instances the seeding lease (``seed.SeedLease``) keeps runs from overlapping."""
+    import time
+
     from fastapi import HTTPException
 
     @app.get("/demo/status", include_in_schema=False)
@@ -302,10 +311,15 @@ def _add_demo_routes(app: Any, seeding: SeedState, seed: str) -> None:
         return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}
 
     @app.post("/demo/seed", include_in_schema=False)
-    def demo_seed(wait_s: float = 240.0, redo_fallback: bool = False) -> dict[str, Any]:
-        if seeding.state != "running":
-            seeding.start(get_services(), seed or "showcase", background=True, redo_fallback=redo_fallback)
-        seeding.join(max(0.0, min(float(wait_s), 280.0)))
+    def demo_seed(wait_s: float = 240.0, redo_fallback: bool = False, reset: bool = False) -> dict[str, Any]:
+        budget = max(0.0, min(float(wait_s), 280.0))
+        deadline = time.monotonic() + budget
+        which = seed or "showcase"
+        started = seeding.start(get_services(), which, background=True, redo_fallback=redo_fallback, reset=reset)
+        if not started and (reset or redo_fallback):
+            seeding.join(budget)  # the run in progress first (it seeds without resetting)
+            seeding.start(get_services(), which, background=True, redo_fallback=redo_fallback, reset=reset)
+        seeding.join(max(0.0, deadline - time.monotonic()))
         cases = get_services().store.list_cases()
         return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}
 
