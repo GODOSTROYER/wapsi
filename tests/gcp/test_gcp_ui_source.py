@@ -38,7 +38,10 @@ def test_writes_go_to_the_case_store(demo_services):
     event = AuditEvent(at=utcnow(), actor="asha", role="analyst", action="viewed", object_type="case",
                        object_id=cid)
     ds.append_audit(cid, event)
-    assert demo_services.store.get_bundle(cid).audit[-1] == event
+    stored = demo_services.store.get_bundle(cid).audit[-1]
+    # the store holds the link sealed into the session's hash chain
+    assert stored == ds.get_bundle(cid).audit[-1] and stored.action == "viewed" and stored.hash
+    assert demo_services.store.verify_audit(cid).ok
 
     refused = ds.save_approval(cid, draft_id=None, decision=ApprovalDecision.APPROVED, approver="asha",
                                role="analyst", reason_code="CHECKS_PASSED")
@@ -66,3 +69,22 @@ def test_streamlit_launcher_renders(demo_services):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert isinstance(at.session_state["_wapsi_ds"], CaseStoreDataSource)
+
+
+def test_firestore_audit_chain_stays_intact(demo_services):
+    # a store that keeps events as given (Firestore): the UI's events arrive sealed, once each
+    from gcp_fakes import FakeFirestore
+
+    from wapsi.adapters.firestore_store import FirestoreCaseStore
+
+    demo_services.store = FirestoreCaseStore(client=FakeFirestore())
+    ds = CaseStoreDataSource(demo_services)
+    cid = f"CASE-{sc.N1}"
+    ds.append_audit(cid, AuditEvent(at=utcnow(), actor="asha", role="analyst", action="viewed", object_type="case",
+                                    object_id=cid))
+    assert ds.save_approval(cid, draft_id=None, decision=ApprovalDecision.CHANGES_REQUESTED, approver="ravi",
+                            role="supervisor", reason_code="AMOUNT_QUERY").ok
+    ds.list_cases()  # re-read from the store
+    audit = ds.get_bundle(cid).audit
+    assert [e.action for e in audit].count("viewed") == 1
+    assert ds.verify_audit(cid).ok

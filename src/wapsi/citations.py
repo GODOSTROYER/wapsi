@@ -22,7 +22,14 @@ SOP_URL = (
 PML_TITLE = "Prevention of Money-laundering (Maintenance of Records) Rules, 2005"
 FIU_FAQ_URL = "https://fiuindia.gov.in/files/FAQs/faqs.html"
 BNSS_URL = "https://indiacode.gov.in/server/api/core/bitstreams/73f93470-5f6a-4f0f-bc23-1309e32b9554/content"
-RBI_FRM_URL = "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12702&Mode=0"
+# Supersedes the RBI Master Directions on Fraud Risk Management of 15.07.2024 (Id=12702). Para 67 repeals the earlier
+# FRM instructions "as communicated vide" circular DoS.CO.PPG.66 (Id=13663), whose Annex (RBI's withdrawn-circulars
+# list) names the 2024 Master Directions; para 67 itself does not name them. See data/docs/reg_radar.json RR-11.
+RBI_FRM_DIR_TITLE = (
+    "Reserve Bank of India (Commercial Banks - Fraud Risk Management) Directions, 2026 "
+    "(RBI/DoS/2026-27/412, 31.07.2026)"
+)
+RBI_FRM_DIR_URL = "https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=13641&Mode=0"
 
 # id -> (source_title, section, url)
 _BASE: dict[str, tuple[str, str, str]] = {
@@ -56,7 +63,10 @@ _BASE: dict[str, tuple[str, str, str]] = {
     "PMLR-2-1-G": (PML_TITLE, "Rule 2(1)(g): suspicious transaction", FIU_FAQ_URL),
     "PMLR-8": (PML_TITLE, "Rule 8: STR within seven working days", FIU_FAQ_URL),
     "FIU-CIRC-2025-06-02": ("FIU-IND circular dated 02.06.2025", "Informing account holder is not tipping-off", SOP_URL),
-    "RBI-FRM-MD-2024": ("RBI Master Directions on Fraud Risk Management (15.07.2024)", "Early warning signals", RBI_FRM_URL),
+    "RBI-FRM-DIR-2026": (RBI_FRM_DIR_TITLE, "Para 24: monitoring of non-KYC compliant and money mule accounts",
+                         RBI_FRM_DIR_URL),
+    "RBI-FRM-DIR-2026-EWS": (RBI_FRM_DIR_TITLE, "Para 12: Early Warning Signals and Red Flagging of Accounts",
+                             RBI_FRM_DIR_URL),
     "CASE-NEELKANTH": ("Neelkanth Pharma Logistics Pvt Ltd v. Union of India, Delhi HC, 20.02.2025",
                        "Lien on disputed amount should be explored", ""),
     "CASE-KARTIK-CHATUR": ("Kartik Yogeshwar Chatur v. Union of India, Bombay HC, 20.11.2025",

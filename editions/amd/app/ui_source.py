@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from ui.data_source import Outcome, ShowcaseDataSource
+from wapsi.audit.chain import append_event, chain_extend
 from wapsi.models import ApprovalDecision, AuditEvent, CaseBundle
 from wapsi.timeutil import utcnow
 
@@ -73,10 +74,11 @@ class AmdDataSource(ShowcaseDataSource):
             return Outcome(False, f"Drafts couldn't be generated: {exc}")
         fresh.case.opened_at = bundle.case.opened_at
         fresh.approvals = list(bundle.approvals) + list(fresh.approvals)
-        fresh.audit = list(bundle.audit) + list(fresh.audit)
-        fresh.audit.append(AuditEvent(at=utcnow(), actor=actor, role=role, action="pipeline_run",
-                                      object_type="case", object_id=case_id,
-                                      details={"drafts": len(fresh.drafts), "llm": getattr(svc.llm, "name", "")}))
+        fresh.audit = chain_extend(bundle.audit, fresh.audit, case_id=case_id)  # one hash chain, history first
+        append_event(fresh.audit, AuditEvent(at=utcnow(), actor=actor, role=role, action="pipeline_run",
+                                             object_type="case", object_id=case_id,
+                                             details={"drafts": len(fresh.drafts),
+                                                      "llm": getattr(svc.llm, "name", "")}), case_id=case_id)
         self._bundles[case_id] = fresh
         self._clock_cache = {k: v for k, v in self._clock_cache.items() if k[0] != case_id}
         self._persist(fresh)

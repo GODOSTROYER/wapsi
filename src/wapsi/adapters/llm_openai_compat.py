@@ -6,20 +6,33 @@ Works with any server exposing ``POST {base_url}/chat/completions``: vLLM, Gemin
 The API key comes from the ``api_key`` argument or the ``WAPSI_LLM_API_KEY`` environment variable (optional for
 local servers). 429 and 5xx responses and connection errors are retried with exponential backoff (``Retry-After``
 honoured); other errors raise ``LLMError`` at once.
+
+Extra request fields: ``extra_body`` (constructor, every request) and ``complete(..., extra_body=...)`` (one request,
+merged over the constructor's) add server-specific fields to the JSON body, e.g. vLLM's
+``{"chat_template_kwargs": {"enable_thinking": False}}`` to switch off Qwen's thinking, or ``top_p`` / ``seed``. The
+fields the client controls (``model``, ``messages``, ``temperature``, ``max_tokens`` and, with a schema,
+``response_format``) always win; ``model``, ``messages`` and ``stream`` cannot be set as extras.
+
+Token usage: ``complete_with_usage`` returns the text and that request's ``TokenUsage`` (``None`` when the server
+reports none); ``last_usage`` holds the latest one and ``usage`` the running total over the client's life
+(thread-safe; ``reset_usage()`` returns and clears it).
 """
 
 from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 API_KEY_ENV = "WAPSI_LLM_API_KEY"
 RETRY_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+RESERVED_EXTRA_FIELDS = frozenset({"model", "messages", "stream"})
 
 
 class LLMError(RuntimeError):
@@ -27,6 +40,56 @@ class LLMError(RuntimeError):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token counts of one response (``calls`` = 1) or a sum of responses (``a + b``)."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    calls: int = 0  # responses that reported usage
+
+    @classmethod
+    def from_response(cls, data: Mapping[str, Any]) -> TokenUsage | None:
+        """The OpenAI ``usage`` object of a chat-completions response, or ``None`` if there is none."""
+        usage = data.get("usage")
+        if not isinstance(usage, Mapping):
+            return None
+
+        def count(key: str) -> int:
+            value = usage.get(key)
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                return 0
+            return max(0, int(value))
+
+        prompt, completion = count("prompt_tokens"), count("completion_tokens")
+        return cls(prompt, completion, count("total_tokens") or prompt + completion, 1)
+
+    def __add__(self, other: TokenUsage) -> TokenUsage:
+        return TokenUsage(
+            self.prompt_tokens + other.prompt_tokens,
+            self.completion_tokens + other.completion_tokens,
+            self.total_tokens + other.total_tokens,
+            self.calls + other.calls,
+        )
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+            "calls": self.calls,
+        }
+
+
+def _check_extra(extra: Mapping[str, Any] | None) -> dict[str, Any]:
+    fields = dict(extra or {})
+    reserved = sorted(RESERVED_EXTRA_FIELDS & set(fields))
+    if reserved:
+        raise ValueError(f"extra_body cannot set {', '.join(reserved)}")
+    return fields
 
 
 def _error_detail(resp: httpx.Response) -> str:
@@ -70,6 +133,7 @@ class OpenAICompatLLM:
         name: str | None = None,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        extra_body: Mapping[str, Any] | None = None,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required")
@@ -85,6 +149,10 @@ class OpenAICompatLLM:
         self.backoff_s = backoff_s
         self.max_backoff_s = max_backoff_s
         self.json_mode = json_mode
+        self.extra_body: dict[str, Any] = _check_extra(extra_body)
+        self.last_usage: TokenUsage | None = None
+        self._usage = TokenUsage()
+        self._usage_lock = threading.Lock()
         self._sleep = sleep
         key = api_key if api_key is not None else os.environ.get(API_KEY_ENV)
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -110,6 +178,19 @@ class OpenAICompatLLM:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    # -- token usage
+    @property
+    def usage(self) -> TokenUsage:
+        """Running total over every response that reported usage."""
+        with self._usage_lock:
+            return self._usage
+
+    def reset_usage(self) -> TokenUsage:
+        """Return the running total and start again from zero."""
+        with self._usage_lock:
+            total, self._usage = self._usage, TokenUsage()
+            return total
+
     # -- LLM protocol
     def complete(
         self,
@@ -118,16 +199,42 @@ class OpenAICompatLLM:
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: dict | None = None,
+        extra_body: Mapping[str, Any] | None = None,
     ) -> str:
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
+        return self.complete_with_usage(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_schema=json_schema,
+            extra_body=extra_body,
+        )[0]
+
+    def complete_with_usage(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        json_schema: dict | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+    ) -> tuple[str, TokenUsage | None]:
+        """Like ``complete``; also returns this request's token usage (``None`` if the server reported none)."""
+        payload: dict[str, Any] = {**self.extra_body, **_check_extra(extra_body)}
+        payload.update(
+            model=self.model,
+            messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         if json_schema is not None:
             payload["response_format"] = self._response_format(json_schema)
-        return self._content(self._post(payload))
+        data = self._post(payload)
+        usage = TokenUsage.from_response(data)
+        with self._usage_lock:
+            self.last_usage = usage
+            if usage is not None:
+                self._usage = self._usage + usage
+        return self._content(data), usage
 
     # -- internals
     def _response_format(self, schema: dict) -> dict[str, Any]:

@@ -185,7 +185,7 @@ def render(
         f"- Apportionment rule: {RULE_TEXT[plan.rule]}",
         f"- Restoration process: {plan.restoration_process.value}"
         f" [{'SOP-11-P2' if plan.restoration_process == RestorationProcess.P2 else 'SOP-11-P1'}]",
-        f"- STR ground (PML Rule 2(1)(g)): {plan.str_ground.value if plan.str_ground else 'none (no STR)'}",
+        f"- STR ground (PML Rule 2(1)(g)): {plan.str_ground.value if plan.str_ground else 'none (no automatic STR)'}",
         "",
         "| Account | Layer | Role | Disposition | Tainted | Balance | Hold | Forward hold | Citations | Flags |",
         "|---|---:|---|---|---:|---:|---:|---:|---|---|",
@@ -226,8 +226,8 @@ def render(
         )
     lines += [
         "",
-        f"**Baseline:** a whole-account freeze of the {plan.baseline_freeze_accounts} home-bank account(s) that "
-        f"received tainted money would immobilise {fmt_inr(plan.baseline_freeze_amount)}; this plan holds "
+        f"**Whole-account freeze baseline** (comparison only): {fmt_inr(plan.baseline_freeze_amount)} across the "
+        f"{plan.baseline_freeze_accounts} home-bank account(s) that received tainted money; this plan holds "
         f"{fmt_inr(plan.total_hold)} across {len(held)} account(s).",
         "",
         "### Policy re-check (AGENTS.md convention 6)",
@@ -279,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from wapsi.models import Case, CaseBundle
         from wapsi.timeutil import utcnow
+        from wapsi.verify.report import label_of
         from wapsi.verify.runner import verify_plan
 
         bundle = CaseBundle(
@@ -290,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         rep = verify_plan(bundle, ledger, cfg=cfg)
         bad = [c for c in rep.checks if not c.passed and c.severity == "error"]
-        external = "PASS" if rep.passed else "FAIL: " + "; ".join(f"{c.name}: {c.message}" for c in bad)
+        external = "PASS" if rep.passed else "FAIL: " + "; ".join(f"{c.name}: {label_of(c)}" for c in bad)
         if not rep.passed:
             checks.append((False, "wapsi.verify.verify_plan failed"))
     except ImportError:

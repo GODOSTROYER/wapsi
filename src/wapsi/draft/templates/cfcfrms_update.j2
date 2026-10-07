@@ -1,6 +1,8 @@
 {#- Case-level CFCFRMS update. Per-account values use account-qualified slots "<account_id>/<key>". -#}
 # CFCFRMS case update: {{ c.case_id }}
 
+> Simulated CFCFRMS interface: Wapsi prepares this update but is not connected to the CFCFRMS portal. Nothing is sent until the nodal officer submits it on the portal.
+
 - **Reporting bank:** {{ c.home_bank_name }} (bank code {{ c.home_bank_id }})
 - **Complaint(s):** {{ s.ncrp_ids }}
 - **Restoration process:** {{ s.restoration_process }}
@@ -28,7 +30,7 @@
 | Cashed out (ATM / crypto) | {{ s.total_cashed_out }} |
 | Forward holds marked (not money in hand) | {{ s.total_forward_hold }} |
 | **Total recoverable (holds + outbound requests)** | **{{ s.total_recoverable }}** |
-| Whole-account freeze of the touched accounts would have immobilised | {{ s.baseline_freeze_amount }} |
+| Whole-account freeze baseline (comparison only, not recommended) | {{ s.baseline_freeze_amount }} |
 
 ## Per-complaint position
 
@@ -40,7 +42,7 @@
 
 ## Notes
 
-- All holds are amount-specific; no account is frozen [SOP-5-IX] [SOP-9-1].
+- Holds are amount-specific by default [SOP-5-IX] [SOP-9-1]. Account-level action is taken only as a recorded, supervisor-approved exception.
 - Nodal, pool and escrow accounts: only the disputed amount is held, digital banking is not suspended and the account is not seized [SOP-9-1-III]. Forward holds are marked only on first-layer accounts, never on nodal, pool or escrow accounts [SOP-9-1-I].
 - Payments to merchants for delivered goods are updated without a hold; undelivered orders are cancelled and the amount is held in the pool / nodal account [SOP-9-2].
 {% if c.has_outbound %}

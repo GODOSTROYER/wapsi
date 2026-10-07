@@ -7,7 +7,8 @@
 With ``--results-dir`` it picks up ``llm_bench*.json``, ``report.json`` (e2e), ``telemetry_summary.json``,
 ``gnn*.json`` and ``lora*.json`` in that directory. GNN / LoRA files come from the other AMD work streams; their
 schema is not fixed here, so their scalar values are rendered generically (a top-level ``metrics`` object is
-preferred when present). Every number in the output is read from those files: the report never invents one.
+preferred when present). Every number in the output is read from those files: the report never invents one, and a
+sensor the telemetry could not read is shown as ``n/a`` (``n/a (SR-IOV VF)`` on a virtual function), never as 0.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from editions.amd.bench.common import fmt, md_table, utc_now  # noqa: E402
+from editions.amd.bench.gpu_telemetry import NA, sensor_text  # noqa: E402
 
 MAX_GENERIC_ROWS = 40
 
@@ -78,6 +80,17 @@ def _gpu_name(telemetry: list[dict]) -> str | None:
     return None
 
 
+def _gb(mb: Any) -> float | str:
+    return mb / 1024 if isinstance(mb, int | float) and not isinstance(mb, bool) else NA
+
+
+def _sensor(g: dict[str, Any], key: str) -> Any:
+    """Telemetry value, or ``n/a`` / ``n/a (SR-IOV VF)`` when the sensor was unavailable (older summaries: a VF's 0)."""
+    value = g.get(key)
+    vf = bool(g.get("sriov_vf"))
+    return value if value is not None and not (vf and value == 0) else sensor_text(None, vf)
+
+
 def headline(llm: list[dict], e2e: list[dict], telemetry: list[dict]) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for b in llm:
@@ -104,7 +117,7 @@ def headline(llm: list[dict], e2e: list[dict], telemetry: list[dict]) -> list[li
             peak = g.get("vram_used_mb_peak")
             total = g.get("vram_total_mb")
             if peak is not None:
-                rows.append([f"GPU{g.get('gpu')} peak VRAM (GB of {fmt((total or 0) / 1024, 1)})", peak / 1024])
+                rows.append([f"GPU{g.get('gpu')} peak VRAM (GB of {fmt(_gb(total), 1)})", peak / 1024])
     return rows
 
 
@@ -167,9 +180,10 @@ def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[di
                   f"{t.get('interval_s')} s)", "",
                   md_table(["GPU", "Name", "VRAM total (GB)", "Peak used (GB)", "Mean used (GB)", "GFX mean %",
                             "GFX peak %", "Power mean (W)"],
-                           [[g.get("gpu"), g.get("name"), (g.get("vram_total_mb") or 0) / 1024,
-                             (g.get("vram_used_mb_peak") or 0) / 1024, (g.get("vram_used_mb_mean") or 0) / 1024,
-                             g.get("gfx_activity_pct_mean"), g.get("gfx_activity_pct_peak"), g.get("power_w_mean")]
+                           [[g.get("gpu"), g.get("name"), _gb(g.get("vram_total_mb")),
+                             _gb(g.get("vram_used_mb_peak")), _gb(g.get("vram_used_mb_mean")),
+                             _sensor(g, "gfx_activity_pct_mean"), _sensor(g, "gfx_activity_pct_peak"),
+                             _sensor(g, "power_w_mean")]
                             for g in t.get("gpus") or []], digits=1), ""]
         if t.get("processes"):
             lines += ["Peak VRAM per container (one MI300X):", "",

@@ -27,7 +27,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..\..")).Path
 $promptFile = "editions/snowflake/templates/automations/actions-drain.md"
 $prompt = "Follow $promptFile exactly: drain pending WAPSI Jira and Slack actions, then print the one-line summary."
 $countSql = "SELECT COUNT(*) AS N FROM WAPSI.CASEMGMT.ACTIONS WHERE STATUS = 'PENDING' AND KIND IN ('JIRA_TICKET', 'SLACK_NOTICE')"
-$allowed = "snowflakesqlexecute,read,mcp__jira__*,mcp__slack__*"
+$allowed = "snowflake_sql_execute,read,mcp__jira__*,mcp__slack__*"
 
 if (-not (Get-Command snow -ErrorAction SilentlyContinue)) { throw "Snowflake CLI 'snow' not found on PATH" }
 if (-not (Get-Command cortex -ErrorAction SilentlyContinue)) { throw "CoCo CLI 'cortex' not found on PATH" }

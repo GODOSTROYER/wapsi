@@ -1,0 +1,82 @@
+{
+  "world": "showcase",
+  "generated_at": "2026-09-29T03:10:05.285989+00:00",
+  "config": {
+    "rule": "PRO_RATA",
+    "llm": "fake-llm",
+    "scorer": "heuristic-v2",
+    "scorer_spec": "heuristic",
+    "search": true
+  },
+  "cases": 2,
+  "adversarial_cases": 0,
+  "metrics": {
+    "traced_amount_recall": 1.0,
+    "totals_abs_error_inr": 0.0,
+    "hold_exact_match_rate": 1.0,
+    "over_hold_inr": 0.0,
+    "false_freeze_count": 0,
+    "disposition_accuracy": 1.0,
+    "process_accuracy": 1.0,
+    "str_ground_accuracy": 1.0,
+    "escalation_precision": 1.0,
+    "escalation_recall": 1.0,
+    "role_precision": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "role_recall": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "draft_verification_pass_rate": 1.0,
+    "draft_numeric_accuracy": 1.0,
+    "citation_validity": 1.0,
+    "llm_only_hallucination_rate": null,
+    "llm_prose_fallback_rate": 0.0,
+    "injection_flag_recall": 1.0,
+    "injection_leaks": 0,
+    "p50_time_to_hold_plan_s": 0.293,
+    "p95_time_to_hold_plan_s": 0.2967,
+    "p95_total_s": 1.2548
+  },
+  "baseline": {
+    "whole_account_freeze_inr": 50470000.0,
+    "wapsi_hold_inr": 262848.0,
+    "accounts_frozen_baseline": 7,
+    "accounts_held": 6
+  },
+  "per_typology": {
+    "T2_CHAIN_LAYERING": {
+      "cases": 1,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T7_MULTI_VICTIM": {
+      "cases": 1,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    }
+  },
+  "classification": {
+    "accounts": 7,
+    "truth": {
+      "INNOCENT_HOLDER": 1,
+      "MULE": 6
+    },
+    "predicted": {
+      "INNOCENT_HOLDER": 1,
+      "MULE": 6
+    },
+    "unknown_rate": 0.0,
+    "mule_auc": 1.0,
+    "best_single_feature_auc": 1.0,
+    "best_single_feature": "age_days",
+    "victim_on_trail_called_mule": 0
+  },
+  "failures": []
+}

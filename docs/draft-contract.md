@@ -132,8 +132,18 @@ full-width `０-９`, ...), full-width ASCII, dashes and non-ASCII spaces to ASC
 | Decision / condition | Drafts |
 |---|---|
 | `HOLD_AMOUNT`, `HOLD_AMOUNT_NO_ESCALATION`, `HOLD_IN_POOL`, `HOLD_AMOUNT_INTERMEDIARY`, `FORWARD_HOLD` | `HOLD_INSTRUCTION` (+ `CUSTOMER_NOTICE`, addressed to the intermediary for pool/nodal/escrow accounts) |
-| `HOLD_AMOUNT_NO_ESCALATION` | `EDD_MEMO` |
+| `HOLD_AMOUNT_NO_ESCALATION` | `EDD_MEMO`. For an unwitting conduit (reason code `STR_RECOMMENDED_OFFICER_DECISION`) the memo sets `str_recommended = True` and `str_decision = "OFFICER"`, and the hold instruction and CFCFRMS update recommend an STR for the officer's decision; a bona fide recipient's memo recommends none (`bona_fide_str_recommended`, `edd_conduit_str_missing`) |
+| `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD` (after a supervisor approved the officer's request) | `HOLD_INSTRUCTION` redrafted as a new version stating the recorded reasons and the approval; the case's `CFCFRMS_UPDATE` is redrafted too; the account's unapproved `CUSTOMER_NOTICE` and `EDD_MEMO` are withdrawn. Only this hold instruction may instruct account-level action (`whole_account_freeze` otherwise) |
+| an officer's request for an exceptional account-level hold (`request_account_level_hold`) | `ACCOUNT_LEVEL_HOLD_REQUEST` (`account_level_request.j2`): `structured` carries `requested_by`, the recorded `reasons` from the closed `AccountLevelReason` list and the amount-specific hold; cites `SOP-5-IX`, `SOP-9-1`. The verifier checks the reasons, the eligibility and that the requester is not the approver |
 | `OUTBOUND_CFCFRMS_REQUEST` | `OUTBOUND_REQUEST` |
-| case with any `MULE` role holding tainted money or cash-outs | one case-level `STR` (`structured` = FINnet-style sheets; `account_id` None). Innocent holders (classification or decision role `INNOCENT_HOLDER`, or `HOLD_AMOUNT_NO_ESCALATION`) at **any** bank are never identified: not in the body, the sheets, the beneficiary list, the network section or the slot keys; the STR describes them as "account operated without the holder's knowledge, not identified" and states their amounts with `edge_tainted:<txn_id>` slots. The verifier fails `innocent_in_str` if an innocent holder's account number (any spelling) or name appears in the title, body, structured payload or slots. |
+| case with any `MULE` role holding tainted money or cash-outs | one case-level `STR` (`structured` = FINnet-style sheets; `account_id` None). Innocent holders (classification or decision role `BONA_FIDE_RECIPIENT` / `INNOCENT_HOLDER` or `UNWITTING_CONDUIT`, or `HOLD_AMOUNT_NO_ESCALATION`) at **any** bank are never identified: there is no automatic STR on them; not in the body, the sheets, the beneficiary list, the network section or the slot keys; the STR describes them as "account operated without the holder's knowledge, not identified" and states their amounts with `edge_tainted:<txn_id>` slots. The verifier fails `innocent_in_str` if an innocent holder's account number (any spelling) or name appears in the title, body, structured payload or slots. |
 | every case | one `CFCFRMS_UPDATE`, one `RESTORATION_PACK` (P1 or P2) |
 | `NO_HOLD_UPDATE_ONLY` | no account draft; listed in `CFCFRMS_UPDATE` |
+
+`CFCFRMS_UPDATE` and `OUTBOUND_REQUEST` drafts carry the "Simulated CFCFRMS interface" disclaimer, and the
+`CFCFRMS_UPDATE` actions created on approval carry `payload.interface = "SIMULATED_CFCFRMS"`.
+
+The reply to a police / LEA hold request is not a `Draft` but follows the same contract:
+`wapsi.verify.lea_request.check_lea_request` renders `lea_clarification.j2`, and every amount, account number,
+UTR and date in the letter comes from the request or the case data; the request's own text is quoted back as
+untrusted, never copied into the letter's instructions.

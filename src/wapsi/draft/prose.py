@@ -6,6 +6,10 @@ placeholders, raw digits, currency words, number words, amounts / account number
 citation tokens, copied complaint text); on failure the drafter retries once with feedback and then falls back to
 a deterministic paragraph. The accepted text, with its placeholders, is the prose *skeleton* that the draft's
 positional binding (``structured["skeleton"]``) is built from.
+
+``feedback(problems)`` is the exact retry message; ``write_prose(..., log=[...])`` (and
+``draft_case(..., prose_log=[...])``) records every exchange (request, each call's messages and answer, outcome) as
+a ``ProseExchange``, e.g. to build fine-tuning data without re-deriving which call belongs to which draft.
 """
 
 from __future__ import annotations
@@ -68,7 +72,7 @@ SLOT_MEANINGS = {
     "total_hold": "total held at this bank",
     "total_forward_hold": "total forward holds (not money in hand)",
     "total_recoverable": "holds plus outbound hold requests",
-    "baseline_freeze_amount": "what whole-account freezes would have immobilised",
+    "baseline_freeze_amount": "whole-account freeze baseline: what freezing every touched account would have immobilised",
     "restoration_process": "restoration process code",
     "str_ground": "STR ground code",
 }
@@ -118,6 +122,39 @@ class ProseOutcome:
 
     def structured(self) -> dict[str, Any]:
         return {"llm_fallback": self.fallback, "llm_attempts": self.attempts, "llm_issues": list(self.issues)}
+
+
+@dataclass
+class ProseCall:
+    """One ``llm.complete`` call: the messages sent and the raw answer (``None`` with ``error`` when it raised)."""
+
+    messages: list[dict[str, str]]
+    response: str | None
+    error: str | None = None
+    issues: list[str] = field(default_factory=list)  # validation codes of this answer (empty = accepted)
+
+
+@dataclass
+class ProseExchange:
+    """One ``write_prose`` invocation: what was asked, every call, and the outcome.
+
+    ``draft_id`` / ``kind`` / ``account_id`` are filled in by the drafter (``draft_case(..., prose_log=...)``)."""
+
+    task: str
+    request: list[dict[str, str]]  # system + user, as first sent
+    offered: dict[str, str]  # placeholder name -> slot value
+    calls: list[ProseCall]
+    outcome: ProseOutcome
+    draft_id: str | None = None
+    kind: str | None = None
+    account_id: str | None = None
+
+    @property
+    def accepted(self) -> ProseCall | None:
+        """The call whose answer was used (``None`` when the fallback paragraph was used)."""
+        if self.outcome.fallback or not self.calls:
+            return None
+        return self.calls[-1]
 
 
 def describe_slot(key: str) -> str:
@@ -352,12 +389,16 @@ def validate_prose(
     return problems
 
 
-def _feedback(problems: list[tuple[str, str]]) -> str:
+def feedback(problems: Sequence[tuple[str, str]]) -> str:
+    """The retry message the drafter sends after a rejected answer (``problems`` from ``validate_prose``)."""
     lines = "\n".join(f"- {msg}" for _, msg in problems)
     return (
         "Your answer broke these rules:\n" + lines + "\nRewrite the paragraph following every rule. "
         'Reply only with JSON of the form {"text": "..."}.'
     )
+
+
+_feedback = feedback  # old private name, kept for existing callers
 
 
 def write_prose(
@@ -369,44 +410,60 @@ def write_prose(
     *,
     block_untrusted_copy: bool = True,
     max_attempts: int = 2,
+    log: list[ProseExchange] | None = None,
 ) -> ProseOutcome:
+    """``log``: when a list is given, a ``ProseExchange`` for this invocation is appended to it."""
     offered = {k: slots.peek(k) for k in task.keys if k in slots}
     messages = build_messages(task, facts, offered)
+    request = [dict(m) for m in messages]
+    calls: list[ProseCall] = []
     issues: list[str] = []
+
+    def done(outcome: ProseOutcome) -> ProseOutcome:
+        if log is not None:
+            log.append(ProseExchange(task.name, request, dict(offered), calls, outcome))
+        return outcome
+
     for attempt in range(1, max_attempts + 1):
         try:
             resp = llm.complete(messages, temperature=0.0, max_tokens=700, json_schema=RESPONSE_SCHEMA)
         except Exception as exc:  # noqa: BLE001 - any provider failure falls back to the template paragraph
             issues.append(f"attempt {attempt}: llm_error {type(exc).__name__}")
+            calls.append(ProseCall([dict(m) for m in messages], None, error=type(exc).__name__))
             continue
         raw = parse_response(resp)
         problems = validate_prose(raw, offered, narratives, block_untrusted_copy=block_untrusted_copy)
+        calls.append(ProseCall([dict(m) for m in messages], resp, issues=[code for code, _ in problems]))
         if not problems:
             skeleton = " ".join(raw.split())
-            return ProseOutcome(
-                text=substitute(skeleton, slots),
-                fallback=False,
-                attempts=attempt,
-                issues=issues,
-                skeleton=skeleton,
+            return done(
+                ProseOutcome(
+                    text=substitute(skeleton, slots),
+                    fallback=False,
+                    attempts=attempt,
+                    issues=issues,
+                    skeleton=skeleton,
+                )
             )
         issues.extend(f"attempt {attempt}: {code}" for code, _ in problems)
         messages = [
             *messages,
             {"role": "assistant", "content": resp},
-            {"role": "user", "content": _feedback(problems)},
+            {"role": "user", "content": feedback(problems)},
         ]
 
     def ph(key: str) -> str | None:
         return f"⟦{key}⟧" if key in offered and not _is_zero_amount(offered[key]) else None
 
     skeleton = " ".join(task.fallback(ph).split())
-    return ProseOutcome(
-        text=substitute(skeleton, slots),
-        fallback=True,
-        attempts=max_attempts,
-        issues=issues,
-        skeleton=skeleton,
+    return done(
+        ProseOutcome(
+            text=substitute(skeleton, slots),
+            fallback=True,
+            attempts=max_attempts,
+            issues=issues,
+            skeleton=skeleton,
+        )
     )
 
 
@@ -445,8 +502,8 @@ def _fallback_edd(ph: Callable[[str], str | None]) -> str:
     ]
     if ph("hold_amount"):
         s.append(
-            f"Only {ph('hold_amount')} is held, without escalation and without an STR, pending enhanced due "
-            "diligence and the holder's grievance."
+            f"Only {ph('hold_amount')} is held, without escalation, pending enhanced due diligence and the "
+            "holder's grievance; there is no automatic STR and any STR is the officer's decision."
         )
     return " ".join(s)
 
@@ -468,7 +525,7 @@ def _fallback_case_summary(ph: Callable[[str], str | None]) -> str:
         s.append("Of this, " + "; ".join(parts) + ".")
     if ph("total_recoverable"):
         tail = (
-            f", against {ph('baseline_freeze_amount')} that whole-account freezes would have immobilised"
+            f", against a whole-account freeze baseline of {ph('baseline_freeze_amount')}"
             if ph("baseline_freeze_amount")
             else ""
         )
@@ -503,7 +560,9 @@ EDD_TASK = ProseTask(
     instructions=(
         "Write one paragraph of 50 to 120 words explaining why the focus account looks like an innocent holder "
         "(an account operated without the holder's knowledge or connivance) and why an amount-specific hold "
-        "without escalation or STR is proportionate. Mention the indicators of bona fides in the facts."
+        "without escalation is proportionate. There is no automatic STR: the officer decides, and an STR is "
+        "recommended only where the account was used as a conduit (reason code STR_RECOMMENDED_OFFICER_DECISION). "
+        "Mention the indicators of bona fides in the facts."
     ),
     keys=("account_id", "disputed_amount", "hold_amount", "balance_now", "utrs", "inflow_dates", "ncrp_ids"),
     fallback=_fallback_edd,
@@ -513,8 +572,8 @@ CASE_SUMMARY_TASK = ProseTask(
     name="case_summary",
     instructions=(
         "Write one paragraph of 50 to 120 words summarising the case for a CFCFRMS update: what was stolen, "
-        "where the money is now, and what the bank is doing about it (amount-specific holds, requests to other "
-        "banks, no whole-account freezes)."
+        "where the money is now, and what the bank is doing about it (amount-specific holds by default, requests "
+        "to other banks; account-level action only as a recorded, supervisor-approved exception)."
     ),
     keys=(
         "ncrp_ids",

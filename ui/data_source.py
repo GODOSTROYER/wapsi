@@ -3,6 +3,8 @@
 The showcase world is processed by the real pipeline (``wapsi.pipeline.run.process_case`` with the offline
 ``FakeLLM``) when the engine is installed, and falls back to the hand-built bundles in ``wapsi.fixtures.bundles``
 otherwise. Engine modules are imported lazily, inside try/except, so a partial install never breaks a page.
+``WAPSI_DATA_SOURCE`` (``resolve_source`` / ``load_source``) switches to a synthetic parquet world instead: ``demo``
+(``data/generated/demo``) or a path; its cases come from the world's golden set (else ``group_complaints``).
 Editions swap ``ShowcaseDataSource`` for a Snowflake / BigQuery / Postgres-backed implementation of the same
 ``DataSource`` protocol.
 """
@@ -20,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from wapsi.audit.chain import ChainReport, append_event, chain_extend, sha256_hex, verify_chain
 from wapsi.models import (
     Approval,
     ApprovalDecision,
@@ -58,6 +61,7 @@ class Outcome:
     message: str
     unavailable: bool = False  # engine modules missing (not an error; phase 2 wires them)
     bundle: CaseBundle | None = None
+    data: Any = None  # a result object (e.g. the LEA request check)
 
 
 @dataclass
@@ -143,6 +147,123 @@ def build_showcase_bundles(ledger: Any | None = None, *, live: bool = True) -> t
     if live_count == len(fixtures):
         return out, SOURCE_PIPELINE
     return out, SOURCE_FIXTURES if live_count == 0 else SOURCE_MIXED
+
+
+# --------------------------------------------------------------------------- data-source switch
+
+SOURCE_WORLD = "world"
+DATA_SOURCE_ENV = "WAPSI_DATA_SOURCE"  # showcase (default) | demo | <world name> | <path to a parquet world>
+MAX_CASES_ENV = "WAPSI_UI_MAX_CASES"  # cases processed from a world at start-up (0 = all)
+DEFAULT_MAX_CASES = 12
+GENERATED_DIR = REPO_ROOT / "data" / "generated"
+GOLDEN_DIR = REPO_ROOT / "data" / "golden"
+
+
+@dataclass(frozen=True)
+class SourceSpec:
+    """Which case data the UI shows: the hand-computed showcase world, or a synthetic parquet world."""
+
+    kind: str  # "showcase" | "world"
+    key: str  # what WAPSI_DATA_SOURCE / the sidebar switch hold: "showcase", "demo" or a path
+    label: str
+    path: Path | None = None
+
+
+SHOWCASE_SOURCE = SourceSpec("showcase", "showcase", "Showcase world (2 hand-computed cases)")
+
+
+def resolve_source(raw: str | None = None) -> SourceSpec:
+    """``WAPSI_DATA_SOURCE`` (or ``raw``) -> SourceSpec.
+
+    ``""`` / ``showcase`` -> the showcase world; a name such as ``demo`` -> ``data/generated/<name>``; anything else
+    is a path to a parquet world directory (``python -m wapsi.synth --out <dir>``). Raises ``ValueError`` when the
+    world directory does not exist.
+    """
+    raw = (os.environ.get(DATA_SOURCE_ENV, "") if raw is None else raw).strip()
+    if raw.lower() in ("", "showcase"):
+        return SHOWCASE_SOURCE
+    named = GENERATED_DIR / raw
+    path = named if "/" not in raw and "\\" not in raw and named.is_dir() else Path(raw).expanduser()
+    if not path.is_dir():
+        raise ValueError(f"no synthetic world at {path} (run `uv run python -m wapsi.synth --size demo --out {path}`)")
+    path = path.resolve()
+    demo = path.name == "demo" and path.parent == GENERATED_DIR
+    return SourceSpec("world", raw, "Demo world (synthetic)" if demo else f"Synthetic world · {path.name}", path)
+
+
+def available_sources(current: SourceSpec | None = None) -> list[SourceSpec]:
+    """The sources the sidebar switch offers: showcase, the local demo world when generated, and ``current`` (in
+    place of the entry for the same data, so the switch shows the key the session was built from)."""
+    out = [SHOWCASE_SOURCE]
+    if (GENERATED_DIR / "demo" / "transactions.parquet").exists():
+        out.append(resolve_source("demo"))
+    if current is not None:
+        same = [i for i, s in enumerate(out) if (s.kind, s.path) == (current.kind, current.path)]
+        if same:
+            out[same[0]] = current
+        else:
+            out.append(current)
+    return out
+
+
+def world_case_groups(ledger: Any, world_dir: Path, limit: int | None = None) -> list[list[str]]:
+    """NCRP ids per case for a world: the golden set's cases when there is one (``data/golden/<name>/cases.jsonl``
+    for a generated world, else ``<world>/golden/cases.jsonl``), else ``wapsi.pipeline.run.group_complaints`` over
+    every complaint. ``limit`` keeps the first N (``None`` / 0 = all)."""
+    groups: list[list[str]] = []
+    candidates = [world_dir / "golden" / "cases.jsonl"]
+    if world_dir.parent == GENERATED_DIR:  # a committed golden set belongs to the generated world of that name
+        candidates.insert(0, GOLDEN_DIR / world_dir.name / "cases.jsonl")
+    for golden in candidates:
+        if golden.exists():
+            for line in golden.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    groups.append(sorted(json.loads(line)["ncrp_ids"]))
+            break
+    if not groups:
+        group_complaints = _optional("wapsi.pipeline.run", "group_complaints")
+        groups = group_complaints(ledger, ledger.complaints())
+    return groups[:limit] if limit else groups
+
+
+def max_world_cases() -> int | None:
+    raw = os.environ.get(MAX_CASES_ENV, "").strip()
+    try:
+        n = int(raw) if raw else DEFAULT_MAX_CASES
+    except ValueError:
+        log.warning("ignoring invalid %s=%r", MAX_CASES_ENV, raw)
+        n = DEFAULT_MAX_CASES
+    return n if n > 0 else None
+
+
+def build_world_bundles(ledger: Any, groups: list[list[str]]) -> tuple[list[CaseBundle], str]:
+    """(bundles, source) for a synthetic parquet world: every group through the live pipeline with the offline
+    ``FakeLLM``. A case that fails is skipped (logged); there are no hand-built fixtures to fall back to."""
+    process_case = _optional("wapsi.pipeline.run", "process_case")
+    fake_llm_cls = _optional("wapsi.adapters.llm_fake", "FakeLLM")
+    search = doc_search()
+    out: list[CaseBundle] = []
+    for ncrp_ids in groups:
+        try:
+            out.append(process_case(ledger, list(ncrp_ids), llm=fake_llm_cls(), search=search))
+        except Exception:  # noqa: BLE001 - one bad case must not hide the others
+            log.exception("pipeline failed for complaints %s; case skipped", ", ".join(ncrp_ids))
+    return out, SOURCE_WORLD
+
+
+def load_source(spec: SourceSpec, *, live: bool = True) -> tuple[list[CaseBundle], Any, str]:
+    """(bundles, ledger, source) for a data source. The showcase honours ``live`` (pipeline vs fixtures); a
+    world is always processed by the pipeline (``WAPSI_UI_MAX_CASES`` cases, default 12)."""
+    if spec.kind != "world" or spec.path is None:
+        from wapsi.fixtures.showcase import showcase_ledger
+
+        ledger = showcase_ledger()
+        bundles, source = build_showcase_bundles(ledger, live=live)
+        return bundles, ledger, source
+    parquet_ledger = _optional("wapsi.adapters.parquet_ledger", "ParquetLedger")
+    ledger = parquet_ledger(spec.path)
+    bundles, source = build_world_bundles(ledger, world_case_groups(ledger, spec.path, max_world_cases()))
+    return bundles, ledger, source
 
 
 def engine_status() -> EngineStatus:
@@ -245,17 +366,25 @@ def _audit_event(action: str, object_type: str, object_id: str, *, actor: str, r
                       object_id=object_id, details=details)
 
 
+def _chain(bundle: CaseBundle, event: AuditEvent) -> None:
+    """Append ``event`` to the case's hash-chained, append-only audit log (``wapsi.audit``)."""
+    append_event(bundle.audit, event, case_id=bundle.case.case_id)
+
+
 class ShowcaseDataSource:
     """Session-scoped in-memory store over the showcase world; writes (approvals, audit) stay in the session.
 
     ``bundles=None`` builds them with :func:`build_showcase_bundles` (``live`` selects pipeline vs fixtures).
+    A synthetic parquet world (:func:`load_source`) is served the same way: pass its bundles, its ledger,
+    ``source=SOURCE_WORLD`` and a ``label`` for the sidebar.
     """
 
     def __init__(self, bundles: list[CaseBundle] | None = None, ledger: Any | None = None, *,
-                 live: bool = False, source: str | None = None) -> None:
+                 live: bool = False, source: str | None = None, label: str | None = None) -> None:
         if bundles is None:
             bundles, source = build_showcase_bundles(ledger, live=live)
         self.source = source or SOURCE_FIXTURES
+        self.label = label
         self._bundles: dict[str, CaseBundle] = {b.case.case_id: b for b in bundles}
         self._global_audit: list[AuditEvent] = []
         self._ledger = ledger
@@ -320,10 +449,19 @@ class ShowcaseDataSource:
 
     # -- writes
     def append_audit(self, case_id: str | None, event: AuditEvent) -> None:
+        """Append a copy of ``event`` to the case's hash-chained audit log (session-level events such as role
+        switches go to the session's own chain)."""
         if case_id and case_id in self._bundles:
-            self._bundles[case_id].audit.append(event)
+            _chain(self._bundles[case_id], event.model_copy(deep=True))
         else:
-            self._global_audit.append(event)
+            append_event(self._global_audit, event.model_copy(deep=True), case_id=None)
+
+    def verify_audit(self, case_id: str | None) -> ChainReport:
+        """Verify a case's audit chain (``None``: the session's own events)."""
+        if case_id is None:
+            return verify_chain(self._global_audit, case_id=None)
+        bundle = self._bundles[case_id]
+        return verify_chain(bundle.audit, case_id=case_id)
 
     def save_approval(self, case_id: str, *, draft_id: str | None, decision: ApprovalDecision, approver: str,
                       role: str, reason_code: str = "", comment: str = "") -> Outcome:
@@ -379,13 +517,17 @@ class ShowcaseDataSource:
             object_type, object_id, prefix = "plan", case_id, "plan"
 
         now = utcnow()
-        bundle.approvals.append(Approval(
+        approval = Approval(
             approval_id=f"APR-{uuid.uuid4().hex[:10]}", case_id=case_id, draft_id=draft_id, decision=decision,
             approver=approver, role=role, reason_code=reason_code, comment=comment, at=now,
-        ))
-        bundle.audit.append(_audit_event(f"{prefix}_{decision.value.lower()}", object_type, object_id,
-                                         actor=approver, role=role, at=now, reason_code=reason_code,
-                                         comment=comment))
+        )
+        bundle.approvals.append(approval)
+        # the decided content's fingerprint is sealed into the audit chain with the decision
+        fingerprint = ({"plan_sha256": sha256_hex(bundle.plan.model_dump(mode="json"))}
+                       if draft_id is None and bundle.plan is not None else {})
+        _chain(bundle, _audit_event(f"{prefix}_{decision.value.lower()}", object_type, object_id,
+                                    actor=approver, role=role, at=now, reason_code=reason_code,
+                                    comment=comment, approval_id=approval.approval_id, **fingerprint))
         return Outcome(True, _decision_message(decision), bundle=bundle)
 
     def run_pipeline(self, case_id: str, *, actor: str, role: str) -> Outcome:
@@ -400,27 +542,27 @@ class ShowcaseDataSource:
             process_case = _optional("wapsi.pipeline.run", "process_case")
             fake_llm_cls = _optional("wapsi.adapters.llm_fake", "FakeLLM")
         except ImportError as exc:
-            bundle.audit.append(_audit_event("pipeline_unavailable", "case", case_id, actor=actor, role=role,
-                                             missing=str(exc)))
+            _chain(bundle, _audit_event("pipeline_unavailable", "case", case_id, actor=actor, role=role,
+                                        missing=str(exc)))
             return Outcome(False, missing_msg, unavailable=True)
         search = doc_search()
         try:
             fresh = process_case(self.ledger(), list(bundle.case.ncrp_ids), llm=fake_llm_cls(), search=search,
                                  case_id=case_id, assigned_to=bundle.case.assigned_to)
         except ImportError as exc:
-            bundle.audit.append(_audit_event("pipeline_unavailable", "case", case_id, actor=actor, role=role,
-                                             missing=str(exc)))
+            _chain(bundle, _audit_event("pipeline_unavailable", "case", case_id, actor=actor, role=role,
+                                        missing=str(exc)))
             return Outcome(False, missing_msg, unavailable=True)
         except Exception as exc:  # noqa: BLE001
             log.exception("process_case failed for %s", case_id)
-            bundle.audit.append(_audit_event("pipeline_failed", "case", case_id, actor=actor, role=role,
-                                             error=str(exc)))
+            _chain(bundle, _audit_event("pipeline_failed", "case", case_id, actor=actor, role=role,
+                                        error=str(exc)))
             return Outcome(False, f"Drafts couldn't be generated: {exc}")
         fresh.case.opened_at = bundle.case.opened_at
         fresh.approvals = list(bundle.approvals) + list(fresh.approvals)
-        fresh.audit = list(bundle.audit) + list(fresh.audit)
-        fresh.audit.append(_audit_event("pipeline_run", "case", case_id, actor=actor, role=role,
-                                        drafts=len(fresh.drafts)))
+        fresh.audit = chain_extend(bundle.audit, fresh.audit, case_id=case_id)  # history first, one chain
+        _chain(fresh, _audit_event("pipeline_run", "case", case_id, actor=actor, role=role,
+                                   drafts=len(fresh.drafts)))
         self._bundles[case_id] = fresh
         self._clock_cache = {k: v for k, v in self._clock_cache.items() if k[0] != case_id}
         n = len(fresh.drafts)
@@ -429,6 +571,56 @@ class ShowcaseDataSource:
         msg = f"Generated {n} draft{'s' if n != 1 else ''}"
         msg += " — all passed their checks." if failed == 0 else f" — {failed} need attention."
         return Outcome(True, msg, bundle=fresh)
+
+
+    def request_account_level(self, case_id: str, account_id: str, reasons: list[str], *, actor: str, role: str,
+                              note: str = "") -> Outcome:
+        """An officer (maker) requests an exceptional account-level hold; a different supervisor approves it in
+        Approvals. Amount-specific holds stay the default; nothing changes in the plan until then."""
+        bundle = self._bundles.get(case_id)
+        if bundle is None:
+            return Outcome(False, f"Case {case_id} was not found.")
+        if role.lower() == "auditor":
+            return Outcome(False, "Auditors have read-only access.")
+        if not reasons:
+            return Outcome(False, "Record at least one reason from the list before sending the request.")
+        try:
+            request = _optional("wapsi.pipeline.run", "request_account_level_hold")
+        except ImportError:
+            return Outcome(False, "Account-level requests aren't available in this build.", unavailable=True)
+        work = bundle.model_copy(deep=True)
+        try:
+            draft = request(work, self.ledger(), account_id, list(reasons), requested_by=actor, role=role.lower(),
+                            note=note, search=doc_search())
+        except PermissionError as exc:
+            return Outcome(False, f"Not allowed: {exc}")
+        except (KeyError, ValueError) as exc:
+            return Outcome(False, f"Can't request it: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("request_account_level_hold failed")
+            return Outcome(False, f"The request couldn't be recorded: {exc}")
+        self._bundles[case_id] = work
+        return Outcome(True, "Request recorded. A supervisor other than you decides on it in Approvals.",
+                       bundle=work, data=draft)
+
+    def check_lea_request(self, case_id: str, request: Any, *, actor: str, role: str) -> Outcome:
+        """Check a police / LEA hold request against the eight-field checklist (``wapsi.verify.lea_request``);
+        the result (``Outcome.data``) is recorded as an audit event. The plan is never changed."""
+        bundle = self._bundles.get(case_id)
+        if bundle is None:
+            return Outcome(False, f"Case {case_id} was not found.")
+        try:
+            check_lea = _optional("wapsi.pipeline.run", "check_lea")
+        except ImportError:
+            return Outcome(False, "The LEA request check isn't available in this build.", unavailable=True)
+        try:
+            result = check_lea(bundle, request, self.ledger(), now=now_for_ui(), actor=actor, role=role.lower())
+        except Exception as exc:  # noqa: BLE001
+            log.exception("check_lea failed")
+            return Outcome(False, f"The request couldn't be checked: {exc}")
+        msg = ("Every checklist field is present." if result.complete
+               else f"{len(result.missing)} of 8 checklist fields missing or unclear.")
+        return Outcome(True, msg, bundle=bundle, data=result)
 
 
 FixtureDataSource = ShowcaseDataSource  # backwards-compatible name

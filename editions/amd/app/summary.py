@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from wapsi.models import CaseBundle
+from wapsi.verify.report import code_of, text_of
 
 
 def case_timings(bundle: CaseBundle) -> dict[str, float]:
@@ -19,7 +20,8 @@ def failed_checks(bundle: CaseBundle) -> list[dict[str, str]]:
     for draft_id, rep in bundle.verifications.items():
         for c in rep.checks:
             if not c.passed and c.severity == "error":
-                out.append({"draft_id": draft_id, "check": c.name, "message": c.message[:300]})
+                out.append({"draft_id": draft_id, "check": c.name, "code": code_of(c),
+                            "message": text_of(c)[:300]})
     return out
 
 

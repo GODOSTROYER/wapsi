@@ -1,0 +1,50 @@
+{#- Reply to a police / LEA hold request (wapsi.verify.lea_request): the hold is limited to the disputed amount the
+    bank can identify on the money trail, and missing checklist fields are asked for. Numbers come from the request
+    and the case data (`c`); typed-in text is neutralised before it reaches this template. -#}
+# Reply to hold request {{ c.request_id }}{{ c.title_suffix }}
+
+- **To:** {{ c.to_line }}
+- **From:** Nodal Officer (Cyber Fraud Cell), {{ c.bank_name }}
+- **Your reference:** {{ c.ref_line }}
+
+## Hold
+
+{% if c.has_identifiable %}
+The bank will hold {{ c.identifiable }} in A/c No. {{ c.account_id }}, subject to the nodal officer's approval: the disputed amount it can identify on the money trail ({{ c.basis }}) [SOP-9-1] [SOP-ANNEX-I].
+{% else %}
+No amount can be held on this request yet: the bank cannot identify the disputed amount from the details received ({{ c.basis }}) [SOP-9-1].
+{% endif %}
+{% if c.over_requested %}
+
+The request asks for {{ c.requested }}; only the identifiable amount above is held, because the rest cannot be tied to victim money still in the account.
+{% endif %}
+{% if c.asks_account_level %}
+
+The request asks for action on the whole account. Holds are amount-specific by default, and unwarranted orders freezing accounts are discouraged [SOP-5-IX]. Account-level action is taken only as a recorded exception approved by a supervisor; please state the specific amount, or send an order that specifies account-level action and its grounds.
+{% endif %}
+{% if c.matched_utrs %}
+
+- Disputed credits identified on the trail: UTR/TRX ID {{ c.matched_utrs }}.
+{% endif %}
+{% if c.unmatched_utrs %}
+- References not found as credits into the account on the trail: {{ c.unmatched_utrs }}.
+{% endif %}
+
+{% if c.complete %}
+## Details
+
+The request carries every detail the bank needs: complaint reference, requesting officer and rank, jurisdiction, account number, amount, transaction references, legal provision, and date and validity.
+{% else %}
+## Details needed
+
+Please send the following so that the hold can be reviewed:
+
+{% for m in c.missing %}
+- {{ m.label }}: {{ m.problem }}.
+{% endfor %}
+{% endif %}
+
+The request is handled under the notice procedure of Section 168 read with Section 94 BNSS that the SOP sets out [BNSS-168] [BNSS-94].
+
+Nodal Officer (Cyber Fraud Cell)
+{{ c.bank_name }}

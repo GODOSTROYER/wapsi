@@ -8,7 +8,12 @@ Every draft carries ``structured["skeleton"]``: its title and body with ``⟦slo
 inserted (templates, prose and cleaned free text alike). The body is exactly the skeleton filled with the slot
 values, which lets the verifier bind each value to its position.
 
-Innocent holders (SOP 5(xii)) are never identified in the STR, whichever bank holds the account.
+Innocent holders (SOP 5(xii)), bona fide recipients and unwitting conduits alike, are never identified in the
+STR, whichever bank holds the account: there is no automatic STR on them. For a conduit the hold instruction, EDD
+memo and CFCFRMS update recommend an STR for the officer's decision.
+
+``draft_account_level_request`` drafts an officer's request for an exceptional account-level hold (amount-specific
+holds are the default); a supervisor approves it through ``wapsi.pipeline.run.approve``.
 """
 
 from __future__ import annotations
@@ -50,8 +55,10 @@ from wapsi.draft.render import (
 )
 from wapsi.models import (
     HOLDING_DISPOSITIONS,
+    INNOCENT_ROLES,
     INTERMEDIARY_ACCOUNT_TYPES,
     Account,
+    AccountLevelReason,
     AccountState,
     ApportionmentRule,
     Bank,
@@ -83,9 +90,19 @@ HOLD_DRAFT_DISPOSITIONS = frozenset(
         Disposition.HOLD_IN_POOL,
         Disposition.HOLD_AMOUNT_INTERMEDIARY,
         Disposition.FORWARD_HOLD,
+        Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD,
     }
 )
 ESCALATION_CODE = "ESCALATE_S106_CANDIDATE"
+STR_RECOMMENDED_CODE = "STR_RECOMMENDED_OFFICER_DECISION"
+# officer's request for an exceptional account-level hold: only on amount-specific holds of home-bank accounts
+ACCOUNT_LEVEL_BASE = frozenset({Disposition.HOLD_AMOUNT, Disposition.HOLD_AMOUNT_NO_ESCALATION})
+ACCOUNT_LEVEL_REASON_TEXT = {
+    AccountLevelReason.FRAUDSTER_CONTROLLED_ACCOUNT: "the account is wholly controlled by the fraudster",
+    AccountLevelReason.CONTINUING_FRAUD_EVIDENCE: "there is evidence that the fraud is continuing through the account",
+    AccountLevelReason.LEA_ORDER_ACCOUNT_LEVEL: "an order of the Law Enforcement Agency specifies account-level action",
+    AccountLevelReason.IDENTITY_THEFT_ACCOUNT: "the account was opened or is operated with a stolen identity",
+}
 STR_SUBJECT_ROLES = frozenset({Role.MULE, Role.UNKNOWN})
 NON_STR_DISPOSITIONS = frozenset(
     {
@@ -108,10 +125,13 @@ ACTION_TEXT = {
     Disposition.CASHED_OUT: "cashed out; nothing left to hold",
     Disposition.ESCALATE_S106_CANDIDATE: "escalation candidate; human decision required [BNSS-106]",
     Disposition.NO_ACTION: "no action",
+    Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD: "exceptional account-level hold on recorded reasons, supervisor-approved; "
+    "the amount-specific hold stays the recoverable amount [SOP-5-IX]",
 }
 INNOCENT_LABEL = "account operated without the holder's knowledge"
 MASK_LABEL = {
-    Role.INNOCENT_HOLDER: INNOCENT_LABEL,
+    Role.BONA_FIDE_RECIPIENT: INNOCENT_LABEL,
+    Role.UNWITTING_CONDUIT: INNOCENT_LABEL,
     Role.MERCHANT: "merchant account",
     Role.INTERMEDIARY: "nodal / pool / escrow account",
     Role.VICTIM: "victim account",
@@ -154,6 +174,7 @@ class _Ctx:
     ledger: Ledger
     llm: LLM
     block_untrusted_copy: bool = True
+    prose_log: list[prose_mod.ProseExchange] | None = None
     trace: TraceResult = field(init=False)
     plan: HoldPlan = field(init=False)
 
@@ -238,12 +259,17 @@ class _Ctx:
 
     def is_innocent(self, acct: str) -> bool:
         """Innocent holder by classification or by plan decision (same test as the verifier)."""
-        if self.role(acct) == Role.INNOCENT_HOLDER:
+        if self.role(acct) in INNOCENT_ROLES:
             return True
         d = self.decisions.get(acct)
         return d is not None and (
-            d.role == Role.INNOCENT_HOLDER or d.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION
+            d.role in INNOCENT_ROLES or d.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION
         )
+
+    def is_conduit(self, acct: str) -> bool:
+        """Used as a pass-through by someone else: STR recommended for the officer's decision, never automatic."""
+        d = self.decisions.get(acct)
+        return self.role(acct) == Role.UNWITTING_CONDUIT or (d is not None and STR_RECOMMENDED_CODE in d.reason_codes)
 
     def mask_label(self, acct: str) -> str:
         if self.is_innocent(acct):
@@ -320,6 +346,9 @@ class _Ctx:
         citation_ids = checked_citations(f"{title}\n{body}")
         if outcome is not None:
             structured.update(outcome.structured())
+            for ex in self.prose_log or ():
+                if ex.outcome is outcome:
+                    ex.draft_id, ex.kind, ex.account_id = draft_id(self.case_id, kind, acct), kind.value, acct
         if self.warnings:
             structured["drafter_warnings"] = list(self.warnings)
         structured["skeleton"] = {"title": title_skeleton, "body": body_skeleton}
@@ -345,6 +374,7 @@ class _Ctx:
             slots,
             self.narratives,
             block_untrusted_copy=self.block_untrusted_copy,
+            log=self.prose_log,
         )
 
 
@@ -382,6 +412,8 @@ def _hold_instruction(cx: _Ctx, dec: HoldDecision) -> Draft:
         "intermediary_label": _intermediary_label(cx.trace.accounts.get(acct)),
         "has_forward_hold": dec.forward_hold_amount > 0,
         "is_innocent": dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION,
+        "is_conduit": dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION and cx.is_conduit(acct),
+        "account_level": dec.disposition == Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD,
         "escalate": escalate,
         "escalation_basis": cx.escalation_basis(acct) if escalate else "",
         "requires_human": dec.requires_human,
@@ -462,6 +494,7 @@ def _edd_memo(cx: _Ctx, dec: HoldDecision) -> Draft:
         if devices
         else False
     )
+    conduit = cx.is_conduit(acct)
     outcome = cx.prose(prose_mod.EDD_TASK, acct, slots)
     c = {
         "case_id": cx.case_id,
@@ -475,11 +508,16 @@ def _edd_memo(cx: _Ctx, dec: HoldDecision) -> Draft:
         "fri": sig.fri_risk.value if sig else "not available",
         "prior_reports": words(sig.ncrp_prior_reports, zero="none") if sig else "not available",
         "shared_device": shared,
+        "is_conduit": conduit,
     }
     structured = {
         "account_id": acct,
-        "assessment": Role.INNOCENT_HOLDER.value,
-        "recommendation": "HOLD_NO_ESCALATION_NO_STR",
+        # bona fide recipient keeps the legacy value INNOCENT_HOLDER (Role.BONA_FIDE_RECIPIENT)
+        "assessment": (Role.UNWITTING_CONDUIT if conduit else Role.BONA_FIDE_RECIPIENT).value,
+        "recommendation": "HOLD_NO_ESCALATION_STR_OFFICER_DECISION" if conduit else "HOLD_NO_ESCALATION_NO_STR",
+        # no automatic STR; the officer decides; STR recommended where the account was used as a conduit
+        "str_recommended": conduit,
+        "str_decision": "OFFICER",
         "grievance_advised": True,
         "timelines_days": {
             "grievance_filing": 7,
@@ -550,6 +588,8 @@ def _cfcfrms_update(cx: _Ctx) -> Draft:
         flag = ""
         if cx.is_escalation(d):
             flag = "s.106 escalation flag: human decision required"
+        elif d.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION and cx.is_conduit(d.account_id):
+            flag = "unwitting conduit: STR recommended, the officer decides; no automatic STR"
         elif d.requires_human:
             flag = "human review required"
         rows.append(
@@ -558,7 +598,7 @@ def _cfcfrms_update(cx: _Ctx) -> Draft:
                 "has_state": st is not None,
                 "bank_text": d.bank_id,
                 "layer_word": ordinal(d.layer),
-                "role": cx.role(d.account_id).value,
+                "role": cx.role(d.account_id).name,  # BONA_FIDE_RECIPIENT (wire value INNOCENT_HOLDER)
                 "amount_kind": amount_kind,
                 "has_fwd": d.forward_hold_amount > 0,
                 "action": ACTION_TEXT.get(d.disposition, d.disposition.value),
@@ -1061,20 +1101,26 @@ def draft_case(
     search: DocSearch | None = None,
     *,
     block_untrusted_copy: bool = True,
+    prose_log: list[prose_mod.ProseExchange] | None = None,
 ) -> list[Draft]:
     """Draft every document the plan calls for (docs/draft-contract.md, "Draft kinds per decision").
 
     ``block_untrusted_copy=False`` lets LLM prose that repeats complaint text through (for evaluating the
     verifier's injection check); by default such prose is rejected and replaced by the fallback paragraph.
+
+    ``prose_log``: pass a list to also get the LLM prose requests and responses: one
+    ``wapsi.draft.prose.ProseExchange`` per prose field (request, every call, outcome), tagged with the
+    ``draft_id`` / ``kind`` / ``account_id`` of the draft that used it. The drafts themselves are unchanged.
     """
-    cx = _Ctx(bundle, ledger, llm, block_untrusted_copy=block_untrusted_copy)
+    cx = _Ctx(bundle, ledger, llm, block_untrusted_copy=block_untrusted_copy, prose_log=prose_log)
     drafts: list[Draft] = []
     for dec in cx.ordered:
         if dec.layer == 0:
             continue
         if dec.disposition in HOLD_DRAFT_DISPOSITIONS:
             drafts.append(_hold_instruction(cx, dec))
-            drafts.append(_customer_notice(cx, dec))
+            if dec.disposition != Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD:  # the officer informs the holder
+                drafts.append(_customer_notice(cx, dec))
             if dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION:
                 drafts.append(_edd_memo(cx, dec))
         elif dec.disposition == Disposition.OUTBOUND_CFCFRMS_REQUEST:
@@ -1086,3 +1132,122 @@ def draft_case(
     if search is not None:
         _attach_quotes(drafts, search)
     return drafts
+
+
+# --------------------------------------------------------------------------- exceptional account-level hold
+
+
+def draft_account_level_request(
+    bundle: CaseBundle,
+    ledger: Ledger,
+    account_id: str,
+    reasons: list[AccountLevelReason | str],
+    *,
+    requested_by: str,
+    requester_role: str = "analyst",
+    note: str = "",
+    search: DocSearch | None = None,
+) -> Draft:
+    """Draft an officer's request for an exceptional account-level hold on ``account_id``.
+
+    Amount-specific holds are the default (SOP 5(ix), 9.1); account-level action is only a recorded exception. The
+    request needs >= 1 reason from the closed ``AccountLevelReason`` list and an eligible account (a home-bank
+    account whose plan decision is an amount-specific hold; never nodal / pool / escrow, merchant, other-bank or
+    victim accounts). Nothing changes in the plan until a supervisor other than ``requested_by`` approves the draft
+    with ``wapsi.pipeline.run.approve`` (maker-checker, bound to the draft's SHA-256 fingerprint).
+    Raises ``ValueError`` for a missing / unknown reason or an ineligible account.
+    """
+    from wapsi.graph.holdplan import account_level_block, account_level_reasons
+
+    recorded = account_level_reasons(reasons)
+    if not requested_by or not requested_by.strip():
+        raise ValueError("the request must name the requesting officer")
+    cx = _Ctx(bundle, ledger, None)  # type: ignore[arg-type]  # no LLM prose in this draft
+    dec = cx.decisions.get(account_id)
+    why = account_level_block(dec, cx.trace.accounts.get(account_id))
+    if why is not None or dec is None:
+        raise ValueError(f"{account_id}: {why or 'no plan decision'}")
+    slots = TrackingSlots(cx.account_pool(account_id))
+    clean = cx.cleaner(slots)
+    c = {
+        "case_id": cx.case_id,
+        "home_bank_name": cx.home_bank_name,
+        "requested_by": clean(requested_by.strip()[:80]),
+        "requester_role": clean(requester_role.strip()[:40] or "officer"),
+        "reasons": [{"code": r.value, "text": ACCOUNT_LEVEL_REASON_TEXT[r]} for r in recorded],
+        "note": clean(" ".join(note.split())[:400]) if note and note.strip() else "",
+        "is_innocent": cx.is_innocent(account_id),
+    }
+    structured = {
+        "account_id": account_id,
+        "reasons": [r.value for r in recorded],
+        "requested_by": requested_by.strip(),
+        "requester_role": requester_role.strip() or "officer",
+        "note": unmark(c["note"], slots) if c["note"] else "",  # cleaned like the body
+        "base_disposition": dec.disposition.value,
+        "hold_amount": r2(dec.hold_amount),
+        "balance_now": r2(dec.balance_now),
+        "supervisor_approval_required": True,
+        "maker_checker": "the requesting officer cannot approve the request",
+    }
+    previous = [
+        d for d in bundle.drafts if d.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST and d.account_id == account_id
+    ]
+    draft = cx.make(
+        DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST,
+        account_id,
+        "Exceptional account-level hold request: ⟦account_id⟧",
+        "account_level_request.j2",
+        slots,
+        c,
+        structured,
+    )
+    if previous:  # a new request after an earlier one (e.g. rejected) is a new version with its own id
+        version = max(d.version for d in previous) + 1
+        draft = draft.model_copy(update={"draft_id": f"{draft.draft_id}-v{version}", "version": version})
+    if search is not None:
+        _attach_quotes([draft], search)
+    return draft
+
+
+def redraft_hold_instruction(
+    bundle: CaseBundle, ledger: Ledger, account_id: str, search: DocSearch | None = None
+) -> Draft:
+    """A new version of the hold instruction for ``account_id`` from the current plan (after an approved
+    account-level exception changed its decision). Same draft id, ``version`` + 1; it needs a fresh approval."""
+    cx = _Ctx(bundle, ledger, None)  # type: ignore[arg-type]  # hold instructions carry no LLM prose
+    dec = cx.decisions.get(account_id)
+    if dec is None or dec.disposition not in HOLD_DRAFT_DISPOSITIONS:
+        raise ValueError(f"{account_id}: no holding decision to draft a hold instruction for")
+    draft = _hold_instruction(cx, dec)
+    versions = [d.version for d in bundle.drafts if d.draft_id == draft.draft_id]
+    draft = draft.model_copy(update={"version": max(versions, default=0) + 1})
+    if search is not None:
+        _attach_quotes([draft], search)
+    return draft
+
+
+class _TemplateProseOnly:
+    """LLM stand-in for a redraft made outside a pipeline run (no model is at hand when a supervisor approves an
+    exception): every call fails, so each prose field gets its deterministic fallback paragraph
+    (``wapsi.draft.prose``), recorded as ``llm_fallback`` in the draft."""
+
+    name = "template-fallback"
+
+    def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
+        raise RuntimeError("no LLM for this redraft; the fallback paragraph is used")
+
+
+def redraft_cfcfrms_update(
+    bundle: CaseBundle, ledger: Ledger, *, llm: LLM | None = None, search: DocSearch | None = None
+) -> Draft:
+    """A new version of the case-level CFCFRMS update from the current plan (its per-account rows carry each
+    decision's disposition, so an approved account-level exception changes it). Same draft id, ``version`` + 1; it
+    needs a fresh approval. Without ``llm`` the case summary is the deterministic fallback paragraph."""
+    cx = _Ctx(bundle, ledger, llm or _TemplateProseOnly())  # type: ignore[arg-type]
+    draft = _cfcfrms_update(cx)
+    versions = [d.version for d in bundle.drafts if d.draft_id == draft.draft_id]
+    draft = draft.model_copy(update={"version": max(versions, default=0) + 1})
+    if search is not None:
+        _attach_quotes([draft], search)
+    return draft

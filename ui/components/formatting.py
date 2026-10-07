@@ -14,6 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 
 from wapsi.models import (
+    AccountLevelReason,
     AccountType,
     ApportionmentRule,
     ApprovalDecision,
@@ -140,12 +141,16 @@ DISPOSITION_LABELS: dict[Disposition, str] = {
     Disposition.CASHED_OUT: "Cashed out",
     Disposition.ESCALATE_S106_CANDIDATE: "s.106 escalation candidate",
     Disposition.NO_ACTION: "No action",
+    # never automatic: an officer's recorded reasons plus a supervisor's approval (SOP Para 5(ix), 9.1)
+    Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD: "Account-level hold · approved exception",
 }
 
 ROLE_LABELS: dict[Role, str] = {
     Role.VICTIM: "Victim",
     Role.MULE: "Suspected mule",
-    Role.INNOCENT_HOLDER: "Possible innocent holder",
+    # SOP Para 5(xii), split in two (Role.INNOCENT_HOLDER is the legacy alias of BONA_FIDE_RECIPIENT)
+    Role.BONA_FIDE_RECIPIENT: "Possible innocent holder · bona fide recipient",
+    Role.UNWITTING_CONDUIT: "Possible innocent holder · unwitting conduit",
     Role.MERCHANT: "Merchant",
     Role.INTERMEDIARY: "Pool / nodal account",
     Role.LEGIT: "Legitimate",
@@ -160,6 +165,7 @@ DRAFT_KIND_LABELS: dict[DraftKind, str] = {
     DraftKind.OUTBOUND_REQUEST: "CFCFRMS requests",
     DraftKind.CFCFRMS_UPDATE: "CFCFRMS update",
     DraftKind.CUSTOMER_NOTICE: "Customer notice",
+    DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST: "Account-level hold request",
 }
 DRAFT_KIND_ORDER: list[DraftKind] = list(DRAFT_KIND_LABELS)
 
@@ -171,6 +177,7 @@ CLOCK_KIND_LABELS: dict[ClockKind, str] = {
     ClockKind.BANK_DATA: "Bank data to LEA",
     ClockKind.HOLD_LAPSE: "Hold lapses",
     ClockKind.HOLD_LAPSE_WARNING: "Tell LEA before hold lapses",
+    ClockKind.FORWARD_HOLD_REVIEW: "Review forward hold",
     ClockKind.P1_NOTICE: "IO notice to holder",
     ClockKind.P1_REPLY: "Holder reply",
     ClockKind.P1_REMIT: "Bank remits to victim",
@@ -259,11 +266,28 @@ CHECK_LABELS: dict[str, str] = {
 }
 CHECK_ORDER = ["numeric", "citations", "policy", "injection"]
 
+# closed list of reasons an officer may record for an exceptional account-level hold
+ACCOUNT_LEVEL_REASON_LABELS: dict[AccountLevelReason, str] = {
+    AccountLevelReason.FRAUDSTER_CONTROLLED_ACCOUNT: "Account wholly controlled by the fraudster",
+    AccountLevelReason.CONTINUING_FRAUD_EVIDENCE: "Evidence that the fraud is continuing through the account",
+    AccountLevelReason.LEA_ORDER_ACCOUNT_LEVEL: "LEA order that specifies account-level action",
+    AccountLevelReason.IDENTITY_THEFT_ACCOUNT: "Account opened or operated with a stolen identity",
+}
+
 REASON_CODE_LABELS: dict[str, str] = {
     "FORWARD_HOLD_FIRST_LAYER": "Forward hold on future credits (first-layer account)",
     "ESCALATE_S106_CANDIDATE": "s.106 escalation candidate: FIR and 2+ earlier reports — human decision",
     **{d.value: label for d, label in DISPOSITION_LABELS.items()},
+    "UNWITTING_CONDUIT": "Unwitting conduit: the account was used as a pass-through by someone else",
+    "STR_RECOMMENDED_OFFICER_DECISION": "STR recommended — no automatic STR; the officer decides",
+    "OFFICER_REQUESTED_EXCEPTION": "Account-level hold requested by an officer",
+    "SUPERVISOR_APPROVED_EXCEPTION": "Account-level hold approved by a supervisor",
+    **{r.value: label for r, label in ACCOUNT_LEVEL_REASON_LABELS.items()},
 }
+
+# Wapsi is not connected to the CFCFRMS portal: every CFCFRMS action it shows is prepared, not sent
+SIMULATED_CFCFRMS_NOTE = ("Simulated CFCFRMS interface: Wapsi prepares CFCFRMS updates and requests and records "
+                          "them here; nothing is sent to the portal until the nodal officer submits it there.")
 
 APPROVAL_REASON_LABELS: dict[ApprovalDecision, dict[str, str]] = {
     ApprovalDecision.APPROVED: {
@@ -305,6 +329,15 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     "action_done": "Action recorded",
     "action_pending": "Action queued",
     "action_failed": "Action failed",
+    "account_level_hold_requested": "Account-level hold requested",
+    "account_level_hold_applied": "Account-level hold applied (approved exception)",
+    "draft_withdrawn": "Draft withdrawn",
+    "draft_verified": "Draft checked",
+    "lea_request_checked": "Police / LEA hold request checked",
+    "trace_built": "Money trail traced",
+    "hold_plan_built": "Hold plan built",
+    "draft_created": "Draft created",
+    "audit_chain_verified": "Audit chain verified",
 }
 
 _ALL_MAPS: tuple[dict, ...] = (

@@ -127,3 +127,24 @@ def test_checkpoint_feature_drift_is_rejected(setup):
     scorer = GnnScorer.load(ck, ledger=ledger)
     with pytest.raises(ValueError):
         GnnScorer(scorer.model, {**scorer.config, "node_columns": ["x"]}, ledger)
+
+
+def test_classify_trace_hook_binds_a_copy_to_the_trace(setup, monkeypatch):
+    ledger, traces, ck = setup
+    scorer = GnnScorer.load(ck, ledger=ledger)
+    trace = traces[0]
+    feats = trace_seed_features(ledger, trace)
+    bound = scorer.bind_trace(ledger, trace)
+    assert bound is not scorer and bound.model is scorer.model and bound.ledger is ledger
+    assert bound._bound == anchor_from_trace(trace)
+    assert scorer._bound is None  # the shared scorer is untouched
+    pd.testing.assert_series_equal(bound.score(feats), GnnScorer.for_trace(ck, ledger, trace).score(feats))
+    assert scorer.last_graph() is None
+    inferred = scorer.score(feats).to_dict()  # unbound: the window is inferred from the complaints
+
+    def no_inference(self, idset):
+        raise AssertionError("classify_trace should hand the scorer its trace, not make it infer the window")
+
+    monkeypatch.setattr(GnnScorer, "_anchor_from_complaints", no_inference)
+    res = classify_trace(ledger, trace, ClassifyConfig(), model=scorer)
+    assert {a: r.score for a, r in res.items()} == pytest.approx(inferred, abs=1e-4)

@@ -11,8 +11,16 @@
   look rows up by index. ``contributions`` must return log-odds-like per-feature (or per-neighbour, mapped to a
   feature name) contributions so ``wapsi.classify.explain`` can render reasons.
 
+Optional trace hook (``TraceAwareScorer``): a scorer that needs the case itself (window, layers, burst anchors), such
+as a graph model, can define ``bind_trace(ledger, trace) -> Scorer``. ``classify_trace`` calls it once per case,
+before scoring, and scores with the scorer it returns (``self`` after binding, or a bound copy so a shared scorer is
+not mutated). Scorers without the method are used as given, so the hook changes nothing for them.
+
 Contribution convention: DataFrame with the same index as ``features_df``; one column per feature name plus a
 ``bias`` column; values are additive log-odds; positive pushes towards MULE, negative towards a legitimate profile.
+A graph model may add a ``graph_neighbourhood`` column (``GRAPH_NEIGHBOURHOOD``): what the account's position in the
+transaction graph adds on top of its own features. ``wapsi.classify.explain`` renders it as one sentence; any other
+extra column (e.g. an integration residual) is ignored by the reasons but still counts towards the row's sum.
 """
 
 from __future__ import annotations
@@ -32,7 +40,12 @@ from wapsi.models import Role
 if TYPE_CHECKING:  # pragma: no cover
     import xgboost as xgb
 
+    from wapsi.models import TraceResult
+    from wapsi.ports import Ledger
+
 BIAS = "bias"
+GRAPH_NEIGHBOURHOOD = "graph_neighbourhood"  # optional contribution column of graph models
+TRACE_HOOK = "bind_trace"  # optional scorer method, see ``TraceAwareScorer``
 
 
 @runtime_checkable
@@ -46,6 +59,24 @@ class Scorer(Protocol):
     def contributions(self, features: pd.DataFrame) -> pd.DataFrame:
         """Additive log-odds contributions per feature (+ ``bias``); positive = towards MULE."""
         ...
+
+
+@runtime_checkable
+class TraceAwareScorer(Scorer, Protocol):
+    """A ``Scorer`` that wants the case's ``TraceResult`` before scoring (optional extension)."""
+
+    def bind_trace(self, ledger: Ledger, trace: TraceResult) -> Scorer:
+        """Return the scorer to use for this trace's accounts (``self`` after binding, or a bound copy)."""
+        ...
+
+
+def scorer_for_trace(scorer: Scorer, ledger: Ledger, trace: TraceResult) -> Scorer:
+    """``scorer.bind_trace(ledger, trace)`` if the scorer has the hook (a ``None`` result keeps it), else it."""
+    hook = getattr(scorer, TRACE_HOOK, None)
+    if not callable(hook):
+        return scorer
+    bound = hook(ledger, trace)
+    return scorer if bound is None else bound
 
 
 # --------------------------------------------------------------------------- heuristic

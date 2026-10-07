@@ -9,7 +9,13 @@ Plan level (``check_plan``) and draft level (``check_draft_policy``):
 - forward hold only on first-layer accounts (SOP 9.1(i))
 - merchant with delivered goods is never held (SOP 9.2); a merchant is update-only (``NO_HOLD_UPDATE_ONLY``) only
   when every tainted payment into it has an invoice and all of them are DELIVERED
-- innocent holders (SOP 5(xii)) are never flagged for s.106 escalation and never named in the STR
+- innocent holders (SOP 5(xii)), bona fide recipients and unwitting conduits alike, are never flagged for s.106
+  escalation and never named in an (automatic) STR; a conduit's decision recommends an STR for the officer's
+  decision (``STR_RECOMMENDED_OFFICER_DECISION``, ``requires_human``), a bona fide recipient's never does
+- ``EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`` (amount-specific holds are the default; account-level action only as a
+  recorded, supervisor-approved exception): >= 1 ``AccountLevelReason`` in the reason codes, an officer request
+  (``ACCOUNT_LEVEL_HOLD_REQUEST`` draft) with the same reasons, a supervisor approval bound to that request's exact
+  content (SHA-256, maker != checker), a human, a home-bank non-intermediary non-merchant account
 - the s.106 escalation flag needs an FIR, >= ``cfg.escalation_min_prior_reports`` prior reports and a human
 - a STR names a ``StrGround`` in both its structured payload and its body (PML Rules 2(1)(g))
 - HOLD_INSTRUCTION / CUSTOMER_NOTICE only for holding dispositions
@@ -32,9 +38,13 @@ from wapsi import money
 from wapsi.config import WapsiConfig
 from wapsi.models import (
     HOLDING_DISPOSITIONS,
+    INNOCENT_ROLES,
     INTERMEDIARY_ACCOUNT_TYPES,
+    AccountLevelReason,
     AccountState,
     AccountType,
+    Approval,
+    ApprovalDecision,
     CaseBundle,
     CheckResult,
     Complaint,
@@ -55,6 +65,12 @@ EPS = money.EPSILON
 ESCALATE = "ESCALATE_S106_CANDIDATE"
 INTERMEDIARY_CITE = "SOP-9-1-III"
 INTERMEDIARY_IDLE = frozenset({Disposition.NO_ACTION, Disposition.CASHED_OUT})
+# innocent-holder split (the verifier keeps its own copies of the plan's reason codes)
+STR_RECOMMENDED = "STR_RECOMMENDED_OFFICER_DECISION"
+# exceptional account-level hold
+ACCOUNT_LEVEL = Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD
+ACCOUNT_LEVEL_CODES = frozenset(r.value for r in AccountLevelReason)
+ACCOUNT_LEVEL_BASE = frozenset({Disposition.HOLD_AMOUNT, Disposition.HOLD_AMOUNT_NO_ESCALATION})
 
 HOLD_DRAFT_DISPOSITIONS = HOLDING_DISPOSITIONS | {Disposition.FORWARD_HOLD}
 CASE_LEVEL_KINDS = {DraftKind.STR, DraftKind.CFCFRMS_UPDATE, DraftKind.RESTORATION_PACK}
@@ -63,6 +79,7 @@ ACCOUNT_KINDS = {
     DraftKind.CUSTOMER_NOTICE,
     DraftKind.EDD_MEMO,
     DraftKind.OUTBOUND_REQUEST,
+    DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST,
 }
 
 fmt = money.fmt_inr
@@ -92,10 +109,10 @@ def role_of(bundle: CaseBundle, acct: str, dec: HoldDecision | None = None) -> R
 
 def is_innocent(bundle: CaseBundle, acct: str, dec: HoldDecision | None = None) -> bool:
     cls = bundle.classifications.get(acct)
-    if cls is not None and cls.role == Role.INNOCENT_HOLDER:
+    if cls is not None and cls.role in INNOCENT_ROLES:
         return True
     return dec is not None and (
-        dec.role == Role.INNOCENT_HOLDER or dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION
+        dec.role in INNOCENT_ROLES or dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION
     )
 
 
@@ -108,7 +125,7 @@ def is_intermediary(bundle: CaseBundle, st: AccountState, dec: HoldDecision | No
 
 
 def innocent_accounts(bundle: CaseBundle) -> set[str]:
-    out = {a for a, c in bundle.classifications.items() if c.role == Role.INNOCENT_HOLDER}
+    out = {a for a, c in bundle.classifications.items() if c.role in INNOCENT_ROLES}
     if bundle.plan is not None:
         out |= {d.account_id for d in bundle.plan.decisions if is_innocent(bundle, d.account_id, d)}
     return out
@@ -118,6 +135,140 @@ def _decision(bundle: CaseBundle, acct: str | None) -> HoldDecision | None:
     if bundle.plan is None or acct is None:
         return None
     return next((d for d in bundle.plan.decisions if d.account_id == acct), None)
+
+
+# --------------------------------------------------------------------------- exceptional account-level hold
+
+
+def recorded_reasons(values: Iterable[object]) -> list[str]:
+    """The values that are on the closed ``AccountLevelReason`` list (order kept)."""
+    return list(dict.fromkeys(str(v) for v in values if str(v) in ACCOUNT_LEVEL_CODES))
+
+
+def account_level_requests(bundle: CaseBundle, acct: str) -> list[Draft]:
+    """The officer requests (``ACCOUNT_LEVEL_HOLD_REQUEST`` drafts) for ``acct``, newest first."""
+    found = [d for d in bundle.drafts if d.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST and d.account_id == acct]
+    return sorted(found, key=lambda d: (d.version, d.created_at), reverse=True)
+
+
+def account_level_request(bundle: CaseBundle, acct: str) -> Draft | None:
+    """The latest officer request (``ACCOUNT_LEVEL_HOLD_REQUEST`` draft) for ``acct``."""
+    found = account_level_requests(bundle, acct)
+    return found[0] if found else None
+
+
+def _latest_approval(bundle: CaseBundle, draft_id: str) -> Approval | None:
+    return next((a for a in reversed(bundle.approvals) if a.draft_id == draft_id), None)
+
+
+def _request_approval_problem(bundle: CaseBundle, req: Draft) -> tuple[Approval | None, str]:
+    from wapsi.pipeline.run import draft_fingerprint  # same fingerprint the approval step records
+
+    appr = _latest_approval(bundle, req.draft_id)
+    if appr is None or appr.decision != ApprovalDecision.APPROVED:
+        return None, f"the officer's request {req.draft_id} has not been approved by a supervisor"
+    if appr.role.strip().lower() != "supervisor":
+        return None, f"{req.draft_id} was approved in the role '{appr.role}', not by a supervisor"
+    if appr.draft_sha256 != draft_fingerprint(req):
+        return None, f"{req.draft_id} changed after it was approved; the approval does not cover it"
+    requester = str(req.structured.get("requested_by") or "").strip()
+    if not requester or requester.casefold() == appr.approver.strip().casefold():
+        return None, "maker-checker: the officer who requested the exception cannot approve it"
+    return appr, ""
+
+
+def account_level_approval(bundle: CaseBundle, acct: str) -> tuple[Approval | None, str]:
+    """(supervisor approval of an officer's request for ``acct``, problem). The approval must be the latest
+    decision on its request, APPROVED by a supervisor other than the requesting officer (maker-checker), and bound
+    to the request's exact current content (the SHA-256 fingerprint ``wapsi.pipeline.run.approve`` records).
+    Requests are tried newest first, so a later request that is still pending or was rejected (e.g. a duplicate
+    raised while the first was waiting) does not void an exception applied on an earlier approved request; the
+    problem reported is the newest request's."""
+    requests = account_level_requests(bundle, acct)
+    if not requests:
+        return None, "no officer request (ACCOUNT_LEVEL_HOLD_REQUEST) is on record for the account"
+    problems = []
+    for req in requests:
+        appr, problem = _request_approval_problem(bundle, req)
+        if appr is not None:
+            return appr, ""
+        problems.append(problem)
+    return None, problems[0]
+
+
+def approved_account_level(bundle: CaseBundle, dec: HoldDecision | None, draft: Draft) -> bool:
+    """The draft is the hold instruction of an account whose decision is an approved exceptional account-level hold
+    (recorded reasons, supervisor approval bound to the officer's request)."""
+    return (
+        draft.kind == DraftKind.HOLD_INSTRUCTION
+        and dec is not None
+        and dec.disposition == ACCOUNT_LEVEL
+        and bool(recorded_reasons(dec.reason_codes))
+        and account_level_approval(bundle, dec.account_id)[0] is not None
+    )
+
+
+def _check_account_level(dec: HoldDecision, st: AccountState, bundle: CaseBundle) -> list[CheckResult]:
+    """Amount-specific holds by default; account-level action only as a recorded, supervisor-approved exception
+    (SOP 5(ix): unwarranted freezing of accounts is discouraged; SOP 9.1)."""
+    acct = dec.account_id
+    out: list[CheckResult] = []
+    reasons = recorded_reasons(dec.reason_codes)
+    if not reasons:
+        out.append(
+            fail(
+                NAME,
+                "account_level_without_reasons",
+                f"{acct} carries an account-level hold with no recorded reason from the closed list; hold the "
+                "disputed amount only [SOP-5-IX] [SOP-9-1]",
+                [acct],
+            )
+        )
+    appr, problem = account_level_approval(bundle, acct)
+    if appr is None:
+        out.append(
+            fail(
+                NAME,
+                "account_level_unapproved",
+                f"{acct} carries an account-level hold without supervisor approval ({problem}); amount-specific "
+                "holds are the default [SOP-5-IX] [SOP-9-1]",
+                [acct],
+            )
+        )
+    else:  # the reasons of the request that approval covers
+        req = next((d for d in bundle.drafts if d.draft_id == appr.draft_id), None)
+        requested = set(recorded_reasons((req.structured.get("reasons") or []) if req else []))
+        if reasons and requested != set(reasons):
+            out.append(
+                fail(
+                    NAME,
+                    "account_level_reason_mismatch",
+                    f"{acct}: the plan's reasons ({', '.join(reasons)}) differ from the approved request's "
+                    f"({', '.join(sorted(requested)) or 'none'})",
+                    [acct],
+                )
+            )
+    if not dec.requires_human:
+        out.append(fail(NAME, "account_level_without_human", f"{acct}: an account-level hold needs a human", [acct]))
+    if not st.is_home_bank:
+        out.append(
+            fail(
+                NAME,
+                "account_level_other_bank",
+                f"{acct} is at another bank; only a hold request through CFCFRMS is possible [SOP-6]",
+                [acct],
+            )
+        )
+    if st.account_type == AccountType.MERCHANT or dec.role == Role.MERCHANT:
+        out.append(
+            fail(
+                NAME,
+                "account_level_merchant",
+                f"{acct} is a merchant account; merchants are updated or held in the pool [SOP-9-2]",
+                [acct],
+            )
+        )
+    return out
 
 
 def _complaints(bundle: CaseBundle, ledger: Ledger | None) -> dict[str, Complaint]:
@@ -340,7 +491,8 @@ def check_decision(
                 [acct],
             )
         )
-    if innocent and holding and disp != Disposition.HOLD_AMOUNT_NO_ESCALATION:
+    # an approved account-level exception on an innocent holder's account is checked by _check_account_level
+    if innocent and holding and disp not in (Disposition.HOLD_AMOUNT_NO_ESCALATION, ACCOUNT_LEVEL):
         out.append(
             warn(
                 NAME,
@@ -350,6 +502,38 @@ def check_decision(
                 [acct],
             )
         )
+    # no automatic STR; the officer decides; STR recommended where the account was used as a conduit
+    if role == Role.UNWITTING_CONDUIT and st.is_home_bank and holding:
+        if STR_RECOMMENDED not in dec.reason_codes:
+            out.append(
+                fail(
+                    NAME,
+                    "conduit_str_not_recommended",
+                    f"{acct} was used as a conduit; its decision must carry {STR_RECOMMENDED} (STR recommended, "
+                    "the officer decides) [SOP-5-XII] [PMLR-2-1-G]",
+                    [acct],
+                )
+            )
+        if not dec.requires_human:
+            out.append(
+                fail(
+                    NAME,
+                    "conduit_without_human",
+                    f"{acct} was used as a conduit; the STR decision is the officer's, so requires_human is needed",
+                    [acct],
+                )
+            )
+    if role == Role.BONA_FIDE_RECIPIENT and STR_RECOMMENDED in dec.reason_codes:
+        out.append(
+            fail(
+                NAME,
+                "bona_fide_str_recommended",
+                f"{acct} is a bona fide recipient: no STR by default, so no STR recommendation [SOP-5-XII]",
+                [acct],
+            )
+        )
+    if disp == ACCOUNT_LEVEL or ACCOUNT_LEVEL.value in dec.reason_codes:
+        out += _check_account_level(dec, st, bundle)
     if escalated:
         out += _check_escalation(dec, st, bundle, ledger, cfg, innocent)
 
@@ -484,6 +668,7 @@ def _check_escalation(
         Disposition.HOLD_AMOUNT,
         Disposition.FORWARD_HOLD,
         Disposition.ESCALATE_S106_CANDIDATE,
+        ACCOUNT_LEVEL,  # an approved exception keeps the advisory flag (checked by _check_account_level)
     ):
         out.append(
             fail(
@@ -694,7 +879,9 @@ _POST_CUE_RE = re.compile(
     r"|^\W*(?:of\s+(?:[\w₹,.'-]+\s+){0,4})?(?:needs?|requires?|can\s+only|may\s+only|is\s+only)\b"
     # counterfactuals ("freezing the touched accounts outright would have immobilised ...")
     r"|^\W*(?:(?!(?:as|because|since|so|if|it|which|that|and|or|but|until|till|when|while|unless)\b)"
-    r"[\w₹,.'/-]+\s+){0,5}(?:would|could|might)\s+(?:have|be)\b",
+    r"[\w₹,.'/-]+\s+){0,5}(?:would|could|might)\s+(?:have|be)\b"
+    # the name of the comparison ("the whole-account freeze baseline of ₹5,03,50,000.00")
+    r"|^[ \t]+baseline\b(?![ \t]+(?:a/c|accounts?)\b)",
     re.IGNORECASE,
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[A-Za-z0-9)\]])\.(?=\s+[A-Z(\[])|[;!?\n]")
@@ -862,9 +1049,98 @@ def check_str(draft: Draft, bundle: CaseBundle, ledger: Ledger | None) -> list[C
     if named:
         out.append(
             fail(
-                NAME, "innocent_in_str", "innocent holders [SOP-5-XII] must not be reported in the STR", named
+                NAME,
+                "innocent_in_str",
+                "innocent holders [SOP-5-XII] (bona fide recipients and unwitting conduits) must not be reported "
+                "in an automatic STR; for a conduit the officer decides on a separate STR",
+                named,
             )
         )
+    return out
+
+
+def _check_edd_str(draft: Draft, bundle: CaseBundle, acct: str, dec: HoldDecision | None) -> list[CheckResult]:
+    """EDD memo: a conduit's memo recommends an STR for the officer's decision; a bona fide recipient's does not."""
+    role = role_of(bundle, acct, dec)
+    recommended = draft.structured.get("str_recommended") is True
+    if role == Role.UNWITTING_CONDUIT and not recommended:
+        return [
+            fail(
+                NAME,
+                "edd_conduit_str_missing",
+                f"EDD memo for {acct}: the account was used as a conduit, so an STR is recommended for the "
+                "officer's decision (never filed automatically)",
+                [acct],
+            )
+        ]
+    if role in (Role.BONA_FIDE_RECIPIENT, Role.LEGIT) and recommended:
+        return [
+            fail(
+                NAME,
+                "edd_bona_fide_str",
+                f"EDD memo for {acct}: a bona fide recipient gets no STR by default [SOP-5-XII]",
+                [acct],
+            )
+        ]
+    return []
+
+
+def _check_account_level_request(
+    draft: Draft, bundle: CaseBundle, dec: HoldDecision | None, st: AccountState | None
+) -> list[CheckResult]:
+    """The officer's request for an exceptional account-level hold: recorded reasons from the closed list, a named
+    requesting officer, supervisor approval pending or given, and an eligible account."""
+    out: list[CheckResult] = []
+    acct = draft.account_id or ""
+    raw = draft.structured.get("reasons")
+    values = [str(v) for v in raw] if isinstance(raw, list) else []
+    unknown = [v for v in values if v not in ACCOUNT_LEVEL_CODES]
+    if not recorded_reasons(values):
+        out.append(
+            fail(
+                NAME,
+                "account_level_without_reasons",
+                f"the request for {acct} records no reason from the closed list "
+                f"({', '.join(sorted(ACCOUNT_LEVEL_CODES))}) [SOP-5-IX]",
+                [acct],
+            )
+        )
+    if unknown:
+        out.append(
+            fail(NAME, "account_level_unknown_reason", "reasons not on the closed list: " + ", ".join(unknown), unknown)
+        )
+    if not str(draft.structured.get("requested_by") or "").strip():
+        out.append(fail(NAME, "account_level_no_requester", f"the request for {acct} names no requesting officer"))
+    if draft.structured.get("supervisor_approval_required") is not True:
+        out.append(
+            fail(
+                NAME,
+                "account_level_no_maker_checker",
+                f"the request for {acct} must state that a supervisor approves it (maker-checker)",
+                [acct],
+            )
+        )
+    if dec is not None and st is not None:
+        why = None
+        if st.layer == 0:
+            why = "a victim account"
+        elif not st.is_home_bank:
+            why = "an account at another bank"
+        elif is_intermediary(bundle, st, dec):
+            why = f"a nodal / pool / escrow account (no suspension or seizure) [{INTERMEDIARY_CITE}]"
+        elif st.account_type == AccountType.MERCHANT or role_of(bundle, acct, dec) == Role.MERCHANT:
+            why = "a merchant account [SOP-9-2]"
+        elif dec.disposition not in ACCOUNT_LEVEL_BASE | {ACCOUNT_LEVEL}:
+            why = f"an account without an amount-specific hold ({dec.disposition})"
+        if why:
+            out.append(
+                fail(
+                    NAME,
+                    "account_level_not_eligible",
+                    f"{acct} is {why}; an account-level exception cannot be raised on it",
+                    [acct],
+                )
+            )
     return out
 
 
@@ -899,6 +1175,16 @@ def check_draft_policy(
                     [acct or ""],
                 )
             )
+        if draft.kind == DraftKind.CUSTOMER_NOTICE and dec is not None and dec.disposition == ACCOUNT_LEVEL:
+            out.append(
+                fail(
+                    NAME,
+                    "customer_notice_account_level",
+                    f"the notice tells the holder of {acct} that only an amount is on hold, but an exceptional "
+                    "account-level hold applies; the officer informs the holder instead",
+                    [acct or ""],
+                )
+            )
         if (
             draft.kind == DraftKind.HOLD_INSTRUCTION
             and st is not None
@@ -927,6 +1213,10 @@ def check_draft_policy(
                 [acct or ""],
             )
         )
+    if draft.kind == DraftKind.EDD_MEMO and acct:
+        out += _check_edd_str(draft, bundle, acct, dec)
+    if draft.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST:
+        out += _check_account_level_request(draft, bundle, dec, st)
     if (
         draft.kind == DraftKind.OUTBOUND_REQUEST
         and dec is not None
@@ -956,13 +1246,25 @@ def check_draft_policy(
             )
 
     freezes = freeze_instructions(f"{draft.title}\n{draft.body}")
-    if freezes:
+    if freezes and approved_account_level(bundle, dec, draft):
+        # the hold instruction of a recorded, supervisor-approved exception may state the account-level action
+        out.append(
+            warn(
+                NAME,
+                "account_level_instruction",
+                f"the draft instructs account-level action on {acct}, covered by the supervisor-approved exception "
+                "on record [SOP-5-IX]",
+                freezes,
+            )
+        )
+    elif freezes:
         out.append(
             fail(
                 NAME,
                 "whole_account_freeze",
-                "the draft instructs a whole-account or debit freeze; "
-                "hold the disputed amount only [SOP-5-IX] [CASE-KARTIK-CHATUR]",
+                "the draft instructs a whole-account or debit freeze; holds are amount-specific by default and "
+                "account-level action needs a recorded, supervisor-approved exception [SOP-5-IX] "
+                "[CASE-KARTIK-CHATUR]",
                 freezes,
             )
         )
@@ -995,7 +1297,7 @@ def _dedupe(results: list[CheckResult]) -> list[CheckResult]:
     seen: set[tuple] = set()
     out = []
     for r in results:
-        key = (r.name, r.passed, r.severity, r.message, tuple(r.spans))
+        key = (r.name, r.passed, r.severity, r.code, r.message, tuple(r.spans))
         if key not in seen:
             seen.add(key)
             out.append(r)

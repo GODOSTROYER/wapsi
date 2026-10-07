@@ -55,12 +55,36 @@ class Channel(StrEnum):
 class Role(StrEnum):
     VICTIM = "VICTIM"
     MULE = "MULE"
-    # SOP §5(xii): account "operated without the knowledge or connivance or consent of the account holder"
-    INNOCENT_HOLDER = "INNOCENT_HOLDER"
+    # SOP §5(xii) innocent holders, split in two (AGENTS.md, hard rules):
+    # - BONA_FIDE_RECIPIENT: received victim money and kept it (rent, salary, payment for goods). Hold the amount,
+    #   no escalation, no STR by default, EDD memo. It keeps the legacy wire value "INNOCENT_HOLDER", so golden sets,
+    #   SQL views and model labels written before the split still load; ``Role.INNOCENT_HOLDER`` is an alias.
+    # - UNWITTING_CONDUIT: the account was used as a pass-through by someone else. Hold the amount, no escalation,
+    #   STR recommended for the officer's decision (never automatic), EDD memo.
+    BONA_FIDE_RECIPIENT = "INNOCENT_HOLDER"
+    INNOCENT_HOLDER = "INNOCENT_HOLDER"  # legacy alias of BONA_FIDE_RECIPIENT
+    UNWITTING_CONDUIT = "UNWITTING_CONDUIT"
     MERCHANT = "MERCHANT"
     INTERMEDIARY = "INTERMEDIARY"  # nodal / pool / escrow
     LEGIT = "LEGIT"
     UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Role | None:
+        # the new name is accepted as input too ("BONA_FIDE_RECIPIENT" -> the legacy wire value)
+        if isinstance(value, str) and value.strip().upper() == "BONA_FIDE_RECIPIENT":
+            return cls.BONA_FIDE_RECIPIENT
+        return None
+
+
+# both innocent-holder roles (SOP §5(xii)): never an s.106 escalation flag, never named in an automatic STR
+INNOCENT_ROLES = frozenset({Role.BONA_FIDE_RECIPIENT, Role.UNWITTING_CONDUIT})
+
+
+def legacy_role(role: Role) -> Role:
+    """Map a role onto the vocabulary of golden sets written before the innocent-holder split (both innocent
+    roles -> ``INNOCENT_HOLDER``)."""
+    return Role.INNOCENT_HOLDER if role in INNOCENT_ROLES else role
 
 
 class TerminalKind(StrEnum):
@@ -73,7 +97,9 @@ class TerminalKind(StrEnum):
 
 class Disposition(StrEnum):
     HOLD_AMOUNT = "HOLD_AMOUNT"  # SOP §9.1 / Annexure-I: hold the disputed amount only
-    HOLD_AMOUNT_NO_ESCALATION = "HOLD_AMOUNT_NO_ESCALATION"  # §5(xii) innocent holder: hold, EDD memo, no STR
+    # §5(xii) innocent holder: hold, EDD memo, no escalation; no automatic STR (the officer decides; recommended
+    # for an unwitting conduit)
+    HOLD_AMOUNT_NO_ESCALATION = "HOLD_AMOUNT_NO_ESCALATION"
     FORWARD_HOLD = "FORWARD_HOLD"  # §9.1(i): insufficient balance, first-layer accounts only
     NO_HOLD_UPDATE_ONLY = "NO_HOLD_UPDATE_ONLY"  # §9.2: merchant, goods delivered
     HOLD_IN_POOL = "HOLD_IN_POOL"  # §9.2: merchant, goods undelivered -> cancel, hold in pool/nodal
@@ -84,6 +110,11 @@ class Disposition(StrEnum):
     CASHED_OUT = "CASHED_OUT"  # ATM / crypto exit; nothing to hold
     ESCALATE_S106_CANDIDATE = "ESCALATE_S106_CANDIDATE"  # needs FIR + multiple reports; human only
     NO_ACTION = "NO_ACTION"
+    # SOP §5(ix), §9.1: amount-specific holds are the default. Account-level action is only a recorded exception:
+    # never emitted by the hold plan; created by an officer request carrying >= 1 ``AccountLevelReason`` and applied
+    # only after a supervisor approves that request (maker-checker, fingerprint-bound). ``hold_amount`` stays the
+    # amount-specific hold (the recoverable money); the account-level restriction is on top of it.
+    EXCEPTIONAL_ACCOUNT_LEVEL_HOLD = "EXCEPTIONAL_ACCOUNT_LEVEL_HOLD"
 
 
 HOLDING_DISPOSITIONS = frozenset(
@@ -92,8 +123,19 @@ HOLDING_DISPOSITIONS = frozenset(
         Disposition.HOLD_AMOUNT_NO_ESCALATION,
         Disposition.HOLD_IN_POOL,
         Disposition.HOLD_AMOUNT_INTERMEDIARY,
+        Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD,
     }
 )
+
+
+class AccountLevelReason(StrEnum):
+    """Closed list of reasons an officer may record for an exceptional account-level hold (SOP §5(ix): unwarranted
+    freezing is discouraged, so every account-level action carries at least one of these)."""
+
+    FRAUDSTER_CONTROLLED_ACCOUNT = "FRAUDSTER_CONTROLLED_ACCOUNT"  # account wholly controlled by the fraudster
+    CONTINUING_FRAUD_EVIDENCE = "CONTINUING_FRAUD_EVIDENCE"  # fresh victim credits / fraud still running
+    LEA_ORDER_ACCOUNT_LEVEL = "LEA_ORDER_ACCOUNT_LEVEL"  # an LEA order that specifies account-level action
+    IDENTITY_THEFT_ACCOUNT = "IDENTITY_THEFT_ACCOUNT"  # account opened with a stolen / fake identity
 
 
 class ApportionmentRule(StrEnum):
@@ -140,6 +182,8 @@ class DraftKind(StrEnum):
     EDD_MEMO = "EDD_MEMO"
     OUTBOUND_REQUEST = "OUTBOUND_REQUEST"
     CUSTOMER_NOTICE = "CUSTOMER_NOTICE"
+    # officer's request for an exceptional account-level hold; a supervisor approves it (maker-checker)
+    ACCOUNT_LEVEL_HOLD_REQUEST = "ACCOUNT_LEVEL_HOLD_REQUEST"
 
 
 class ClockKind(StrEnum):
@@ -150,6 +194,9 @@ class ClockKind(StrEnum):
     BANK_DATA = "BANK_DATA"  # 2 days
     HOLD_LAPSE = "HOLD_LAPSE"  # 90 calendar days
     HOLD_LAPSE_WARNING = "HOLD_LAPSE_WARNING"  # day 75: intimate LEA
+    # SOP 9.1(i) sets no lapse of its own for a forward hold on a first-layer account: it is reviewed on the same
+    # 90-calendar-day timeline as an amount hold (SOP 10.1), so it is never left in place indefinitely
+    FORWARD_HOLD_REVIEW = "FORWARD_HOLD_REVIEW"
     P1_NOTICE = "P1_NOTICE"  # IO notice to holder within 7 calendar days
     P1_REPLY = "P1_REPLY"  # holder reply within 15 days
     P1_REMIT = "P1_REMIT"  # bank remits within 15 days
@@ -385,7 +432,8 @@ class HoldPlan(_Model):
     total_recoverable: float = 0.0
     per_victim_recoverable: dict[str, float] = Field(default_factory=dict)
     over_hold_amount: float = 0.0  # held beyond tainted money; must be 0
-    baseline_freeze_amount: float = 0.0  # what a whole-account freeze of touched accounts would immobilise
+    # whole-account freeze baseline (comparison only): what freezing every touched home account would immobilise
+    baseline_freeze_amount: float = 0.0
     baseline_freeze_accounts: int = 0
     restoration_process: RestorationProcess = RestorationProcess.P1
     str_ground: StrGround | None = None
@@ -428,8 +476,11 @@ class CheckResult(_Model):
     name: str  # numeric | citations | policy | injection | format
     passed: bool
     severity: str = "error"  # error | warning
-    message: str = ""
+    message: str = ""  # human-readable text (no machine code prefix; see ``code``)
     spans: list[str] = Field(default_factory=list)
+    # stable machine code (``slot_mismatch``, ``over_hold``, ``ok``, ...). Empty on records written before the field
+    # existed, whose message still starts with "<code>: " (``wapsi.verify.report.code_of`` reads both)
+    code: str = ""
 
 
 class VerificationReport(_Model):
@@ -475,13 +526,16 @@ class Clock(_Model):
     clock_id: str
     case_id: str
     kind: ClockKind
-    subject: str | None = None  # account_id / draft_id the clock applies to
+    subject: str | None = None  # account_id / draft_id / ncrp_id / case_id the clock applies to (identifier only)
     start: datetime
     due: datetime
     warn_at: datetime | None = None
     business_days: bool = False
     status: ClockStatus = ClockStatus.OPEN
     citation_id: str | None = None
+    # how the clock was counted, for the officer ("provisional: hold not yet executed", the lapse start point, ...).
+    # Records written before the field existed carry the note in ``subject`` as "<id> (<note>)".
+    notes: str = ""
 
 
 class AuditEvent(_Model):
@@ -492,6 +546,12 @@ class AuditEvent(_Model):
     object_type: str
     object_id: str
     details: dict[str, Any] = Field(default_factory=dict)
+    # hash-chain link (``wapsi.audit``), stamped when the event is appended to a case's log; None = not sealed.
+    # hash = SHA-256 over canonical JSON of (seq, ts, actor, role, event_type, case_id, payload_digest, prev_hash)
+    seq: int | None = None
+    case_id: str | None = None
+    prev_hash: str | None = None
+    hash: str | None = None
 
 
 class GoldenCase(_Model):

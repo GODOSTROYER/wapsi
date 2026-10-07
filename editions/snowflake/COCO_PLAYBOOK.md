@@ -1,8 +1,12 @@
 # Wapsi on Snowflake — CoCo build playbook
 
+> **Superseded schedule:** the lean sprint in [`COCO_SPRINT.md`](COCO_SPRINT.md) (4–5 low-effort CoCo sessions, ≤ $10, code deployed by `deploy.py`) replaces every gate and session plan below; this file stays the long-form reference for objects, acceptance SQL and the demo script.
+
 The step-by-step script for building the Snowflake edition **inside Snowflake CoCo (Cortex Code) sessions**, so
 every Snowflake object comes with a real CoCo transcript. Gates follow `WAPSI_BUILD_PLAN.md` §13:
 **G0 Sep 16–18 · G1 Sep 27 · G2 Oct 3 (submit; hard deadline Oct 4 23:59 IST) · finale Oct 27–30.**
+**2026-09-28: the schedule is replaced by [`COCO_SPRINT.md`](COCO_SPRINT.md)** (the lean sprint, Sep 29–Oct 3);
+the steps below keep their content and the sprint lists the deltas.
 
 Status: written 2026-09-16 from the Snowflake docs listed at the end. Nothing here has been run on Snowflake yet.
 Items marked **[verify]** must be confirmed in the session that uses them. Record what you find in the step's note.
@@ -85,7 +89,7 @@ Object names used throughout:
    Test: `snow connection test -c wapsi` **[verify command name]**.
 5. **Repo**: `uv sync --all-extras`, then `uv run pytest` (must pass before any Snowflake work).
 6. **First CoCo run**: `cd Z:\Projects\Hakathon\wapsi` → `cortex` → pick the `wapsi` connection in the wizard.
-   Then in the session: `/model` (list models; note which Claude/Gemini ids you have), `/skill list` (six Wapsi
+   Then in the session: `/model` (list models; note which Claude/Gemini ids you have), `/skill` (six Wapsi
    skills must appear — CoCo reads both `.claude/skills` and `.agents/skills`; if each skill shows twice, tell the
    team), `/agents`, `/mcp`. Exit and note the session id it prints.
 7. **Environment variables** for MCP (never in files): `setx WAPSI_JIRA_URL https://<site>.atlassian.net`,
@@ -94,8 +98,10 @@ Object names used throughout:
 
 Useful CoCo facts (docs): skills are invoked with `$skill-name`; project hooks live in `.cortex/settings.json`
 (or `.claude/settings.json`); project subagents in `.cortex/agents/`; MCP servers in
-`~/.snowflake/cortex/mcp.json` (`cortex mcp add|list|get|remove`); headless: `cortex -p "<prompt>"` or
-`cortex exec`; `--output-format stream-json` for scripts; sessions are stored in `~/.snowflake/cortex/conversations/`.
+`~/.snowflake/cortex/mcp.json` (`cortex mcp add|list|get|remove`); headless: `cortex -p "<prompt>"`
+(`--output-format stream-json` for scripts) or `cortex exec` (`--format json`, `--max-turns`, `--effort`, `-o`; it
+auto-rejects permission prompts, so pass `--bypass` or `--allowed`); sessions are stored in
+`~/.snowflake/cortex/conversations/`.
 
 ---
 
@@ -251,8 +257,9 @@ Read src/wapsi/models.py, src/wapsi/ports.py and docs/data-contract.md. Then:
    TRAIL_EDGES (TrailEdge + case_id), ACCOUNT_STATE (AccountState + case_id), CLASSIFICATIONS (+ case_id),
    HOLD_PLAN (HoldDecision + case_id + account_type + created_at), DRAFTS (Draft), VERIFICATIONS
    (VerificationReport; checks VARIANT), APPROVALS (Approval), ACTIONS (Action + attempts, claimed_at, claimed_by),
-   CLOCKS (Clock), AUDIT_LOG (AuditEvent + case_id), LIENS (simulated core-banking lien register:
-   lien_id, case_id, account_id, amount, placed_at, released_at, source_action_id).
+   CLOCKS (Clock + notes), AUDIT_LOG (AuditEvent + case_id + seal: seq, prev_hash, hash), AUDIT_ANCHOR (chain
+   checkpoints), LIENS (simulated core-banking lien register: lien_id, case_id, account_id, amount, placed_at,
+   released_at, source_action_id, scope).
    And WAPSI.APP tables SETTINGS(key, value) with ('raw_schema', 'RAW') and ('world', 'demo') — procedures read
    their source schema from it — DEMO_CLOCK(now_ts), USER_ROLES(user_name, app_role), EVAL_RUNS(world, generated_at, cases,
    report VARIANT, source), OPS_DIGEST(at, source, status, summary, details VARIANT), plus view CASEMGMT.V_CLOCKS
@@ -267,8 +274,9 @@ Read src/wapsi/models.py, src/wapsi/ports.py and docs/data-contract.md. Then:
      (opening_balance + credits - debits before that time) so balances_at() stays correct. Coalesce NULL strings
      that the models require (remark, city) to ''. Use bind variables only.
    - casestore.py: SnowflakeCaseStore(session) implementing wapsi.ports.CaseStore: MERGE CASE_BUNDLES, replace the
-     case's rows in the flattened tables (DELETE ... WHERE case_id = ? then INSERT), append-only APPROVALS,
-     ACTIONS and AUDIT_LOG (insert only rows not yet present).
+     case's rows in the flattened tables (DELETE ... WHERE case_id = ? then INSERT), append-only APPROVALS and
+     ACTIONS, and AUDIT_LOG sealed onto the case's hash chain (wapsi.audit.extend_stored; INSERT only + an
+     AUDIT_ANCHOR checkpoint).
    - actions.py: SnowflakeActionSink(session) implementing ActionSink (INSERT into ACTIONS, status PENDING).
    - groups.py: case_group(session, ncrp_id) -> sorted ncrp ids sharing first-layer accounts (SQL).
    Unit tests in editions/snowflake/tests/ using a fake session (no network) for SQL shape and row mapping, and a
@@ -518,7 +526,7 @@ same logic using IS_ROLE_IN_SESSION() and grant only the views to AUDITOR and LE
 Grants: ANALYST = SELECT on CASEMGMT/APP views + USAGE on TRACE_CASE, BUILD_HOLD_PLAN, CASE_SUMMARY, DRAFT, VERIFY +
 agent + semantic view; SUPERVISOR = ANALYST + APPROVE (+ S10 DML); AUDITOR = read-only incl. AUDIT_LOG, masked PII;
 LEA_READONLY = secure view of TRAIL_EDGES/ACCOUNT_STATE for cases with an FIR, masked; ACTIONS_RUNNER = SELECT and
-UPDATE on ACTIONS, INSERT on AUDIT_LOG; ML = ML schema only. No app role gets WAPSI.ML.
+UPDATE on ACTIONS, audit events only through APPEND_AUDIT (sealed); ML = ML schema only. No app role gets WAPSI.ML.
 Remember SiS owner's rights: the app filters by st.user and USER_ROLES as well.
 Run sql-reviewer, apply, then demonstrate each role.
 ```
@@ -687,11 +695,11 @@ set if needed (say so), cached mode ready, second screen with the video fallback
 | 0:00–0:45 | CoCo terminal: new session → SessionStart hook prints KPIs; type `$wapsi-eval` → table: traced recall, over-hold ₹0.00, false freezes 0, STR numeric 100%, injection leaks 0. "Everything you see is scored against the golden set." | Technical execution (40): evaluation rigour; Completeness (30) | hook output, KPI table |
 | 0:45–1:15 | SiS Inbox: `CALL APP.INJECT_DEMO_COMPLAINT(...)` in a worksheet → stream + 1-minute task open the case (or `EXECUTE TASK`). | Platform rigor: streams, tasks, Snowpark | Inbox row appears |
 | 1:15–2:45 | Case Room: victim → A (first layer) → B, landlord L, other-bank C → D → other-bank E; kirana K (delivered invoice → no hold, SOP 9.2); PA pool P (the disputed ₹19,200 is held in the pool account, no forward hold, no suspension or seizure — SOP 9.1(iii)); ATM exits ₹1,44,000. "Apportionment: pro-rata, SOP Para 5(xiii)." | Real-world relevance (30): SOP-exact behaviour | graphviz trail, totals, "why" panel |
-| 2:45–3:30 | Hold Plan: holds ₹43,200 + ₹27,648 + ₹48,000 + landlord ₹4,800 (no escalation) + pool ₹19,200 = ₹1,42,848 across 5 accounts; forward hold ₹96,000 on the first-layer account only; CFCFRMS requests ₹1,92,000; recoverable ₹3,34,848. Baseline strip: a whole-account freeze of 6 accounts would immobilise ₹5,03,50,000. (Read the live values; the fixture is the source of truth.) | Real-world relevance; enterprise viability (customer harm avoided) | baseline strip |
+| 2:45–3:30 | Hold Plan: holds ₹43,200 + ₹27,648 + ₹48,000 + landlord ₹4,800 (no escalation) + pool ₹19,200 = ₹1,42,848 across 5 accounts; forward hold ₹96,000 on the first-layer account only; CFCFRMS requests ₹1,92,000; recoverable ₹3,34,848. Baseline strip: whole-account freeze baseline (comparison only): 6 accounts, ₹5,03,50,000. (Read the live values; the fixture is the source of truth.) | Real-world relevance; enterprise viability (customer harm avoided) | baseline strip |
 | 3:30–4:15 | Agent: "Which branches have holds lapsing in the next 15 days?" → Cortex Analyst answer with SQL (verified query). | Platform rigor: semantic view, Cortex Analyst, Cortex Agent | SQL shown |
 | 4:15–5:30 | Drafts: STR with fund-flow and network linkage; verification report all green **above** the draft. Edit one amount → verifier fails it in red with the recomputed value; draft withheld. Open the adversarial complaint → text quoted, not obeyed. | Governance & hallucination mitigation | verification table, red span |
 | 5:30–6:30 | Supervisor approves (maker-checker) → ACTIONS rows → drain runner → Jira ticket + Slack message via MCP; liens written; clocks start (STR due in 7 working days; hold lapse at 90 days, warning day 75). | Completeness; MCP connectors; automations | Jira, Slack, LIENS, CLOCKS |
-| 6:30–7:30 | Governance: worksheet `USE ROLE WAPSI_AUDITOR` → PII masked; AUDIT_LOG; CoCo tries `DROP SCHEMA` → hook blocks; show `/skill list`, `/agents`, `cortex automation list`, sql-reviewer verdict. | Governance; system design & token management; CoCo usage | masked rows, blocked command |
+| 6:30–7:30 | Governance: worksheet `USE ROLE WAPSI_AUDITOR` → PII masked; AUDIT_LOG; CoCo tries `DROP SCHEMA` → hook blocks; show `cortex skill list`, `/agents`, `cortex automation list`, sql-reviewer verdict. | Governance; system design & token management; CoCo usage | masked rows, blocked command |
 | 7:30–8:00 | Close: token/cost discipline (numbers from data, prose-only LLM, agent budget 60 s/16k tokens, small model for citation audits, drain calls CoCo only when work exists, warehouse XS/60 s); SOP page reference; roadmap. | Enterprise viability; token management | cost-per-case line |
 
 Fallbacks: tasks slow → `EXECUTE TASK`; agent slow → run the verified SQL directly; Jira down → Slack only;

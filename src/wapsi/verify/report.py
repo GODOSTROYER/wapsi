@@ -1,10 +1,13 @@
 """VerificationReport assembly and a plain-text summary for the UI.
 
-Check messages start with a stable code (``slot_mismatch: ...``) so callers and tests can match on it.
+Every check carries a stable machine code in ``CheckResult.code`` (``slot_mismatch``, ``ok``, ...) so callers and
+tests can match on it; ``CheckResult.message`` is plain text. Reports stored before the ``code`` field existed carry
+the code as a ``"<code>: "`` message prefix: ``code_of`` and ``text_of`` read both shapes.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from datetime import datetime
 
@@ -12,6 +15,8 @@ from wapsi.models import CheckResult, VerificationReport
 from wapsi.timeutil import ensure_utc, utcnow
 
 CATEGORIES = ("numeric", "citations", "policy", "injection", "format")
+OK_CODE = "ok"
+_LEGACY_CODE = re.compile(r"^([a-z][a-z0-9_]*):\s*")  # "slot_mismatch: ..." (reports stored before ``code``)
 
 
 def fail(
@@ -21,7 +26,8 @@ def fail(
         name=name,
         passed=False,
         severity=severity,
-        message=f"{code}: {message}",
+        code=code,
+        message=message,
         spans=[s for s in spans if s],
     )
 
@@ -31,11 +37,28 @@ def warn(name: str, code: str, message: str, spans: Iterable[str] = ()) -> Check
 
 
 def ok(name: str, message: str) -> CheckResult:
-    return CheckResult(name=name, passed=True, severity="error", message=f"ok: {message}")
+    return CheckResult(name=name, passed=True, severity="error", code=OK_CODE, message=message)
 
 
 def code_of(check: CheckResult) -> str:
-    return check.message.split(":", 1)[0]
+    """The check's machine code (``check.code``; for a legacy record, the ``"<code>: "`` message prefix)."""
+    if check.code:
+        return check.code
+    m = _LEGACY_CODE.match(check.message or "")
+    return m.group(1) if m else ""
+
+
+def text_of(check: CheckResult) -> str:
+    """The check's human-readable message, without a legacy ``"<code>: "`` prefix."""
+    if check.code:
+        return check.message
+    return _LEGACY_CODE.sub("", check.message or "", count=1)
+
+
+def label_of(check: CheckResult) -> str:
+    """``"<code>: <message>"`` (the one-line form logs, summaries and tool payloads show)."""
+    code, text = code_of(check), text_of(check)
+    return f"{code}: {text}" if code and text else code or text
 
 
 def is_blocking(check: CheckResult) -> bool:
@@ -70,7 +93,7 @@ def summarize(report: VerificationReport) -> str:
     lines = [f"{head}: {report.draft_id} ({len(errs)} error(s), {len(warns)} warning(s))"]
     for label, group in (("ERROR", errs), ("WARN", warns)):
         for c in group:
-            line = f"  {label} [{c.name}] {c.message}"
+            line = f"  {label} [{c.name}] {label_of(c)}"
             if c.spans:
                 line += " | " + "; ".join(f'"{s}"' for s in c.spans[:5])
                 if len(c.spans) > 5:
@@ -78,5 +101,5 @@ def summarize(report: VerificationReport) -> str:
             lines.append(line)
     for c in report.checks:
         if c.passed:
-            lines.append(f"  OK [{c.name}] {c.message.removeprefix('ok: ')}")
+            lines.append(f"  OK [{c.name}] {text_of(c)}")
     return "\n".join(lines)

@@ -16,7 +16,14 @@ from ui.components.theme import CHIP_TONES, css, detect_dark, series_hex
 from ui.components.totals_waterfall import build_totals_waterfall, located_share, waterfall_steps
 from ui.views.audit import summarize_details
 from ui.views.clocks import subject_parts
-from ui.views.drafts import clean_message, demote_headings, expected_drafts, failing_spans, warning_spans
+from ui.views.drafts import (
+    check_message,
+    clean_message,
+    demote_headings,
+    expected_drafts,
+    failing_spans,
+    warning_spans,
+)
 from ui.views.hold_plan import hold_sentence, sentences
 from ui.views.kpis import METRICS, fmt_metric, meets, role_chart, target_text, typology_chart
 from wapsi.models import CheckResult, Clock, ClockKind, ClockStatus, Draft, DraftKind, VerificationReport
@@ -55,7 +62,7 @@ def test_baseline_key_message_showcase_one(bundles):
     held = [d for d in plan.decisions if d.hold_amount > 0]
     assert (s.freeze_amount, s.freeze_accounts) == (50350000.0, 6)
     assert (s.hold_amount, s.hold_accounts) == (plan.total_hold, len(held))
-    assert s.sentence == ("A whole-account freeze would immobilise ₹5.04 Cr across 6 accounts; "
+    assert s.sentence == ("Whole-account freeze baseline: ₹5.04 Cr across 6 accounts; "
                           f"Wapsi holds {inr_short(plan.total_hold)} across {len(held)} — only the victim's money")
     html = baseline_strip_html(s)
     assert f"{50350000 / plan.total_hold:,.0f}×" in html and "₹5.04 Cr" in html
@@ -64,7 +71,7 @@ def test_baseline_key_message_showcase_one(bundles):
 
 def test_baseline_sentence_matches_the_key_message():
     s = BaselineSummary(freeze_amount=50350000.0, freeze_accounts=6, hold_amount=123648.0, hold_accounts=4)
-    assert s.sentence == ("A whole-account freeze would immobilise ₹5.04 Cr across 6 accounts; "
+    assert s.sentence == ("Whole-account freeze baseline: ₹5.04 Cr across 6 accounts; "
                           "Wapsi holds ₹1.24 L across 4 — only the victim's money")
     assert "407×" in baseline_strip_html(s)
 
@@ -182,6 +189,11 @@ def test_clock_subject_parts(bundles):
     assert subject_parts(_clock(subject=b.case.case_id), b) == ("Whole case", "")
     assert subject_parts(_clock(subject=b.case.ncrp_ids[0]), b)[0].startswith("NCRP ")
     assert subject_parts(_clock(subject=None), b) == ("Whole case", "")
+    # clocks carry their note in ``notes``; the subject is only the identifier
+    noted = _clock(subject="DRF-STR").model_copy(update={"notes": "provisional: counted from trace (x)"})
+    assert subject_parts(noted, b) == ("STR", "Provisional: counted from trace (x)")
+    lapse = _clock(ClockKind.HOLD_LAPSE, subject="HB01-1").model_copy(update={"notes": "90 calendar days"})
+    assert subject_parts(lapse, b) == ("HB01-1", "90 calendar days")
 
 
 # --------------------------------------------------------------------------- drafts helpers
@@ -206,6 +218,10 @@ def test_draft_helpers():
     assert clean_message("ok: 12 slot(s) recomputed") == "12 slot(s) recomputed"
     assert clean_message("citation_quote_missing: no quote for X") == "No quote for X"
     assert clean_message("") == ""
+    # checks carry their machine code in ``code``: the message is shown as is (even with a colon in it)
+    coded = CheckResult(name="numeric", passed=False, code="slot_mismatch", message="hold_amount: ₹9.00 differs")
+    assert check_message(coded) == "Hold_amount: ₹9.00 differs"
+    assert check_message(CheckResult(name="policy", passed=True, message="ok: fine")) == "Fine"  # legacy record
     assert demote_headings("# Title\n## Sub\ntext #1") == "#### Title\n##### Sub\ntext #1"
 
 

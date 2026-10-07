@@ -1,4 +1,8 @@
-"""The key comparison: a whole-account freeze vs Wapsi's amount-specific holds (SOP Para 5(ix), 9.1)."""
+"""The key comparison: the whole-account freeze baseline vs Wapsi's amount-specific holds (SOP Para 5(ix), 9.1).
+
+The baseline is a comparison only (what freezing every touched account would immobilise), never a recommendation:
+holds are amount-specific by default, and account-level action is only a recorded, supervisor-approved exception.
+"""
 
 from __future__ import annotations
 
@@ -46,13 +50,13 @@ def summarize(plan: HoldPlan) -> BaselineSummary:
 
 def baseline_sentence(s: BaselineSummary) -> str:
     if s.hold_amount <= 0:
-        return (f"A whole-account freeze would immobilise {inr_short(s.freeze_amount)} across "
+        return (f"Whole-account freeze baseline: {inr_short(s.freeze_amount)} across "
                 f"{_accounts(s.freeze_accounts)}; Wapsi recommends no hold in this case.")
     if eq(s.freeze_amount, s.hold_amount):
-        return (f"A whole-account freeze would immobilise {inr_short(s.freeze_amount)} across "
+        return (f"Whole-account freeze baseline: {inr_short(s.freeze_amount)} across "
                 f"{_accounts(s.freeze_accounts)}; Wapsi holds the same {inr_short(s.hold_amount)} across "
                 f"{_accounts(s.hold_accounts)} — here every rupee in the account is victim money.")
-    return (f"A whole-account freeze would immobilise {inr_short(s.freeze_amount)} across "
+    return (f"Whole-account freeze baseline: {inr_short(s.freeze_amount)} across "
             f"{_accounts(s.freeze_accounts)}; Wapsi holds {inr_short(s.hold_amount)} across "
             f"{s.hold_accounts} — only the victim's money")
 
@@ -68,9 +72,9 @@ def baseline_strip_html(s: BaselineSummary) -> str:
     freeze_title = f"{inr(s.freeze_amount)} — balances of every account that received victim money"
     hold_title = f"{inr(s.hold_amount)} — the victim money still in held accounts"
     return (
-        '<div class="wp-strip" role="group" aria-label="Whole-account freeze compared with Wapsi holds">'
+        '<div class="wp-strip" role="group" aria-label="Whole-account freeze baseline compared with Wapsi holds">'
         f'<div class="wp-strip-side wp-strip-bad" title="{esc(freeze_title)}">'
-        '<div class="wp-strip-k">Whole-account freeze would immobilise</div>'
+        '<div class="wp-strip-k">Whole-account freeze baseline (comparison only)</div>'
         f'<div class="wp-strip-v">{esc(inr_short(s.freeze_amount))}</div>'
         f'<div class="wp-strip-n">across {esc(_accounts(s.freeze_accounts))}</div></div>'
         f'<div class="wp-strip-mid">{mid}</div>'
@@ -79,6 +83,7 @@ def baseline_strip_html(s: BaselineSummary) -> str:
         f'<div class="wp-strip-v">{esc(inr_short(s.hold_amount))}</div>'
         f'<div class="wp-strip-n">across {esc(_accounts(s.hold_accounts))}</div></div>'
         f'<div class="wp-strip-msg">{esc(s.sentence)} '
-        '<span class="wp-note">Amount-specific holds: SOP Para 5(ix) and 9.1.</span></div>'
+        '<span class="wp-note">Amount-specific holds by default (SOP Para 5(ix) and 9.1); account-level action '
+        "only as a recorded, supervisor-approved exception.</span></div>"
         "</div>"
     )

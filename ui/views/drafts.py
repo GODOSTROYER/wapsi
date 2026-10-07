@@ -16,6 +16,7 @@ from ui.components.formatting import (
     DRAFT_KIND_LABELS,
     DRAFT_KIND_ORDER,
     PROCESS_LABELS,
+    SIMULATED_CFCFRMS_NOTE,
     humanize,
     ist,
 )
@@ -44,6 +45,7 @@ from wapsi.models import (
 )
 
 MSG_CODE = re.compile(r"^[a-z][a-z0-9_]*:\s*")
+CFCFRMS_KINDS = {DraftKind.CFCFRMS_UPDATE, DraftKind.OUTBOUND_REQUEST}
 
 CHECK_HINTS = {
     "numeric": "Every amount, account and UTR matches the case tables",
@@ -102,6 +104,15 @@ def demote_headings(markdown: str, by: int = 3) -> str:
 def clean_message(message: str) -> str:
     """'ok: 12 slot(s) recomputed' -> '12 slot(s) recomputed'; drops machine codes before the first colon."""
     text = MSG_CODE.sub("", message or "").strip()
+    return text[:1].upper() + text[1:] if text else ""
+
+
+def check_message(check: CheckResult) -> str:
+    """A check's message for display: the plain message when the check carries its ``code``; a report stored
+    before the field existed keeps the code as a message prefix, which is dropped."""
+    if not check.code:
+        return clean_message(check.message)
+    text = (check.message or "").strip()
     return text[:1].upper() + text[1:] if text else ""
 
 
@@ -203,13 +214,13 @@ def _checks_html(report: VerificationReport | None) -> str:
             tone, state, msg, cls = "gray", "Not run", CHECK_HINTS.get(name, ""), "wp-check"
         elif errors:
             tone, state, cls = "bad", "Failed", "wp-check wp-check-fail"
-            msg = " · ".join(clean_message(c.message) for c in errors if c.message) or "See highlighted text"
+            msg = " · ".join(check_message(c) for c in errors if c.message) or "See highlighted text"
         elif warnings:
             tone, state, cls = "warn", "Passed with warnings", "wp-check wp-check-warn"
-            msg = " · ".join(clean_message(c.message) for c in warnings if c.message)
+            msg = " · ".join(check_message(c) for c in warnings if c.message)
         else:
             tone, state, cls = "good", "Passed", "wp-check wp-check-pass"
-            msg = " · ".join(clean_message(c.message) for c in results if c.message) or CHECK_HINTS.get(name, "")
+            msg = " · ".join(check_message(c) for c in results if c.message) or CHECK_HINTS.get(name, "")
         cells.append(
             f'<div class="{cls}" role="listitem"><div class="wp-check-h">{h.icon(tone)}'
             f"{h.esc(CHECK_LABELS.get(name, humanize(name)))}"
@@ -236,6 +247,13 @@ def _panel(ctx: Ctx, bundle: CaseBundle, draft: Draft) -> None:
     md(f'<div class="wp-row" style="margin:.4rem 0 .3rem"><span class="wp-row-title">'
        f"{h.esc(ctx.mask(draft.title, bundle))}</span>"
        f'<span class="wp-note">v{draft.version} · {h.esc(ist(draft.created_at))}</span></div>' + h.chips(chips_))
+    if draft.kind in CFCFRMS_KINDS:
+        md(h.callout(SIMULATED_CFCFRMS_NOTE, strong="Not sent."))
+    elif draft.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST:
+        md(h.callout("Amount-specific holds are the default. This officer's request applies an account-level hold "
+                     "only after a supervisor other than the requester approves it; the plan changes then, and the "
+                     "account's hold instruction and the case's CFCFRMS update are redrafted for a fresh approval.",
+                     strong="Recorded exception."))
 
     md(h.section("Checks"))
     md(_checks_html(report))

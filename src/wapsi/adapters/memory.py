@@ -7,6 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
 
+from wapsi.audit.chain import ChainAnchor, ChainReport, anchor_of, append_event, extend_stored, verify_chain
 from wapsi.models import (
     Account,
     Action,
@@ -184,11 +185,23 @@ class InMemoryLedger:
 
 
 class InMemoryCaseStore:
+    """Implements ``wapsi.ports.CaseStore``. Each case's audit log is append-only and hash-chained
+    (``wapsi.audit``): ``put_bundle`` never drops, changes or reorders a recorded event, it only seals the
+    bundle's new events onto the chain (``wapsi.audit.chain.extend_stored``); ``append_audit`` seals the event as
+    the next link. The store also keeps an anchor per case (event count + head hash), outside the log, so
+    ``verify_audit`` catches events removed from the end and a log whose hashes were all recomputed."""
+
     def __init__(self) -> None:
         self._bundles: dict[str, CaseBundle] = {}
+        self._anchors: dict[str, ChainAnchor] = {}
 
     def put_bundle(self, bundle: CaseBundle) -> None:
-        self._bundles[bundle.case.case_id] = bundle.model_copy(deep=True)
+        case_id = bundle.case.case_id
+        stored = self._bundles.get(case_id)
+        copy = bundle.model_copy(deep=True)
+        copy.audit = extend_stored(stored.audit if stored else [], copy.audit, case_id=case_id)
+        self._bundles[case_id] = copy
+        self._anchors[case_id] = anchor_of(copy.audit)
 
     def get_bundle(self, case_id: str) -> CaseBundle | None:
         b = self._bundles.get(case_id)
@@ -198,7 +211,19 @@ class InMemoryCaseStore:
         return sorted((b.case for b in self._bundles.values()), key=lambda c: c.opened_at, reverse=True)
 
     def append_audit(self, case_id: str, event: AuditEvent) -> None:
-        self._bundles[case_id].audit.append(event)
+        log = self._bundles[case_id].audit
+        append_event(log, event, case_id=case_id)  # stamps the caller's event (its receipt)
+        log[-1] = event.model_copy(deep=True)  # the store keeps its own copy
+        self._anchors[case_id] = anchor_of(log)
+
+    # -- audit chain (not part of the protocol)
+    def audit_anchor(self, case_id: str) -> ChainAnchor | None:
+        return self._anchors.get(case_id)
+
+    def verify_audit(self, case_id: str) -> ChainReport:
+        """Verify the stored audit chain of ``case_id`` against the store's anchor."""
+        b = self._bundles[case_id]
+        return verify_chain(b.audit, case_id=case_id, anchor=self._anchors.get(case_id))
 
 
 class RecordingActionSink:

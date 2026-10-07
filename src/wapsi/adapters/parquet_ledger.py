@@ -57,6 +57,14 @@ def _index(values: pa.ChunkedArray | pa.Array) -> dict[str, int]:
     return {v: i for i, v in enumerate(values.to_pylist())}
 
 
+class LedgerMeta(dict[str, str]):
+    """``ParquetLedger.meta``: a plain ``dict`` that can also be called, so the older ``ledger.meta()`` call (the
+    form ``SnowflakeLedger`` offers) keeps working and returns a copy."""
+
+    def __call__(self) -> dict[str, str]:
+        return dict(self)
+
+
 class ParquetLedger:
     """Read-only ledger over the Parquet layout written by ``wapsi.synth.export``."""
 
@@ -303,8 +311,11 @@ class ParquetLedger:
         return {g: self._gst[g] for g in gstins if g in self._gst}
 
     # ------------------------------------------------------------------ convenience (not part of the protocol)
-    def meta(self) -> dict[str, str]:
-        return dict(self._meta)
+    @property
+    def meta(self) -> LedgerMeta:
+        """World metadata from ``meta.parquet`` (``world``, ``size``, ``seed``, ``generator_version``, ...) as a fresh
+        copy: ``ledger.meta["world"]``. ``ledger.meta()`` works too (a plain dict)."""
+        return LedgerMeta(self._meta)
 
     def all_accounts(self) -> dict[str, Account]:
         return {r["account_id"]: Account.model_validate(r) for r in self._acc.to_pylist()}

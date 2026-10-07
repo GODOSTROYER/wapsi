@@ -23,10 +23,14 @@ from wapsi.models import CaseBundle, Clock, ClockStatus
 
 
 def subject_parts(c: Clock, bundle: CaseBundle) -> tuple[str, str]:
-    """(what the clock applies to, note). 'HB01-… (provisional: hold not yet executed)' -> ('HB01-…', 'Provisional…')."""
+    """(what the clock applies to, note). The note is ``Clock.notes``; clocks stored before that field existed
+    carry it in the subject: 'HB01-… (provisional: hold not yet executed)' -> ('HB01-…', 'Provisional…')."""
     raw = (c.subject or "").strip()
-    main, _, note = raw.partition(" (")
-    note = note.rstrip(")").strip()
+    if c.notes:
+        main, note = raw, c.notes.strip()
+    else:
+        main, _, note = raw.partition(" (")
+        note = note.rstrip(")").strip()
     note = note[:1].upper() + note[1:] if note else ""
     drafts = {d.draft_id: d for d in bundle.drafts}
     if main in drafts:

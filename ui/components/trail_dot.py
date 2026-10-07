@@ -51,7 +51,8 @@ NL = "\n"
 GRAPH_ROLE: dict[Role, str] = {
     Role.VICTIM: "Victim",
     Role.MULE: "Mule",
-    Role.INNOCENT_HOLDER: "Innocent?",
+    Role.BONA_FIDE_RECIPIENT: "Innocent?",  # legacy alias Role.INNOCENT_HOLDER
+    Role.UNWITTING_CONDUIT: "Conduit?",
     Role.MERCHANT: "Merchant",
     Role.INTERMEDIARY: "Pool / nodal",
     Role.LEGIT: "Legitimate",

@@ -34,7 +34,11 @@ No victim money is available in the account now, so no amount is to be held toda
 {% else %}
 Place the hold for {{ s.hold_amount }} only: the victim money still in the account, capped at the available balance.
 {% endif %}
-This is an amount-specific hold, not a freeze of the account; other funds and digital banking remain available [SOP-5-IX] [SOP-9-1] [SOP-ANNEX-I]. High Courts have indicated that a lien on the identifiable disputed amount, rather than a whole-account freeze, is the proper course [CASE-NEELKANTH] [CASE-SHREE-BALAJI].
+{% if c.account_level %}
+The hold of {{ s.hold_amount }} is the amount recoverable for the victims [SOP-9-1] [SOP-ANNEX-I]. In addition, an exceptional account-level hold applies to this account: the officer requested it on recorded reasons and a supervisor approved it (see the approved request). Amount-specific holds remain the default [SOP-5-IX].
+{% else %}
+This is an amount-specific hold, not a freeze of the account; other funds and digital banking remain available [SOP-5-IX] [SOP-9-1] [SOP-ANNEX-I]. High Courts have indicated that a lien on the identifiable disputed amount, rather than a whole-account freeze, is the proper course [CASE-NEELKANTH] [CASE-SHREE-BALAJI]. Account-level action is taken only as a recorded, supervisor-approved exception.
+{% endif %}
 {% if c.has_forward_hold %}
 
 ## Forward hold (first-layer account)
@@ -45,7 +49,11 @@ A/c No. {{ s.account_id }} is a first-layer account and its balance is below the
 
 ## Innocent-holder handling
 
-The account appears to have been operated without the knowledge, connivance or consent of the account holder [SOP-5-XII]. Hold the amount only: no escalation and no STR. An enhanced due diligence memo accompanies this instruction, and the holder may file a grievance for review of the hold [SOP-10-1].
+{% if c.is_conduit %}
+The account appears to have been used as a pass-through by someone else, without the knowledge, connivance or consent of the account holder (unwitting conduit) [SOP-5-XII]. Hold the amount only: no escalation. There is no automatic STR: because the account was used as a conduit, an STR is recommended and the officer decides whether to file it [PMLR-2-1-G]. An enhanced due diligence memo accompanies this instruction, and the holder may file a grievance for review of the hold [SOP-10-1].
+{% else %}
+The account holder appears to have received the money in good faith, without knowledge of, connivance in or consent to the fraud (bona fide recipient) [SOP-5-XII]. Hold the amount only: no escalation and no STR by default; the officer decides if new facts emerge. An enhanced due diligence memo accompanies this instruction, and the holder may file a grievance for review of the hold [SOP-10-1].
+{% endif %}
 {% endif %}
 {% if c.escalate %}
 

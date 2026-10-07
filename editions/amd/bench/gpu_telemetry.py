@@ -17,6 +17,12 @@ plain numbers, upper/lower-case keys). The parsers accept all of those; the fixt
 hand-written from the documented shape with synthetic values. **Confirm the exact shape on the droplet** once
 (``amd-smi metric --json > /tmp/m.json; amd-smi process --json > /tmp/p.json``), replace the fixtures with those
 captures, and rerun ``uv run pytest tests/amd -k telemetry``.
+
+SR-IOV virtual functions (cloud GPU droplets): the guest usually sees VRAM but not the utilisation or power
+sensors, which then read "N/A" or a constant 0. A GPU is treated as a VF when ``amd-smi static`` names it "... VF"
+or reports a VF device id (``VF_DEVICE_IDS``), or when ``--sriov-vf`` is passed. On a VF a sensor that never reads
+above 0 is reported as unavailable: the summary stores ``null`` (never 0) and lists it under
+``unavailable_sensors``, and the printouts and ``report.py`` show ``n/a (SR-IOV VF)`` instead of a fake 0.
 """
 
 from __future__ import annotations
@@ -38,6 +44,12 @@ from typing import Any
 
 MB = 1024 * 1024
 RESULTS_ROOT = Path(__file__).resolve().parent / "results"
+NA = "n/a"
+SRIOV_NA = "n/a (SR-IOV VF)"  # sensor not exposed to an SR-IOV virtual function
+# PCI device ids of Instinct virtual functions (MI300X VF, MI325X VF); confirm with `amd-smi static --asic` on the
+# droplet (the market name normally ends in "VF" as well, which is checked first)
+VF_DEVICE_IDS = frozenset({0x74B5, 0x74B9})
+SUMMARY_SENSORS = ("gfx_activity_pct", "power_w")  # utilisation and power, as summarised per GPU
 
 Runner = Callable[[list[str]], str | None]
 
@@ -219,6 +231,36 @@ def parse_amd_smi_static(data: Any) -> dict[int, str]:
     return out
 
 
+def parse_sriov_vfs(data: Any) -> set[int]:
+    """``amd-smi static --asic --json`` -> GPUs that are SR-IOV virtual functions (market name "... VF" or VF id)."""
+    out = set()
+    for i, e in enumerate(_gpu_entries(data)):
+        asic = e.get("asic")
+        if not isinstance(asic, dict):
+            continue
+        name = str(asic.get("market_name") or "")
+        try:
+            dev = int(str(asic.get("device_id") or ""), 16)
+        except ValueError:
+            dev = None
+        if re.search(r"\bVF\b", name) or dev in VF_DEVICE_IDS:
+            out.add(int(_num(e.get("gpu")) if _num(e.get("gpu")) is not None else i))
+    return out
+
+
+def sensor_unavailable(values: Iterable[float | None], vf: bool = False) -> bool:
+    """No reading at all or, on an SR-IOV VF (which sees no utilisation / power sensors), never above 0."""
+    vals = [v for v in values if v is not None]
+    return not vals or (vf and all(v == 0 for v in vals))
+
+
+def sensor_text(value: float | None, vf: bool = False, unit: str = "") -> str:
+    """A sensor reading for display: ``n/a`` (``n/a (SR-IOV VF)`` on a VF) instead of a missing value or a VF's 0."""
+    if value is None or (vf and value == 0):
+        return SRIOV_NA if vf else NA
+    return f"{value:g}{unit}"
+
+
 _CID = re.compile(r"(?:docker[-/]|/docker/|containerd[-/:]|cri-containerd-)([0-9a-f]{64})")
 
 
@@ -294,7 +336,9 @@ def sample_once(runner: Runner = run_cmd, proc_root: Path = Path("/proc"), map_d
     return snap
 
 
-def summarize(snaps: list[Snapshot], interval_s: float, gpu_names: dict[int, str] | None = None) -> dict[str, Any]:
+def summarize(snaps: list[Snapshot], interval_s: float, gpu_names: dict[int, str] | None = None,
+              vf_gpus: Iterable[int] = ()) -> dict[str, Any]:
+    vfs = set(vf_gpus)
     gpus: dict[int, list[GpuSample]] = {}
     for s in snaps:
         for g in s.gpus:
@@ -310,12 +354,19 @@ def summarize(snaps: list[Snapshot], interval_s: float, gpu_names: dict[int, str
         gfx_mean, gfx_peak = stats([r.gfx_activity_pct for r in rows])
         pw_mean, pw_peak = stats([r.power_w for r in rows])
         total = next((r.vram_total_mb for r in rows if r.vram_total_mb), None)
+        vf = gpu in vfs
+        missing = [k for k in SUMMARY_SENSORS if sensor_unavailable([getattr(r, k) for r in rows], vf)]
+        if "gfx_activity_pct" in missing:
+            gfx_mean = gfx_peak = None  # never report an unavailable sensor as 0
+        if "power_w" in missing:
+            pw_mean = pw_peak = None
         gpu_rows.append({
             "gpu": gpu, "name": (gpu_names or {}).get(gpu), "samples": len(rows), "vram_total_mb": total,
             "vram_used_mb_mean": used_mean, "vram_used_mb_peak": used_peak,
             "vram_used_pct_peak": round(100 * used_peak / total, 1) if used_peak and total else None,
             "gfx_activity_pct_mean": gfx_mean, "gfx_activity_pct_peak": gfx_peak,
             "power_w_mean": pw_mean, "power_w_peak": pw_peak,
+            "sriov_vf": vf, "unavailable_sensors": missing,
         })
     by_owner: dict[tuple[int, str], dict[str, Any]] = {}
     for s in snaps:
@@ -351,9 +402,11 @@ class _Stop:
 
 def run(out: Path, interval_s: float, duration_s: float | None, runner: Runner = run_cmd,
         sleep: Callable[[float], None] = time.sleep, max_samples: int | None = None,
-        proc_root: Path = Path("/proc")) -> dict[str, Any]:
+        proc_root: Path = Path("/proc"), sriov_vf: bool = False) -> dict[str, Any]:
+    """``sriov_vf=True`` treats every GPU as an SR-IOV VF (otherwise detected from ``amd-smi static``)."""
     out.mkdir(parents=True, exist_ok=True)
-    names = parse_amd_smi_static(_json(runner(["amd-smi", "static", "--asic", "--json"])) or [])
+    static = _json(runner(["amd-smi", "static", "--asic", "--json"])) or []
+    names, vfs = parse_amd_smi_static(static), parse_sriov_vfs(static)
     snaps: list[Snapshot] = []
     t0 = time.monotonic()
     gpu_csv = (out / "telemetry.csv").open("w", newline="", encoding="utf-8")
@@ -380,17 +433,23 @@ def run(out: Path, interval_s: float, duration_s: float | None, runner: Runner =
     finally:
         gpu_csv.close()
         proc_csv.close()
-        summary = summarize(snaps, interval_s, names)
+        if sriov_vf:
+            vfs |= {g.gpu for s in snaps for g in s.gpus}
+        summary = summarize(snaps, interval_s, names, vfs)
         summary["files"] = {"gpu_csv": "telemetry.csv", "process_csv": "telemetry_processes.csv"}
         (out / "telemetry_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
 
-def print_snapshot(s: Snapshot) -> None:
+def print_snapshot(s: Snapshot, vf_gpus: Iterable[int] = ()) -> None:
+    vfs = set(vf_gpus)
     print(f"{s.ts}  source={s.source}")
     for g in s.gpus:
-        print(f"  GPU{g.gpu}: VRAM {g.vram_used_mb} / {g.vram_total_mb} MB  GFX {g.gfx_activity_pct}%  "
-              f"MEM {g.umc_activity_pct}%  {g.power_w} W  hotspot {g.temp_hotspot_c} C")
+        vf = g.gpu in vfs
+        print(f"  GPU{g.gpu}{' (SR-IOV VF)' if vf else ''}: VRAM {sensor_text(g.vram_used_mb)} / "
+              f"{sensor_text(g.vram_total_mb)} MB  GFX {sensor_text(g.gfx_activity_pct, vf, '%')}  "
+              f"MEM {sensor_text(g.umc_activity_pct, vf, '%')}  power {sensor_text(g.power_w, vf, ' W')}  "
+              f"hotspot {sensor_text(g.temp_hotspot_c, unit=' C')}")
     for p in s.processes:
         print(f"    pid {p.pid:<8} {p.name:<24} {p.container or '':<24} {p.vram_mb} MB")
 
@@ -401,10 +460,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--duration", type=float, default=None, help="stop after this many seconds (default: Ctrl-C)")
     ap.add_argument("--out", default=None, help="results directory (default bench/results/<utc stamp>)")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit")
+    ap.add_argument("--sriov-vf", action="store_true",
+                    help="treat the GPUs as SR-IOV virtual functions (default: detected from amd-smi static)")
     args = ap.parse_args(argv)
     if args.once:
         snap = sample_once()
-        print_snapshot(snap)
+        vfs = parse_sriov_vfs(_json(run_cmd(["amd-smi", "static", "--asic", "--json"])) or [])
+        print_snapshot(snap, {g.gpu for g in snap.gpus} if args.sriov_vf else vfs)
         return 0 if snap.source != "none" else 1
     out = Path(args.out) if args.out else RESULTS_ROOT / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
@@ -414,7 +476,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     print(f"sampling every {args.interval}s into {out} (Ctrl-C to stop)", flush=True)
-    summary = run(out, args.interval, args.duration)
+    summary = run(out, args.interval, args.duration, sriov_vf=args.sriov_vf)
     print(json.dumps({k: summary[k] for k in ("source", "samples", "gpus")}, indent=2))
     return 0 if summary["source"] != "none" else 1
 

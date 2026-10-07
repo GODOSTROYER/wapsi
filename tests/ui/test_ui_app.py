@@ -99,7 +99,8 @@ def test_hold_plan_shows_baseline_strip_and_filters():
     at = _app(page="Hold Plan")
     _ok(at)
     text = _text(at)
-    assert "A whole-account freeze would immobilise ₹5.04 Cr across 6 accounts" in text
+    assert "Whole-account freeze baseline: ₹5.04 Cr across 6 accounts" in text
+    assert "comparison only" in text
     assert "only the victim's money" in text
     at.multiselect(key="plan_groups").set_value(["Other-bank requests"]).run()
     _ok(at)
@@ -198,7 +199,7 @@ def test_kpis_render_a_report(monkeypatch, sample_report):
     _ok(at)
     text = _text(at)
     for expected in ("Traced-amount recall", "99%", "Injection leaks", "Brand new metric", "C-007",
-                     "Whole-account freeze vs Wapsi"):
+                     "Whole-account freeze baseline vs Wapsi"):
         assert expected in text, expected
     assert len(at.get("plotly_chart")) == 2
 

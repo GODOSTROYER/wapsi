@@ -115,6 +115,9 @@ class WorldBuilder:
     gst: list[dict] = field(default_factory=list)
     devices: list[tuple[int, int, int]] = field(default_factory=list)  # (device_no, acct_idx, first_seen_s)
     signal_override: dict[int, tuple[str, float, int]] = field(default_factory=dict)
+    signal_missing: set[int] = field(
+        default_factory=set
+    )  # hard world: accounts without an external-signal row
 
     text: StringTable = field(default_factory=StringTable)
     chunks: list[TxnChunk] = field(default_factory=list)

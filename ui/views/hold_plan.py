@@ -5,17 +5,20 @@ from __future__ import annotations
 import csv
 import io
 import re
+from datetime import date
 
 import streamlit as st
 
 from ui.components import html as h
 from ui.components.baseline_strip import baseline_strip_html, summarize
 from ui.components.formatting import (
+    ACCOUNT_LEVEL_REASON_LABELS,
     APPROVAL_LABELS,
     CHECK_LABELS,
     DISPOSITION_LABELS,
     PROCESS_LABELS,
     ROLE_LABELS,
+    SIMULATED_CFCFRMS_NOTE,
     STR_GROUND_LABELS,
     inr,
     inr_short,
@@ -30,14 +33,18 @@ from ui.views.common import (
     case_bar,
     citation_title,
     download,
+    flash,
     generate_button,
     go,
     head,
     md,
     need_case,
 )
+from ui.views.drafts import check_message
 from wapsi.models import (
     HOLDING_DISPOSITIONS,
+    AccountLevelReason,
+    ApprovalDecision,
     CaseBundle,
     Disposition,
     Draft,
@@ -113,6 +120,8 @@ def render(ctx: Ctx) -> None:
         h.Tile("Over-hold", inr_short(plan.over_hold_amount),
                "must stay ₹0" if plan.over_hold_amount == 0 else "held beyond victim money"),
     ]))
+    if outbound > 0:
+        md(f'<div class="wp-note">{h.esc(SIMULATED_CFCFRMS_NOTE)}</div>')
 
     facts = [h.chip(PROCESS_LABELS.get(plan.restoration_process, plan.restoration_process.value), "accent",
                     title="Restoration route under SOP Para 11")]
@@ -127,7 +136,8 @@ def render(ctx: Ctx) -> None:
         failed = [c for c in rep.checks if not c.passed and c.severity == "error"]
         facts.append(h.chip("Plan checks passed" if rep.passed else f"Plan checks: {len(failed)} failed",
                             "good" if rep.passed else "bad",
-                            title="; ".join(f"{CHECK_LABELS.get(c.name, c.name)}: {c.message}" for c in rep.checks)))
+                            title="; ".join(f"{CHECK_LABELS.get(c.name, c.name)}: {check_message(c)}"
+                                            for c in rep.checks)))
     md(h.chips(facts))
 
     if len(plan.per_victim_recoverable) > 1:
@@ -159,6 +169,8 @@ def render(ctx: Ctx) -> None:
 
     if not shown:
         md(h.empty_state("Nothing matches this filter", "Choose at least one group above.", glyph="?"))
+        _account_level_panel(ctx, bundle)
+        _lea_panel(ctx, bundle)
         return
 
     rows = []
@@ -208,6 +220,149 @@ def render(ctx: Ctx) -> None:
         pick = st.selectbox("Open an account in the case room", options, key="plan_pick")
     with c2:
         st.button("Inspect", key="plan_inspect", on_click=_inspect, args=(pick,))
+
+    _account_level_panel(ctx, bundle)
+    _lea_panel(ctx, bundle)
+
+
+# --------------------------------------------------------------------------- exceptional account-level hold
+
+
+def _account_level_panel(ctx: Ctx, bundle: CaseBundle) -> None:
+    """Amount-specific holds by default; account-level action only as a recorded, supervisor-approved exception."""
+    from wapsi.graph.holdplan import account_level_block
+
+    plan, trace = bundle.plan, bundle.trace
+    if plan is None or trace is None:
+        return
+    md(h.section("Exceptional account-level hold"))
+    md('<div class="wp-note">Holds are amount-specific by default (SOP Para 5(ix), 9.1). Account-level action is '
+       "only a recorded exception: an officer requests it with at least one reason from a closed list, and a "
+       "supervisor other than the requester approves it in Approvals. The amount-specific hold stays the "
+       "recoverable amount.</div>")
+    applied = [d for d in plan.decisions if d.disposition == Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD]
+    for d in applied:
+        reasons = [ACCOUNT_LEVEL_REASON_LABELS[AccountLevelReason(c)] for c in d.reason_codes
+                   if c in AccountLevelReason.__members__]
+        md(h.callout(f"{d.account_id}: {'; '.join(reasons) or 'no recorded reason'}. The hold of "
+                     f"{inr_table(d.hold_amount)} stays the recoverable amount.", strong="Applied exception."))
+    for d in (x for x in bundle.drafts if x.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST):
+        appr = latest_approval(bundle, d.draft_id)
+        who = str(d.structured.get("requested_by", ""))
+        if appr is None:
+            md(f'<div class="wp-note">Request for {h.esc(d.account_id or "")} by {h.esc(who)} is waiting for a '
+               "supervisor in Approvals.</div>")
+        elif appr.decision != ApprovalDecision.APPROVED:
+            md(f'<div class="wp-note">Request for {h.esc(d.account_id or "")}: '
+               f"{h.esc(APPROVAL_LABELS[appr.decision].lower())} by {h.esc(appr.approver)}.</div>")
+    request = getattr(ctx.ds, "request_account_level", None)
+    if request is None:
+        return
+    if not ctx.viewer.can_run:
+        md('<div class="wp-note">Auditors can see exceptions but not request them.</div>')
+        return
+    eligible = [d.account_id for d in sorted(plan.decisions, key=lambda d: (d.layer, d.account_id))
+                if account_level_block(d, trace.accounts.get(d.account_id)) is None]
+    if not eligible:
+        md('<div class="wp-note">No account in this plan is eligible: only home-bank accounts with an '
+           "amount-specific hold qualify (never nodal, pool or escrow, merchant or other-bank accounts).</div>")
+        return
+    with st.expander("Request an exceptional account-level hold"):
+        acct = st.selectbox("Account", eligible, key="al_account")
+        reasons = st.multiselect("Recorded reasons (at least one)", list(AccountLevelReason), key="al_reasons",
+                                 format_func=lambda r: ACCOUNT_LEVEL_REASON_LABELS[r])
+        note = st.text_input("Evidence or order reference (optional)", key="al_note", max_chars=300,
+                             placeholder="Recorded on the request and in the audit trail")
+        if st.button("Send to a supervisor", key="al_send", disabled=not reasons, type="primary"):
+            out = request(bundle.case.case_id, acct, [r.value for r in reasons], actor=ctx.viewer.actor,
+                          role=ctx.viewer.role, note=note.strip())
+            flash(out.message, "success" if out.ok else "error")
+            st.rerun()
+
+
+# --------------------------------------------------------------------------- police / LEA hold request
+
+
+LEA_RESULT = "lea_check"
+
+
+def split_refs(text: str) -> list[str]:
+    """'UTR1, UTR2; UTR3' -> ['UTR1', 'UTR2', 'UTR3']."""
+    return [x for x in re.split(r"[\s,;]+", text or "") if x]
+
+
+def _lea_panel(ctx: Ctx, bundle: CaseBundle) -> None:
+    """Rules-only completeness check of a police / LEA hold request (eight-field checklist)."""
+    checker = getattr(ctx.ds, "check_lea_request", None)
+    if checker is None or bundle.plan is None:
+        return
+    md(h.section("Police / LEA hold request"))
+    md('<div class="wp-note">Check a hold request from a police officer against the eight-field checklist. The '
+       "hold is limited to the disputed amount the bank can identify on the money trail, and missing fields go "
+       "into a clarification letter. The request text is untrusted: it is quoted back, never followed.</div>")
+    if ctx.viewer.can_run:
+        with st.expander("Check a hold request"):
+            c1, c2 = st.columns(2)
+            with c1:
+                ncrp = st.text_input("NCRP acknowledgement no.", key="lea_ncrp")
+                officer = st.text_input("Requesting officer", key="lea_officer")
+                account = st.text_input("Account number", key="lea_account")
+                provision = st.text_input("Legal provision", key="lea_provision",
+                                          placeholder="e.g. Section 168 read with Section 94 BNSS")
+                req_date = st.date_input("Request date", value=None, key="lea_date", format="DD-MM-YYYY")
+            with c2:
+                fir = st.text_input("FIR reference", key="lea_fir")
+                rank = st.text_input("Rank", key="lea_rank")
+                amount = st.number_input("Amount to hold (₹)", min_value=0.0, value=None, step=100.0,
+                                         key="lea_amount")
+                utrs = st.text_input("UTR / transaction IDs (comma-separated)", key="lea_utrs")
+                valid = st.date_input("Valid until", value=None, key="lea_valid", format="DD-MM-YYYY")
+            jurisdiction = st.text_input("Jurisdiction (police station, district, state)", key="lea_jurisdiction")
+            whole = st.checkbox("The request asks for action on the whole account", key="lea_whole")
+            text = st.text_area("Request text as received (untrusted)", key="lea_text", height=80)
+            if st.button("Check request", key="lea_check_btn", type="primary"):
+                from wapsi.verify.lea_request import LeaHoldRequest
+
+                req = LeaHoldRequest(
+                    request_id=f"LEA-{bundle.case.case_id}-{len(bundle.audit) + 1}",
+                    ncrp_ack_no=ncrp.strip() or None, fir_ref=fir.strip() or None,
+                    officer_name=officer.strip() or None, officer_rank=rank.strip() or None,
+                    jurisdiction=jurisdiction.strip() or None, account_id=account.strip() or None,
+                    amount=float(amount) if amount else None, utrs=split_refs(utrs),
+                    legal_provision=provision.strip() or None,
+                    request_date=req_date if isinstance(req_date, date) else None,
+                    valid_until=valid if isinstance(valid, date) else None,
+                    asks_account_level=bool(whole), text=text,
+                )
+                out = checker(bundle.case.case_id, req, actor=ctx.viewer.actor, role=ctx.viewer.role)
+                if out.ok and out.data is not None:
+                    st.session_state[LEA_RESULT] = (bundle.case.case_id, out.data)
+                flash(out.message, "success" if out.ok else "error")
+                st.rerun()
+    saved = st.session_state.get(LEA_RESULT)
+    if saved and saved[0] == bundle.case.case_id:
+        _lea_result(ctx, bundle, saved[1])
+
+
+def _lea_result(ctx: Ctx, bundle: CaseBundle, check) -> None:
+    ok_fields = sum(1 for f in check.fields if f.ok)
+    md(h.tiles([
+        h.Tile("Checklist", f"{ok_fields} of {len(check.fields)}", "fields complete", accent=check.complete),
+        h.Tile("Hold limited to", inr_short(check.identifiable_amount), "identifiable on the trail", accent=True,
+               title=inr(check.identifiable_amount)),
+        h.Tile("Requested", inr_short(check.requested_amount) if check.requested_amount is not None else "—",
+               "whole account asked" if check.asks_account_level else "by the officer"),
+    ], min_width_rem=9))
+    if check.missing:
+        rows = [h.Row([h.Cell(f.label), h.Cell(f.problem)]) for f in check.fields if not f.ok]
+        md(h.table([("Missing or unclear", False), ("Why", False)], rows))
+    if check.untrusted_spans:
+        md(h.callout("Instruction-like text in the request was quoted back and not acted on: "
+                     + " · ".join(f"“{s}”" for s in check.untrusted_spans), tone="warn", strong="Untrusted text."))
+    with st.container(border=True):
+        st.markdown(ctx.mask(check.letter, bundle))
+    download("Download letter (.md)", ctx.mask(check.letter, bundle), f"{check.request_id}.md", key="lea_dl",
+             mime="text/markdown")
 
 
 def _cites(ids: list[str], limit: int = 2) -> str:

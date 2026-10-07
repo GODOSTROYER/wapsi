@@ -1,0 +1,13 @@
+/* Wapsi docs: small additions to mkdocs-material. Colours come from the theme's own variables,
+   so both the light and the dark palette work without extra rules. */
+
+/* Screenshots of the officer app are light-themed; a thin border keeps their edges visible on both palettes. */
+.md-typeset img[src*="screenshots/"] {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
+}
+
+/* Rupee amounts line up in columns: every digit takes the same width. */
+.md-typeset table:not([class]) td {
+  font-variant-numeric: tabular-nums;
+}

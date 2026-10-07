@@ -241,7 +241,7 @@ def load_world(spec: str, role: str, *, allow_unverified: bool = False) -> World
 
         path = _world_path(spec)
         ledger = ParquetLedger(path)
-        meta = {str(k): str(v) for k, v in getattr(ledger, "_meta", {}).items()}
+        meta = {str(k): str(v) for k, v in ledger.meta.items()}
         name = path.name
         gen = meta.get("generator_version", "")
         if not gen.startswith(SYNTH_PREFIX) and not allow_unverified:
@@ -582,7 +582,8 @@ def make_llm(
       (``httpx.MockTransport``), i.e. the full HTTP/JSON path without a network;
     - ``openai:<base_url>|<model>[|<API_KEY_ENV>[|json_object]]``: any OpenAI-compatible server (vLLM on the
       MI300X, Gemini's OpenAI-compatible endpoint, ...). The key is read from the named environment variable
-      (default ``WAPSI_LLM_API_KEY``) and never written anywhere;
+      (default ``WAPSI_LLM_API_KEY``) and never written anywhere; ``chat_template_kwargs`` is sent as the
+      request field of that name (vLLM, e.g. ``{"enable_thinking": false}`` for Qwen);
     - ``hf:<path or hub id>``: a local Hugging Face model (greedy decoding; CPU works for tiny models).
     """
     kind, _, rest = spec.partition(":")
@@ -614,6 +615,7 @@ def make_llm(
             timeout=timeout,
             json_mode=json_mode,
             name=name or model,
+            extra_body={"chat_template_kwargs": chat_template_kwargs} if chat_template_kwargs else None,
         )
     if kind == "hf":
         from editions.amd.lora.modeling import HFChatLLM
@@ -902,4 +904,4 @@ def corrupt(
 
 def feedback_message(bad: str, offered: Mapping[str, str], narratives: Sequence[str]) -> str:
     """The exact retry message the drafter sends after a rejected answer."""
-    return prose._feedback(prose.validate_prose(bad, offered, narratives))  # noqa: SLF001 - drafter's own wording
+    return prose.feedback(prose.validate_prose(bad, offered, narratives))

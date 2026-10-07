@@ -19,7 +19,7 @@ Hook scripts referenced by `settings.json` live in `../hooks/` and are tested lo
 ## Notes per template
 - **settings.json** — CoCo reads project hooks from `.cortex/settings.json` or `.claude/settings.json`
   ([extensibility docs](https://docs.snowflake.com/en/user-guide/cortex-code/extensibility)). CoCo matchers use
-  lowercase tool ids (`edit|write`, `bash`, `snowflakesqlexecute`, `mcp__.*`); Claude Code uses `Edit|Write`. Hook
+  lowercase tool ids (`edit|write`, `bash`, `snowflake_sql_execute`, `mcp__.*`); Claude Code uses `Edit|Write`. Hook
   commands are relative to the repo root; if CoCo runs hooks from another directory, prefix the path with
   `%CORTEX_PROJECT_DIR%` / `$CORTEX_PROJECT_DIR`. Exit code 2 blocks (PreToolUse) or reports back (PostToolUse).
 - **agents/** — frontmatter `name`, `description`, `tools`, `model` per the docs. Model ids (`claude-sonnet-5`,

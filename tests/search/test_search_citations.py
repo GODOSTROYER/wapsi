@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from wapsi.citations import KNOWN_IDS, SOP_URL, registry
+from wapsi.citations import KNOWN_IDS, RBI_FRM_DIR_URL, SOP_URL, registry
 from wapsi.models import Citation
 from wapsi.search import check_citations
 from wapsi.search.extract import ExtractedDoc, Page
@@ -87,6 +87,25 @@ def test_key_sop_phrases_are_quoted(citations):
     assert "90 calendar days" in by_id["SOP-10-1"]["quote"]
 
 
+def test_rbi_frm_directions_2026_replace_the_repealed_master_directions(citations):
+    by_id = {c["citation_id"]: c for c in citations}
+    assert "RBI-FRM-MD-2024" not in by_id and "RBI-FRM-MD-2024" not in KNOWN_IDS  # repealed by para 67
+    mule = by_id["RBI-FRM-DIR-2026"]
+    assert mule["quote"] == (
+        "The bank shall remain vigilant in monitoring transactions / unusual activities, specifically in the "
+        "non-KYC compliant and money mule accounts"
+    )
+    assert mule["section"].startswith("Para 24:")
+    assert mule["url"] == RBI_FRM_DIR_URL and mule["page"] is None
+    ews = by_id["RBI-FRM-DIR-2026-EWS"]
+    assert ews["quote"].startswith(
+        "The bank shall have a framework for EWS and Red Flagging of Accounts (RFA)"
+    )
+    assert ews["section"].startswith("Para 12:")
+    assert source_for_url(RBI_FRM_DIR_URL).id == "rbi-frm-dir-2026"
+    assert registry()["RBI-FRM-DIR-2026"].quote == mule["quote"]
+
+
 def test_facts_file_shape():
     facts = json.loads(FACTS_JSON.read_text(encoding="utf-8"))
     by_id = {f["fact_id"]: f for f in facts["facts"]}
@@ -95,8 +114,11 @@ def test_facts_file_shape():
     assert by_id["CFCFRMS_AMOUNT_RESTORED"]["value"] == 167
     assert by_id["CFCFRMS_RESTORED_SHARE_OF_SAVED"]["value"] == 2.18
     assert round(167 / 7647 * 100, 2) == 2.18
+    from wapsi.search.radar import radar_only_sources  # facts may cite a verified radar-only source
+
+    known_docs = set(sources_by_id()) | set(radar_only_sources())
     for f in facts["facts"]:
-        assert f["doc_id"] in sources_by_id()
+        assert f["doc_id"] in known_docs, f["fact_id"]
         assert quote_word_count(f["quote"]) <= 25, f["fact_id"]
         if f["doc_id"] == "sop-2026":
             assert f["printed_page"] == f["pdf_page"] - 2, f["fact_id"]
@@ -106,7 +128,7 @@ def test_sources_json_in_sync_with_sources_py():
     assert load_sources_json() == SOURCES
     assert json.loads(SOURCES_JSON.read_text(encoding="utf-8")) == json.loads(json.dumps(sources_payload()))
     ids = [s.id for s in SOURCES]
-    assert ids == ["sop-2026", "bnss-2023", "pmlr-2005", "fiu-faq", "rbi-frm-md-2024"]
+    assert ids == ["sop-2026", "bnss-2023", "pmlr-2005", "fiu-faq", "rbi-frm-dir-2026"]
     assert sources_by_id()["sop-2026"].url == SOP_URL
     covered = {cid for s in SOURCES for cid in s.citation_ids} | set(CASE_LAW_URLS)
     assert covered == set(KNOWN_IDS)

@@ -9,8 +9,11 @@ Checks (exit status 1 on any failure):
   ``wapsi.search.normalize``) in the document its URL points to, on the stated PDF page (or across the break
   into the next page); HTML sources carry ``page: null``;
 - judgments reported by news/blog sites carry a URL and no quote text;
-- every ``facts.json`` snippet occurs on its page, and the printed SOP page label matches.
-Requires the raw files (``uv run python -m wapsi.search.fetch``).
+- every ``facts.json`` snippet occurs on its page, and the printed SOP page label matches (a fact's ``doc_id``
+  is a corpus source or a radar-only source registered in ``data/docs/reg_radar.json``);
+- the regulatory change radar (``data/docs/reg_radar.json``) is valid and every one of its quotes occurs verbatim
+  in its source (``wapsi.search.radar.check_rows``).
+Requires the raw files (``uv run python -m wapsi.search.fetch`` and ``uv run python -m wapsi.search.radar fetch``).
 """
 
 from __future__ import annotations
@@ -116,6 +119,10 @@ def check_citation(entry: dict[str, Any], docs: DocCache) -> Row:
 def check_fact(fact: dict[str, Any], docs: DocCache) -> Row:
     fid = fact.get("fact_id", "?")
     source = sources_by_id().get(fact.get("doc_id", ""))
+    if source is None:  # a radar-only source (fetched and verified, not indexed)
+        from wapsi.search.radar import radar_only_sources
+
+        source = radar_only_sources().get(fact.get("doc_id", ""))
     if source is None:
         return Row(f"fact:{fid}", False, f"unknown doc_id {fact.get('doc_id')}")
     try:
@@ -145,7 +152,10 @@ def check_fact(fact: dict[str, Any], docs: DocCache) -> Row:
 
 
 def run(
-    citations_path: Path = CITATIONS_JSON, facts_path: Path = FACTS_JSON, raw_dir: Path = RAW_DIR
+    citations_path: Path = CITATIONS_JSON,
+    facts_path: Path = FACTS_JSON,
+    raw_dir: Path = RAW_DIR,
+    radar_path: Path | None = None,
 ) -> list[Row]:
     docs = DocCache(raw_dir)
     rows: list[Row] = []
@@ -162,6 +172,9 @@ def run(
     if facts_path.exists():
         facts = json.loads(facts_path.read_text(encoding="utf-8"))
         rows.extend(check_fact(f, docs) for f in facts.get("facts", []))
+    from wapsi.search.radar import check_rows  # lazy: radar imports this module
+
+    rows.extend(check_rows(docs, radar_path))  # default data/docs/reg_radar.json; none if the file is absent
     return rows
 
 
@@ -169,8 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--citations", type=Path, default=CITATIONS_JSON)
     ap.add_argument("--facts", type=Path, default=FACTS_JSON)
+    ap.add_argument("--radar", type=Path, default=None, help="regulatory radar (default data/docs/reg_radar.json)")
     args = ap.parse_args(argv)
-    rows = run(args.citations, args.facts)
+    rows = run(args.citations, args.facts, radar_path=args.radar)
     width = max(len(r.item) for r in rows)
     for r in rows:
         print(f"{'OK ' if r.ok else 'FAIL'} {r.item:<{width}}  {r.detail}")

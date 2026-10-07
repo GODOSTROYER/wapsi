@@ -1,6 +1,8 @@
 {#- CFCFRMS request to another bank for an account that received victim money. -#}
 # CFCFRMS hold request to {{ c.bank_name }}: A/c No. {{ s.account_id }}
 
+> Simulated CFCFRMS interface: Wapsi prepares this request but is not connected to the CFCFRMS portal. Nothing is sent until the nodal officer submits it on the portal.
+
 - **From:** Nodal Officer (Cyber Fraud Cell), {{ c.home_bank_name }}
 - **To:** Nodal Officer, {{ c.bank_name }} (bank code {{ s.bank_id }}), through CFCFRMS
 - **Complaint(s):** {{ s.ncrp_ids }}
@@ -14,7 +16,7 @@ Money traced to the complaint(s) above left accounts at our bank for A/c No. {{ 
 | Victim money received by the account | {{ s.disputed_amount }} |
 | **Amount requested to be put on hold** | **{{ s.tainted_amount }}** |
 
-You are requested to put on hold the amount equivalent to {{ s.tainted_amount }} in A/c No. {{ s.account_id }}, as the SOP provides for the notice under Section 168 read with Section 94 BNSS [SOP-9-1] [BNSS-94]. The request is amount-specific; please do not freeze the whole account [SOP-5-IX]. Where the money has already moved on, please update the onward trail (UTR/TRX ID, beneficiary account and amount) on CFCFRMS so that the next layer can be followed [SOP-6].
+You are requested to put on hold the amount equivalent to {{ s.tainted_amount }} in A/c No. {{ s.account_id }}, as the SOP provides for the notice under Section 168 read with Section 94 BNSS [SOP-9-1] [BNSS-94]. The request is amount-specific: please hold the amount rather than the whole account, as unwarranted freezing of accounts is discouraged [SOP-5-IX]. Where the money has already moved on, please update the onward trail (UTR/TRX ID, beneficiary account and amount) on CFCFRMS so that the next layer can be followed [SOP-6].
 
 Nodal Officer (Cyber Fraud Cell)
 {{ c.home_bank_name }}

@@ -14,6 +14,13 @@ generation named in the header, so a concurrent reader never mixes chunks from t
 content hashes, so re-putting a bundle is idempotent and ``append_audit`` never rewrites the bundle.
 
 All Google imports are lazy; any client object with Firestore's ``collection().document()`` surface works.
+
+TODO(audit chain): events sealed by the pipeline (``wapsi.audit``: ``seq`` / ``prev_hash`` / ``hash``) are stored
+as they are, but this store does not seal on its own yet: ``append_audit`` should read the head event and write
+the next link in a Firestore transaction (``wapsi.audit.chain.append_event``), ``put_bundle`` should keep
+recorded events and seal only new ones (``extend_stored``), reads should order by ``event.seq``, and the chain
+anchor (count + head hash) should live outside ``cases/{case_id}/audit``. Until then verify with
+``wapsi.audit.verify_chain`` on the bundle read back.
 """
 
 from __future__ import annotations

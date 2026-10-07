@@ -29,7 +29,14 @@ for extra in (ROOT, ROOT / "src"):
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")  # ₹ on Windows consoles (cp1252)
 
-from wapsi.models import CaseBundle, CheckResult, Draft, DraftKind, Role, VerificationReport  # noqa: E402
+from wapsi.models import (  # noqa: E402
+    INNOCENT_ROLES,
+    CaseBundle,
+    CheckResult,
+    Draft,
+    DraftKind,
+    VerificationReport,
+)
 
 
 def load_ledger(world: str):
@@ -87,12 +94,13 @@ def resolve_ids(ledger, ncrp_ids: list[str], group: bool) -> list[str]:
 
 
 def innocent_guard(draft: Draft, bundle: CaseBundle, ledger) -> list[CheckResult]:
-    """SOP 5(xii): no STR on an innocent holder. Error if the STR body names one; warning if a sheet does."""
+    """SOP 5(xii): no automatic STR on an innocent holder (bona fide recipient or unwitting conduit; for a conduit the
+    officer decides on a separate STR). Error if the STR body names one; warning if a sheet does."""
     if draft.kind != DraftKind.STR:
         return []
-    innocent = [a for a, c in bundle.classifications.items() if c.role == Role.INNOCENT_HOLDER]
+    innocent = [a for a, c in bundle.classifications.items() if c.role in INNOCENT_ROLES]
     if bundle.plan:
-        innocent += [d.account_id for d in bundle.plan.decisions if d.role == Role.INNOCENT_HOLDER]
+        innocent += [d.account_id for d in bundle.plan.decisions if d.role in INNOCENT_ROLES]
     innocent = sorted(set(innocent))
     if not innocent:
         return [
@@ -133,6 +141,8 @@ def innocent_guard(draft: Draft, bundle: CaseBundle, ledger) -> list[CheckResult
 
 
 def print_report(draft: Draft, report: VerificationReport, extra: list[CheckResult]) -> bool:
+    from wapsi.verify.report import label_of
+
     checks = list(report.checks) + extra
     blocking = [c for c in checks if not c.passed and c.severity == "error"]
     status = "PASS" if report.passed and not blocking else "FAIL"
@@ -141,7 +151,7 @@ def print_report(draft: Draft, report: VerificationReport, extra: list[CheckResu
     print("|---|---|---|---|")
     for c in checks:
         spans = f" — spans: {', '.join(c.spans[:5])}" if c.spans else ""
-        print(f"| {c.name} | {'ok' if c.passed else 'FAILED'} | {c.severity} | {c.message}{spans} |")
+        print(f"| {c.name} | {'ok' if c.passed else 'FAILED'} | {c.severity} | {label_of(c)}{spans} |")
     return status == "PASS"
 
 

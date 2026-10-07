@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from wapsi.citations import FIU_FAQ_URL, SOP_URL
+from wapsi.citations import FIU_FAQ_URL, RBI_FRM_DIR_URL, SOP_URL
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCS_DIR = Path(os.environ.get("WAPSI_DOCS_DIR", REPO_ROOT / "data" / "docs"))
@@ -29,7 +29,7 @@ FETCH_LOG = RAW_DIR / "_fetch.json"
 CHUNKS_JSONL = INDEX_DIR / "chunks.jsonl"
 BUILD_REPORT = INDEX_DIR / "build_report.json"
 
-Profile = Literal["sop", "bnss", "pmlr", "rbi_md", "faq"]
+Profile = Literal["sop", "bnss", "pmlr", "rbi_dir", "faq"]
 
 
 class Source(BaseModel):
@@ -89,7 +89,13 @@ BNSS_PDF_URL = (
     "https://indiacode.gov.in/server/api/core/bitstreams/73f93470-5f6a-4f0f-bc23-1309e32b9554/content"
 )
 PMLR_PDF_URL = "https://fiuindia.gov.in/pdfs/AML_legislation/PMLA_2005.pdf"
-RBI_FRM_URL = "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12702&Mode=0"
+
+# Chapter III of the RBI FRM Directions, 2026: paras 12-22 (EWS / RFA governance and credit accounts) and
+# 23-25 (EWS for other banking / non-credit transactions, incl. money mule accounts in para 24).
+_RBI_FRM_DIR_SECTIONS = {
+    **{str(n): "RBI-FRM-DIR-2026-EWS" for n in range(12, 23)},
+    **{str(n): "RBI-FRM-DIR-2026" for n in range(23, 26)},
+}
 
 SOURCES: list[Source] = [
     Source(
@@ -225,30 +231,33 @@ SOURCES: list[Source] = [
         },
     ),
     Source(
-        id="rbi-frm-md-2024",
+        id="rbi-frm-dir-2026",
         title=(
-            "RBI Master Directions on Fraud Risk Management in Commercial Banks (including Regional Rural Banks) "
-            "and All India Financial Institutions, RBI/DOS/2024-25/118, 15.07.2024"
+            "Reserve Bank of India (Commercial Banks - Fraud Risk Management) Directions, 2026, "
+            "RBI/DoS/2026-27/412, DoS.CO.FMG.6/23.04.001/2026-27, 31.07.2026"
         ),
         publisher="Reserve Bank of India",
         type="html",
-        url=RBI_FRM_URL,
-        mirrors=[
-            "https://rbidocs.rbi.org.in/rdocs/notification/PDFs/118MDE97B8ED9A09B4B21BE7FDDE5F836CD09.PDF"
-        ],
+        url=RBI_FRM_DIR_URL,
         licence="RBI website content (see rbi.org.in Disclaimer); not redistributed; short verbatim quotes only.",
-        profile="rbi_md",
-        citation_ids=["RBI-FRM-MD-2024"],
-        expect_text="Early Warning Signals",
-        start_marker="RBI/DOS/2024-25/118",
+        profile="rbi_dir",
+        citation_ids=["RBI-FRM-DIR-2026", "RBI-FRM-DIR-2026-EWS"],
+        expect_text="money mule accounts",
+        start_marker="RBI/DoS/2026-27/412",
         end_marker="All Months",
-        drop_regex=[r"^CONTENTS\s*$.*?(?=^INTRODUCTION\s*\n(?:In exercise))"],
-        front_matter="Covering letter",
-        expect_sections=["1.1", "3", "3.1.1", "3.4.2"],
-        section_citations={"3": "RBI-FRM-MD-2024"},
+        drop_regex=[r"^Table of Contents\s*$.*?(?=^Introduction\s*$)"],
+        front_matter="Header",
+        expect_sections=["Introduction", "1", "12", "23", "24", "25", "67", "70", "Footnotes"],
+        section_citations=_RBI_FRM_DIR_SECTIONS,
         notes=(
-            "The HTML notification page carries the full text. The rbidocs PDF mirror sits behind a JavaScript "
-            "bot challenge and cannot be fetched by scripts."
+            "Para 67 repeals the earlier fraud risk management instructions for Commercial Banks, listed in "
+            "circular DoS.CO.PPG.66/11.01.005/2026-27 of 31.07.2026; this replaces the RBI Master Directions on "
+            "Fraud Risk Management of 15.07.2024 (RBI/DOS/2024-25/118, NotificationUser.aspx?Id=12702, formerly "
+            "source rbi-frm-md-2024 / citation RBI-FRM-MD-2024), which RBI lists among the circulars withdrawn by "
+            "the Department of Supervision. Applies to Commercial Banks only (not SFBs, Payments Banks or LABs; "
+            "the 2024 MD also covered RRBs and AIFIs). The HTML notification page carries the full text; the "
+            "PDF (rbidocs.rbi.org.in/rdocs/notification/PDFs/412MD5B6CA712E156413BACDEA9DD5CF5D1EF.PDF) is not "
+            "used because citations are pinned to the HTML text (page null)."
         ),
     ),
 ]

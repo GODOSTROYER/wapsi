@@ -104,7 +104,7 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 def raw_path(log_entry: dict[str, Any] | None, source: Source, raw_dir: Path = RAW_DIR) -> Path | None:
-    if log_entry and (raw_dir / log_entry["filename"]).exists():
+    if log_entry and log_entry.get("filename") and (raw_dir / log_entry["filename"]).exists():  # failed: none
         return raw_dir / log_entry["filename"]
     for ext in ("pdf", "html"):
         p = raw_dir / f"{source.id}.{ext}"

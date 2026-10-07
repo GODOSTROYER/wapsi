@@ -30,7 +30,7 @@ from wapsi.timeutil import IST
 GENERATOR_VERSION = "wapsi-synth/1.0"
 IST_OFFSET_S = 19800
 
-Size = Literal["showcase", "demo", "full"]
+Size = Literal["showcase", "demo", "full", "hard"]
 
 SIZES: dict[str, dict] = {
     "demo": {"n_accounts": 3000, "n_rings": 30, "episode_p": [0.62, 0.38], "n_pools": 6, "activity": 0.9},
@@ -41,7 +41,17 @@ SIZES: dict[str, dict] = {
         "n_pools": 24,
         "activity": 1.6,
     },
+    # demo-sized world with the hard-mode confounders and the hard-only typologies T11..T15 (wapsi.synth.hard)
+    "hard": {
+        "n_accounts": 3000,
+        "n_rings": 45,
+        "episode_p": [0.7, 0.3],
+        "n_pools": 6,
+        "activity": 0.9,
+        "hard": True,
+    },
 }
+HARD_BACKGROUND_SIGNAL_MISSING = 0.2  # hard world: background accounts without an external-signal row
 ADVERSARIAL_RATE = 0.07
 
 
@@ -150,7 +160,7 @@ def _fix_openings(b: WorldBuilder, allt: TxnChunk, rank: np.ndarray, n_ring: int
         )
 
 
-def _signals(b: WorldBuilder, rng: np.random.Generator) -> pd.DataFrame:
+def _signals(b: WorldBuilder, rng: np.random.Generator, hard: bool = False) -> pd.DataFrame:
     n = len(b.acct_ids)
     u = rng.random(n)
     fri = np.where(u < 0.95, "NONE", np.where(u < 0.99, "MEDIUM", "HIGH")).astype(object)
@@ -165,7 +175,7 @@ def _signals(b: WorldBuilder, rng: np.random.Generator) -> pd.DataFrame:
     prior[inter] = 0
     for i, (f, s, p) in b.signal_override.items():
         fri[i], score[i], prior[i] = f, s, p
-    return pd.DataFrame(
+    out = pd.DataFrame(
         {
             "account_id": b.acct_ids,
             "fri_risk": fri.astype(str),
@@ -173,6 +183,12 @@ def _signals(b: WorldBuilder, rng: np.random.Generator) -> pd.DataFrame:
             "ncrp_prior_reports": prior.astype(np.int64),
         }
     )
+    if hard:  # patchy coverage: no row at all for some accounts (the product reads that as "no signal")
+        ded = np.array(b.dedicated, dtype=bool)
+        missing = (rng.random(n) < HARD_BACKGROUND_SIGNAL_MISSING) & ~ded & ~inter
+        missing[sorted(b.signal_missing)] = True
+        out = out.loc[~missing].reset_index(drop=True)
+    return out
 
 
 def _background_devices(b: WorldBuilder, rng: np.random.Generator) -> None:
@@ -339,7 +355,10 @@ def build_world(cfg: WorldConfig) -> tuple[dict[str, pd.DataFrame], list]:
     pop = build_population(b, max(200, n_acc - n_ring_accts), int(params["n_pools"]))
 
     b.rng = r_ring
-    led, episodes = generate_rings(b, pop, r_ring, int(params["n_rings"]), list(params["episode_p"]))
+    hard = bool(params.get("hard", False))
+    led, episodes = generate_rings(
+        b, pop, r_ring, int(params["n_rings"]), list(params["episode_p"]), hard=hard
+    )
     ring_chunk = led.chunk()
     ring_invoices = list(b.invoices)
 
@@ -480,7 +499,7 @@ def build_world(cfg: WorldConfig) -> tuple[dict[str, pd.DataFrame], list]:
         "transactions": tx_table.to_pandas(),
         "invoices": inv_table.to_pandas(),
         "gst_registry": pa.Table.from_pylist(b.gst, schema=SCHEMAS["gst_registry"]).to_pandas(),
-        "external_signals": _signals(b, r_fin),
+        "external_signals": _signals(b, r_fin, hard),
         "device_links": pa.table(
             {
                 "device_id": pc.binary_join_element_wise(

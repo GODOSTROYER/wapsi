@@ -37,7 +37,7 @@ import pandas as pd
 
 from wapsi.classify.scoring import HeuristicScorer, XgbScorer
 from wapsi.config import WapsiConfig
-from wapsi.models import Disposition, GoldenCase, Role
+from wapsi.models import Disposition, GoldenCase, Role, legacy_role
 
 EXTERNAL_SIGNALS = ("fri_risk", "mulehunter_score", "ncrp_prior_reports")
 DEFAULT_XGB = Path("evals/reports/classify-xgb-demo-newfeat.json")
@@ -121,7 +121,8 @@ def evaluate_world(world: Path, scorers: dict, ledger, *, limit: int | None = No
             t_cls.append(timing.get("classify_s", 0.0))
             for acct, exp in g.expected_roles.items():
                 cr = bundle.classifications.get(acct)
-                got = cr.role if cr else Role.UNKNOWN
+                # golden sets use the legacy INNOCENT_HOLDER label for both innocent-holder roles
+                got = legacy_role(cr.role) if cr else Role.UNKNOWN
                 for r in (Role.MULE, Role.INNOCENT_HOLDER):
                     c[f"{r.value}_tp"] += int(got == r and exp == r)
                     c[f"{r.value}_fp"] += int(got == r and exp != r)

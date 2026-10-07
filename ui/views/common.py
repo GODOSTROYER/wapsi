@@ -22,9 +22,9 @@ from ui.data_source import EngineStatus, ShowcaseDataSource, clock_status, doc_s
 from wapsi.citations import registry
 from wapsi.models import CaseBundle, Citation, ClockKind, ClockStatus
 
-PAGES: list[str] = ["Inbox", "Case Room", "Hold Plan", "Drafts & Verification", "Approvals", "Clocks", "KPIs",
-                    "Audit"]
-CASE_PAGES = {"Case Room", "Hold Plan", "Drafts & Verification", "Approvals", "Clocks"}
+PAGES: list[str] = ["Inbox", "Case Room", "Hold Plan", "Drafts & Verification", "Approvals", "Clocks",
+                    "Regulatory Radar", "KPIs", "Audit"]
+CASE_PAGES = {"Case Room", "Hold Plan", "Drafts & Verification", "Approvals", "Clocks", "Regulatory Radar"}
 
 K_PAGE, K_CASE, K_ROLE, K_ACCOUNT, K_FLASH = "page", "case_id", "role", "inspect_account", "_flash"
 

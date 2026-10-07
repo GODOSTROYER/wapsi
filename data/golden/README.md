@@ -8,6 +8,7 @@ banks ("(synthetic)"), account numbers, GSTINs, PANs and mobiles are generated; 
 | `showcase/` | the hand-computed fixture `wapsi.fixtures.showcase` exported as a world (2 cases) | `uv run python -m wapsi.synth --size showcase` |
 | `demo/` | ~3,000 accounts, ~62k transactions, 30 rings, ~43 complaints (seed 7) | `uv run python -m wapsi.synth --size demo --seed 7 --out data/generated/demo` |
 | `full/` | ~60,000 accounts, ~2M transactions, 150 rings, ~300 complaints (seed 7) | `uv run python -m wapsi.synth --size full --seed 7 --out data/generated/full` |
+| (not committed) `hard`, `hard-101` | demo-sized, 15 typologies (T1–T15) with realistic confounders; 64 and 62 cases (seeds 7 and 101) | `uv run python -m wapsi.synth --size hard --seed 7 --out data/generated/hard`; the golden set stays in `data/generated/<world>/golden/`, where the harness reads it |
 
 Each folder has `cases.jsonl` (one `wapsi.models.GoldenCase` per line, sorted by `case_id`) and `SUMMARY.md`
 (counts and money by typology). The Parquet worlds live in `data/generated/<world>/` (gitignored); the generator
@@ -42,7 +43,7 @@ no longer matches the generator.
 | other bank, nothing left | `CASHED_OUT` if it sent taint to ATM/crypto, else `NO_ACTION` | 0 |
 | home merchant, all tainted payments have a `DELIVERED` invoice | `NO_HOLD_UPDATE_ONLY` (SOP 9.2) | 0 |
 | home merchant, otherwise (undelivered / cancelled / no invoice) | `HOLD_IN_POOL` (SOP 9.2) | `min(undelivered taint, balance)` |
-| home account, role `INNOCENT_HOLDER` | `HOLD_AMOUNT_NO_ESCALATION` (SOP 5(xii)); `NO_ACTION` if nothing to hold | `min(tainted, balance)` |
+| home account, role `INNOCENT_HOLDER` | `HOLD_AMOUNT_NO_ESCALATION` (SOP 5(xii)); `NO_ACTION` if nothing to hold. The product splits this role into a bona fide recipient and an unwitting conduit; both score as `INNOCENT_HOLDER` (`wapsi.models.legacy_role`), and the hold is the same | `min(tainted, balance)` |
 | other home accounts | `HOLD_AMOUNT`; else `FORWARD_HOLD` (first layer with exits); else `CASHED_OUT` / `NO_ACTION` | `min(tainted, balance)` |
 
   Forward hold (in `notes.forward_hold`): first-layer home accounts whose balance is below the tainted amount they
@@ -53,10 +54,11 @@ no longer matches the generator.
   uses the same definition per `ncrp_id` and lists every victim of the case (0.0 when nothing is recoverable).
   Process `P2` when more than one victim has recoverable money, else `P1`.
 - `expected_str_ground` = `PROCEEDS_OF_CRIME` when a home-bank `MULE` received tainted money, else `null`
-  (e.g. T6: only innocent holders at the home bank).
+  (e.g. T6: only innocent holders at the home bank, so no automatic STR; the officer decides on any STR for an
+  innocent holder).
 - `notes` (JSON text): `victims`, `max_layer`, `total_hold`, `total_recoverable`, `forward_hold`,
-  `baseline_freeze_amount` / `baseline_freeze_accounts` (balances of home accounts that received taint, i.e. what a
-  whole-account freeze would immobilise), `window_end`.
+  `baseline_freeze_amount` / `baseline_freeze_accounts` (balances of home accounts that received taint: the
+  whole-account freeze baseline, a comparison figure only), `window_end`.
 
 ## Cases
 
@@ -78,11 +80,16 @@ them back and never acts on them.
 | `T3_MERCHANT_WASH` | mule buys goods from a genuine GST merchant (invoice mostly `DELIVERED`, 25% undelivered), rest to ATM | SOP 9.2 (`NO_HOLD_UPDATE_ONLY` vs `HOLD_IN_POOL`) |
 | `T4_CRYPTO_EXIT` | mule (→ second mule) → VASP transfers, sometimes the exact balance | crypto exits, `FORWARD_HOLD` |
 | `T5_CROSS_BANK_HOP` | home mule → OB02/OB03 mule → back to a home mule → ATM / crypto / keep | consortium following, `OUTBOUND_CFCFRMS_REQUEST` |
-| `T6_TRIANGULATION` | victim pays a genuine long-standing seller (layer 1) for goods; seller keeps selling (commingling), pays rent to a landlord and a supplier merchant | innocent holders (SOP 5(xii)), exact commingled pro-rata, no STR |
+| `T6_TRIANGULATION` | victim pays a genuine long-standing seller (layer 1) for goods; seller keeps selling (commingling), pays rent to a landlord and a supplier merchant | innocent holders (SOP 5(xii)), exact commingled pro-rata, no automatic STR |
 | `T7_MULTI_VICTIM` | 2–4 victims → same first-layer mule over hours, partial cash-outs / forwards in between | per-victim vectors, Process 2, s.106 flag (FIR + ≥ 2 prior reports) |
 | `T8_DORMANT_BURST` | 7–15-year-old account with a small residual balance and no recent activity is reactivated (new device) and fans out | old FULL-KYC mule with low scores, commingled residual |
 | `T9_DEVICE_CLUSTER` | mules linked only through 1–2 shared devices (mixed KYC, cities, ages, low external scores), plus cluster members that never receive money | device-graph features |
 | `T10_NODAL_POOL` | mule (→ mule) → payment-aggregator pool / nodal / escrow account, rest to ATM | `HOLD_AMOUNT_INTERMEDIARY`, `intermediary` bucket |
+| `T11_SLEEPER_MULE` (hard only) | long-standing rented account with commingled salary or trade receipts; partial cash-out, then delayed layering 26–44 h later | mule detection past the 24 h feature window |
+| `T12_VICTIM_CHAIN` (hard only) | task scam: part of victim A's money paid to victim B as a "reward", B then pays a fresh mule (own complaint) | victim on another victim's trail (`VICTIM_ACCOUNT_ON_TRAIL`) |
+| `T13_SALARY_POOL` (hard only) | genuine labour contractor paid a victim's money as an "advance"; fast wage payouts and cash for daily wages | innocent holders that look like a fan-out |
+| `T14_FESTIVAL_SELLER` (hard only) | young home business at its festival peak (many new customers, same-day supplier payments, false risk flags) | innocent seller and suppliers |
+| `T15_INSTANT_RELAY` (hard only) | same-second relay in tranches just under ₹50,000, partial cash-outs | credit-before-debit replay, structuring |
 
 Noise for classifiers: ~15% of mules have clean-looking external signals and some are years old; ~4% of
 legitimate accounts have medium MuleHunter-style scores; a few legitimate accounts share a family device; some

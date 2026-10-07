@@ -67,12 +67,14 @@ DISPOSITION_TONE: dict[Disposition, str] = {
     Disposition.CASHED_OUT: "red",
     Disposition.ESCALATE_S106_CANDIDATE: "blue",
     Disposition.NO_ACTION: "gray",
+    Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD: "red",  # a recorded, supervisor-approved exception
 }
 
 ROLE_TONE: dict[Role, str] = {
     Role.VICTIM: "gray",
     Role.MULE: "red",
-    Role.INNOCENT_HOLDER: "teal",
+    Role.BONA_FIDE_RECIPIENT: "teal",  # legacy alias Role.INNOCENT_HOLDER
+    Role.UNWITTING_CONDUIT: "teal",
     Role.MERCHANT: "yellow",
     Role.INTERMEDIARY: "gray",
     Role.LEGIT: "gray",

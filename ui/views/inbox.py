@@ -59,7 +59,8 @@ def render(ctx: Ctx) -> None:
 
     if not bundles:
         md(h.empty_state("No hold notices yet",
-                         "New NCRP / 1930 notices pushed through CFCFRMS appear here as soon as they arrive.",
+                         "New NCRP / 1930 notices pushed through CFCFRMS (a simulated interface in this build) appear "
+                         "here as soon as they arrive.",
                          glyph="✓"))
         return
 

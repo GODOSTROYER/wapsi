@@ -1,4 +1,4 @@
-"""Fraud-ring typology templates T1..T10 and the ring orchestrator.
+"""Fraud-ring typology templates T1..T10 and the ring orchestrator (hard-only T11..T15: ``wapsi.synth.hard``).
 
 Each template writes one *episode* (one or more victims plus fresh ring accounts). A ring may run several
 episodes (same gang: shared devices, fresh mules), each of which becomes its own golden case unless the
@@ -12,7 +12,7 @@ import numpy as np
 from wapsi.synth import names as nm
 from wapsi.synth.builder import CH, DAY, HOUR, MINUTE, WorldBuilder, upi_or_imps
 from wapsi.synth.population import Population
-from wapsi.synth.rings import TYPOLOGIES, Episode, RingContext, RingLedger, round_down
+from wapsi.synth.rings import HARD_TYPOLOGIES, TYPOLOGIES, Episode, RingContext, RingLedger, round_down
 
 
 def _mins(ctx: RingContext, lo: float, hi: float) -> int:
@@ -48,7 +48,7 @@ def t1_fanout(ctx: RingContext, ep: Episode) -> int:
         t = ctx.cash_out(a, t + _mins(ctx, 3, 10), min(50_000.0, led.balance(a) * r.uniform(0.1, 0.3)))
     total = led.balance(a) * (1.0 if sweep_a else r.uniform(0.85, 1.0))
     k = max(1, min(k, int(total // 6000)))
-    t += _mins(ctx, 3, 20)
+    t += ctx.hop_delay(3, 20)
     clean = [bool(r.random() < 0.4) for _ in range(k)]
     subs = [ctx.new_mule(ctx.mule_bank(0.25), t, clean=c) for c in clean]
     times = ctx.split_forward(a, subs, t, total, step=500, sweep=sweep_a)
@@ -73,7 +73,7 @@ def t2_chain(ctx: RingContext, ep: Episode) -> int:
     v = ctx.pick_victim()
     t = ctx.seed(ep, v, chain[0], ep.t0, ctx.victim_amount())
     for _i in range(1, depth):
-        t += _mins(ctx, 5, 70)
+        t += ctx.hop_delay(5, 70)
         nxt = ctx.new_mule(ctx.mule_bank(0.2), t)
         chain.append(nxt)
         src = chain[-2]
@@ -137,7 +137,7 @@ def t4_crypto(ctx: RingContext, ep: Episode) -> int:
     t = ctx.seed(ep, v, a, ep.t0, ctx.victim_amount())
     src = a
     if r.random() < 0.5:
-        t += _mins(ctx, 5, 30)
+        t += ctx.hop_delay(5, 30)
         bm = ctx.new_mule(ctx.mule_bank(0.3), t)
         t = ctx.forward(a, bm, t, led.balance(a) * r.uniform(0.85, 1.0), 1000)
         src = bm
@@ -152,7 +152,7 @@ def t5_cross_bank(ctx: RingContext, ep: Episode) -> int:
     a = ctx.new_mule(ctx.b.home, ep.t0)
     v = ctx.pick_victim()
     t = ctx.seed(ep, v, a, ep.t0, ctx.victim_amount())
-    t += _mins(ctx, 5, 40)
+    t += ctx.hop_delay(5, 40)
     x = ctx.new_mule(ctx.other_bank(), t)
     t = ctx.forward(a, x, t, led.balance(a) * r.uniform(0.8, 1.0), 1000)
     t += _mins(ctx, 10, 50)
@@ -391,7 +391,7 @@ def t8_dormant(ctx: RingContext, ep: Episode) -> int:
     b.add_device(d, ep.t0 - int(r.uniform(1, 5) * DAY), device=ctx.devices[0])
     v = ctx.pick_victim()
     t = ctx.seed(ep, v, d, ep.t0, ctx.victim_amount())
-    t += _mins(ctx, 5, 45)
+    t += ctx.hop_delay(5, 45)
     subs = [ctx.new_mule(ctx.mule_bank(0.3), t) for _ in range(int(r.integers(2, 4)))]
     times = ctx.split_forward(d, subs, t, led.balance(d) * r.uniform(0.7, 0.95), step=1000)
     end = max([t, *times])
@@ -422,7 +422,7 @@ def t9_device_cluster(ctx: RingContext, ep: Episode) -> int:
         cluster_mule(ctx.mule_bank(0.3), ep.t0)
     v = ctx.pick_victim()
     t = ctx.seed(ep, v, a, ep.t0, ctx.victim_amount())
-    t += _mins(ctx, 10, 40)
+    t += ctx.hop_delay(10, 40)
     bm = cluster_mule(ctx.mule_bank(0.2), t)
     t = ctx.forward(a, bm, t, led.balance(a) * r.uniform(0.85, 1.0), 1000)
     t += _mins(ctx, 10, 40)
@@ -449,7 +449,7 @@ def t10_nodal_pool(ctx: RingContext, ep: Episode) -> int:
         t = ctx.forward(a, bm, t, led.balance(a) * r.uniform(0.9, 1.0), 1000)
         src = bm
     pool = ctx.home_pool()
-    t += _mins(ctx, 5, 40)
+    t += ctx.hop_delay(5, 40)
     kind = b.acct_type[pool]
     remark = {"POOL": "PA WALLET LOAD", "NODAL": "NODAL COLLECT", "ESCROW": "ESCROW DEPOSIT"}[kind]
     t = ctx.forward(
@@ -480,12 +480,23 @@ TEMPLATE_FNS = {
 
 
 def generate_rings(
-    b: WorldBuilder, pop: Population, rng: np.random.Generator, n_rings: int, episode_p: list[float]
+    b: WorldBuilder,
+    pop: Population,
+    rng: np.random.Generator,
+    n_rings: int,
+    episode_p: list[float],
+    hard: bool = False,
 ) -> tuple[RingLedger, list[Episode]]:
+    """Ring orchestrator. ``hard``: add the hard-only typologies (``wapsi.synth.hard``) to the rotation and switch
+    every template to hard mode (``RingContext.hard``)."""
+    from wapsi.synth.hard import HARD_TEMPLATE_FNS
+
     led = RingLedger(b)
     episodes: list[Episode] = []
     used_victims: set[int] = set()
-    typ_order = [TYPOLOGIES[i % len(TYPOLOGIES)] for i in range(n_rings)]
+    typs = TYPOLOGIES + HARD_TYPOLOGIES if hard else TYPOLOGIES
+    fns = {**TEMPLATE_FNS, **HARD_TEMPLATE_FNS} if hard else TEMPLATE_FNS
+    typ_order = [typs[i % len(typs)] for i in range(n_rings)]
     rng.shuffle(typ_order)
     for i, typ in enumerate(typ_order):
         ring_id = f"RING-{i + 1:04d}"
@@ -500,14 +511,17 @@ def generate_rings(
             typology=typ,
             devices=devices,
             used_victims=used_victims,
+            hard=hard,
         )
-        n_ep = 1 if typ == "T7_MULTI_VICTIM" else 1 + int(rng.choice(len(episode_p), p=episode_p))
+        single = typ in ("T7_MULTI_VICTIM", "T12_VICTIM_CHAIN")
+        n_ep = 1 if single else 1 + int(rng.choice(len(episode_p), p=episode_p))
         for _ in range(n_ep):
             day = int(rng.integers(3, b.days - 4))
             hour = float(rng.choice([9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5, 20.5]))
             t0 = b.day_start(day) + int((hour + rng.uniform(-0.5, 0.5)) * HOUR)
             ep = Episode(ring_id=ring_id, typology=typ, t0=t0)
-            ep.t_end = TEMPLATE_FNS[typ](ctx, ep)
+            ctx.dwell_left = 1 if hard else 0
+            ep.t_end = fns[typ](ctx, ep)
             if ep.t_end - t0 > 60 * HOUR:
                 raise AssertionError(f"{ring_id} trail longer than the trace window")
             episodes.append(ep)

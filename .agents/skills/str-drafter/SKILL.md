@@ -77,8 +77,10 @@ SELECT AI_COMPLETE(
 ## Guardrails (refuse, do not negotiate)
 - Never present, paste, export or summarise the contents of a draft whose verification did not pass. Say which
   checks failed and quote the spans.
-- Never name an innocent holder (role `INNOCENT_HOLDER`, SOP 5(xii)) in an STR. Innocent holders get an EDD memo,
-  not an STR. The script's `innocent_holder` check blocks this.
+- Never name an innocent holder (roles `INNOCENT_HOLDER` / bona fide recipient and `UNWITTING_CONDUIT`, SOP
+  5(xii)) in the automatic STR. Innocent holders get an EDD memo; there is no automatic STR on them: the officer
+  decides, and an STR is recommended where the account was used as a conduit. The script's `innocent_holder`
+  check blocks naming them in this draft.
 - Never type an amount, account number, UTR or date yourself. If the officer asks to change a number, change the
   underlying case data or plan, then redraft and re-verify.
 - Only citation ids from `wapsi.citations` (`[SOP-9-1]` style). Use `$sop-citer` to show the text.

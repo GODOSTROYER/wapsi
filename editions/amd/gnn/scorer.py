@@ -11,7 +11,8 @@ frame become the seed nodes (their features are used as given, so they match the
 exactly), context counterparties and device peers are added from the ledger, and the GNN scores the seeds with
 messages from their in- and out-neighbourhoods. The time anchor is resolved, in order, from
 1. an explicit ``as_of`` (service calls),
-2. a bound trace (``GnnScorer.for_trace`` / ``bind``): ``window_start`` / ``window_end`` / layers of the trace,
+2. a bound trace (``GnnScorer.for_trace`` / ``bind``, or ``bind_trace``, the hook ``classify_trace`` calls with the
+   case's trace): ``window_start`` / ``window_end`` / layers of the trace,
 3. the complaints whose victim accounts are among the rows (a trace always contains its victim accounts): the first
    reported transfer to an account in the frame = ``trace.window_start``; the window end mirrors
    ``wapsi.graph.expand``. This is what makes ``classify_trace(..., model=GnnScorer.load(path, ledger=...))`` work,
@@ -30,6 +31,7 @@ Columns unknown to ``explain`` are ignored by it.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, fields
@@ -137,6 +139,20 @@ class GnnScorer:
         self._bound = None
         self._cache = None
         return self
+
+    def bind_trace(self, ledger: Ledger, trace: TraceResult) -> GnnScorer:
+        """``wapsi.classify`` trace hook (``TraceAwareScorer``): a copy bound to ``trace`` and its ledger.
+
+        The copy shares the model and uses the trace's exact window and layers instead of inferring them from the
+        complaints; this instance, its binding and its cache are left untouched, so one loaded scorer can serve
+        cases classified concurrently."""
+        bound = copy.copy(self)
+        if ledger is not self.ledger:
+            bound._victims = None  # per-ledger lookup
+        bound.ledger = ledger
+        bound.warnings = []
+        bound._cache = None
+        return bound.bind(trace)
 
     # ------------------------------------------------------------------ protocol
     def score(self, features: pd.DataFrame) -> pd.Series:

@@ -1,7 +1,11 @@
 """CLI: ``uv run python -m wapsi.synth --size demo --seed 7 --out data/generated/demo``.
 
-Writes the Parquet world to ``--out`` and the golden set to ``data/golden/<name>/`` (for ``full`` only when the
-golden file is under 2 MB; otherwise it stays in ``<out>/golden``).
+Writes the Parquet world to ``--out`` and the golden set to ``<out>/golden`` and ``data/golden/<name>/`` (for
+``full`` only when the golden file is under 2 MB). Hard worlds keep their golden set with the world only
+(``data/generated/<name>/golden``), e.g. the evaluation world and a held-out seed:
+
+    uv run python -m wapsi.synth --size hard --seed 7 --out data/generated/hard
+    uv run python -m wapsi.synth --size hard --seed 101 --name hard-101 --out data/generated/hard-101
 """
 
 from __future__ import annotations
@@ -22,16 +26,23 @@ GOLDEN_LIMIT_BYTES = 2_000_000
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m wapsi.synth", description=__doc__)
-    ap.add_argument("--size", choices=["showcase", "demo", "full"], default="demo")
+    ap.add_argument("--size", choices=["showcase", "demo", "full", "hard"], default="demo")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--name", default=None, help="world name (default: the size)")
     ap.add_argument("--out", default=None, help="output directory (default: data/generated/<name>)")
-    ap.add_argument("--golden-dir", default="data/golden", help="golden root; '' to skip")
+    ap.add_argument(
+        "--golden-dir",
+        default=None,
+        help="golden root (default data/golden; hard worlds: skipped); '' to skip",
+    )
     ap.add_argument("--days", type=int, default=45)
     ap.add_argument("--trace-memory", action="store_true", help="report peak Python heap (slower)")
     args = ap.parse_args(argv)
 
     name = args.name or args.size
+    golden_root = (
+        args.golden_dir if args.golden_dir is not None else ("" if args.size == "hard" else "data/golden")
+    )
     out = Path(args.out or f"data/generated/{name}")
     if args.trace_memory:
         tracemalloc.start()
@@ -44,8 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     t_all = time.perf_counter() - t0
     size = (local_golden / "cases.jsonl").stat().st_size
     dest = None
-    if args.golden_dir and (args.size != "full" or size < GOLDEN_LIMIT_BYTES):
-        dest = Path(args.golden_dir) / name
+    if golden_root and (args.size != "full" or size < GOLDEN_LIMIT_BYTES):
+        dest = Path(golden_root) / name
         dest.mkdir(parents=True, exist_ok=True)
         for f in ("cases.jsonl", "SUMMARY.md"):
             shutil.copyfile(local_golden / f, dest / f)

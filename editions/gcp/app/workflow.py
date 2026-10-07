@@ -179,7 +179,7 @@ def sweep_clocks(node_input: dict[str, Any]) -> dict[str, Any]:
         due = [c for c in clocks if c.status in (ClockStatus.WARNING, ClockStatus.OVERDUE)]
         for c in due:
             alerts.append({"case_id": case.case_id, "kind": c.kind.value, "status": c.status.value,
-                           "due": fmt_ist(c.due), "subject": c.subject})
+                           "due": fmt_ist(c.due), "subject": c.subject, "notes": c.notes})
         if due:
             worst = "OVERDUE" if any(c.status == ClockStatus.OVERDUE for c in due) else "WARNING"
             _notify(case.case_id, f"{case.case_id}: {len(due)} clock(s) {worst}", "clocks")

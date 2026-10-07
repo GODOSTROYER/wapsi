@@ -1,7 +1,9 @@
 """Deterministic offline LLM for tests, demos and evals (implements ``wapsi.ports.LLM``).
 
 It reads the JSON request that ``wapsi.draft.prose`` sends (task, placeholders, facts) and writes prose that uses
-only the offered ``⟦slot⟧`` placeholders and no digits.
+only the offered ``⟦slot⟧`` placeholders and no digits. Paragraphs stay within the word ranges the task
+instructions ask for (STR grounds 60-140, EDD rationale and case summary 50-120 words), so they can serve as
+teacher output for the AMD LoRA pipeline.
 
 - ``hallucinate=True`` adds a plausible but wrong raw rupee amount (lets evals measure how LLM number errors
   are caught).
@@ -112,6 +114,11 @@ def _str_grounds(facts: dict[str, Any], ph: Callable[[str], str | None]) -> list
         parts.append(f"{ph('total_outbound')} was moved to accounts at other banks")
     if parts:
         out.append("Of the stolen money, " + " and ".join(parts) + ".")
+    if ph("total_hold"):
+        out.append(
+            f"Victim money of {ph('total_hold')} that is still in accounts at this bank has been placed on "
+            "amount-specific hold."
+        )
     ground = (facts.get("case") or {}).get("str_ground") or "PROCEEDS_OF_CRIME"
     out.append(f"The transactions {_GROUND_PHRASE.get(ground, _GROUND_PHRASE['PROCEEDS_OF_CRIME'])}.")
     return out
@@ -161,8 +168,21 @@ def _case_summary(facts: dict[str, Any], ph: Callable[[str], str | None]) -> lis
         out.append("The trail shows that " + "; ".join(parts) + ".")
     if ph("total_recoverable") and ph("baseline_freeze_amount"):
         out.append(
-            f"Amount-specific holds and outbound requests together cover {ph('total_recoverable')}, while freezing "
-            f"the touched accounts outright would have immobilised {ph('baseline_freeze_amount')}."
+            f"Amount-specific holds and outbound requests together cover {ph('total_recoverable')}, against a "
+            f"whole-account freeze baseline of {ph('baseline_freeze_amount')}."
+        )
+    elif ph("total_recoverable"):
+        out.append(f"Amount-specific holds and outbound requests together cover {ph('total_recoverable')}.")
+    if ph("total_forward_hold"):
+        out.append(
+            f"Forward holds of {ph('total_forward_hold')} cover money that already left first-layer accounts; "
+            "they are not money in hand."
+        )
+    out.append("Each hold covers only the victim money traced into that account.")
+    if ph("restoration_process"):
+        out.append(
+            f"Money that is recovered will be returned to the {'victim' if n == 1 else 'victims'} through "
+            f"restoration process {ph('restoration_process')} once the holds are confirmed."
         )
     return out
 

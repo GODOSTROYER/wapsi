@@ -17,20 +17,23 @@ held until `APPROVE` runs under `WAPSI_SUPERVISOR`.
 - Hold lines (amount + UTRs + credit dates), outbound CFCFRMS requests.
 - Totals: held now, forward holds, recoverable (= holds + outbound request amounts), over-hold (must be ₹0.00),
   per-victim recoverable, restoration process (P1/P2), STR ground.
-- Baseline strip: "A whole-account freeze of N accounts would immobilise ₹X; this plan holds ₹Y across M."
+- Baseline strip: "Whole-account freeze baseline (comparison only): ₹X across N accounts; this plan holds ₹Y
+  across M."
 - Policy re-check result (`N/N checks passed`) and `wapsi.verify.verify_plan` result.
 
 ## Dispositions (AGENTS.md convention 6 — enforced in code and re-checked by the verifier)
 | Condition | Disposition | Hold amount | Cite |
 |---|---|---|---|
-| Mule / unknown individual or business account holding tainted money | `HOLD_AMOUNT` | `min(tainted, balance)` — never the whole account | [SOP-9-1] [SOP-ANNEX-I] [SOP-5-IX] |
+| Mule / unknown individual or business account holding tainted money | `HOLD_AMOUNT` | `min(tainted, balance)` — amount-specific by default | [SOP-9-1] [SOP-ANNEX-I] [SOP-5-IX] |
 | First-layer account whose balance < disputed amount | stays `HOLD_AMOUNT` (or `FORWARD_HOLD` if nothing holdable now) + reason `FORWARD_HOLD_FIRST_LAYER` | `forward_hold_amount` = tainted money it sent to ATM/crypto exits or unlocated destinations; never on nodal/pool/escrow accounts | [SOP-9-1-I] [SOP-DEF-FIRST-LAYER] |
-| Innocent holder (operated without knowledge, connivance or consent) | `HOLD_AMOUNT_NO_ESCALATION` + EDD memo, no STR | `min(tainted, balance)` | [SOP-5-XII] [SOP-10-1] |
+| Innocent holder, bona fide recipient (kept the money; role value `INNOCENT_HOLDER`) | `HOLD_AMOUNT_NO_ESCALATION` + EDD memo; no STR by default | `min(tainted, balance)` | [SOP-5-XII] [SOP-10-1] |
+| Innocent holder, unwitting conduit (used as a pass-through by someone else) | `HOLD_AMOUNT_NO_ESCALATION` + EDD memo + reasons `UNWITTING_CONDUIT`, `STR_RECOMMENDED_OFFICER_DECISION`, `requires_human`: STR recommended, the officer decides (never automatic) | `min(tainted, balance)` | [SOP-5-XII] [SOP-10-1] [PMLR-2-1-G] |
 | Merchant, goods delivered (invoice evidence) | `NO_HOLD_UPDATE_ONLY` | 0 | [SOP-9-2] |
 | Merchant, goods undelivered | `HOLD_IN_POOL` | tainted amount, in the PA/PG pool | [SOP-9-2] |
 | Nodal / pool / escrow account | `HOLD_AMOUNT_INTERMEDIARY` (a holding disposition) | `min(tainted, balance)` — the disputed amount only; **no forward hold**; never an s.106 flag; no suspension of digital banking, no seizure of the account | [SOP-9-1-III] [SOP-9-1] [SOP-ANNEX-I] |
 | Other-bank account holding tainted money | `OUTBOUND_CFCFRMS_REQUEST` | 0; request amount in `tainted_amount` | [SOP-9-1] [SOP-6] |
 | FIR present **and** ≥ 2 prior NCRP reports | flag only: reason `ESCALATE_S106_CANDIDATE`, `requires_human = true`; disposition stays `HOLD_AMOUNT` | unchanged | [BNSS-106] [CASE-KARTIK-CHATUR] |
+| Officer request with ≥ 1 recorded `AccountLevelReason`, approved by a different supervisor (never automatic) | `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD` | unchanged amount-specific hold (the recoverable money); the account-level restriction is on top | [SOP-5-IX] [SOP-9-1] |
 
 `total_recoverable` = home-bank holds + outbound request amounts (forward holds are not money in hand).
 Restoration process = P2 when more than one victim has recoverable money [SOP-11-P2], else P1 [SOP-11-P1].
@@ -77,13 +80,15 @@ FROM WAPSI.CASEMGMT.HOLD_PLAN WHERE case_id = 'CASE-31009260000101';
 1. Lead with the baseline strip (the court-mandated difference: lien on the disputed amount, not a freeze —
    [CASE-NEELKANTH] [CASE-SHREE-BALAJI]).
 2. Go row by row in layer order: disposition, amount, one-line reason, citation ids exactly as in the output.
-3. Call out every `requires_human` row and every innocent holder (no STR, EDD memo).
+3. Call out every `requires_human` row and every innocent holder (EDD memo; no automatic STR, the officer
+   decides; STR recommended where the account was used as a conduit).
 4. State the apportionment rule, the restoration process and the next step (`$str-drafter`, then approval).
 Use `$sop-citer` if the officer wants the text behind a citation id.
 
 ## Guardrails
-- Allowed verbs: "hold ₹X in account Y", "request the other bank", "no hold". Never "freeze",
-  "block the account", "debit freeze" (a debit freeze needs a s.107 BNSS magistrate order — [CASE-KARTIK-CHATUR]).
+- Allowed verbs: "hold ₹X in account Y", "request the other bank", "no hold". Do not recommend "freeze",
+  "block the account" or "debit freeze" (a debit freeze needs a s.107 BNSS magistrate order — [CASE-KARTIK-CHATUR]):
+  account-level action exists only as a recorded, supervisor-approved `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`.
 - Never raise a hold above the tainted amount. Nodal / pool / escrow accounts: hold the disputed amount only
   (SOP 9.1(iii)); never a forward hold on them (SOP 9.1(i)), never suspension of digital banking or seizure, never
   an s.106 flag. The legacy disposition `BLOCK_NODAL_POOL_ESCROW` ("never hold") is wrong and must not appear.

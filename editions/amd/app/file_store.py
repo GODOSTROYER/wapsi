@@ -10,6 +10,12 @@ moved over the old file with ``os.replace``. Readers therefore see either the pr
 a partial one. ``append_audit`` is a read-modify-write under the store lock (a ``threading.RLock`` inside the
 process plus ``fcntl.flock`` / ``msvcrt.locking`` across processes, e.g. the API and the Streamlit UI in the
 same container). Case ids are restricted to ``[A-Za-z0-9._-]`` so they can never escape the directory.
+
+Each case's audit log is append-only and hash-chained (``wapsi.audit``): ``put_bundle`` keeps every recorded
+event and seals only the bundle's new ones onto the chain; ``append_audit`` seals the event as the next link.
+``verify_audit`` re-checks a case file's chain (``uv run python -m wapsi.audit verify <case>.json`` does the same
+from the shell). TODO: keep the chain anchor (event count + head hash) outside the case file, so events removed
+from the end or a fully re-hashed file are caught too (``wapsi.audit.chain.ChainAnchor``).
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ import threading
 from collections.abc import Iterator
 from pathlib import Path
 
+from wapsi.audit.chain import ChainReport, append_event, extend_stored, verify_chain
 from wapsi.models import AuditEvent, Case, CaseBundle
 from wapsi.timeutil import ensure_utc
 
@@ -111,10 +118,12 @@ class FileCaseStore:
 
     # -- CaseStore protocol
     def put_bundle(self, bundle: CaseBundle) -> None:
-        path = self._path(bundle.case.case_id)
-        data = bundle.model_dump_json()
+        case_id = bundle.case.case_id
+        path = self._path(case_id)
         with self._locked():
-            self._write(path, data)
+            prev = self._read(path)
+            audit = extend_stored(prev.audit if prev else [], bundle.audit, case_id=case_id)
+            self._write(path, bundle.model_copy(update={"audit": audit}).model_dump_json())
 
     def get_bundle(self, case_id: str) -> CaseBundle | None:
         return self._read(self._path(case_id))
@@ -137,8 +146,14 @@ class FileCaseStore:
             bundle = self._read(path)
             if bundle is None:
                 raise KeyError(case_id)
-            bundle.audit.append(event)
+            append_event(bundle.audit, event, case_id=case_id)
             self._write(path, bundle.model_dump_json())
+
+    def verify_audit(self, case_id: str) -> ChainReport:
+        bundle = self.get_bundle(case_id)
+        if bundle is None:
+            raise KeyError(case_id)
+        return verify_chain(bundle.audit, case_id=case_id)
 
     # -- convenience (not part of the protocol)
     def case_ids(self) -> list[str]:

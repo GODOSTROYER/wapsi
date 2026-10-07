@@ -13,6 +13,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
 
+from wapsi.audit.chain import append_event, sha256_hex
 from wapsi.config import WapsiConfig
 from wapsi.models import (
     HOLDING_DISPOSITIONS,
@@ -34,12 +35,20 @@ from wapsi.ports import LLM, ActionSink, CaseStore, DocSearch, Guard, Ledger
 from wapsi.timeutil import utcnow
 
 SYSTEM_ACTOR = "wapsi"
+SIMULATED_CFCFRMS = "SIMULATED_CFCFRMS"  # CFCFRMS actions are recorded by a simulated interface, never sent
 
 
 def _audit(bundle: CaseBundle, action: str, object_type: str, object_id: str, *, actor: str = SYSTEM_ACTOR,
            role: str = "system", at: datetime | None = None, **details) -> None:
-    bundle.audit.append(AuditEvent(at=at or utcnow(), actor=actor, role=role, action=action,
-                                   object_type=object_type, object_id=object_id, details=details))
+    """Append an event to the case's hash-chained, append-only audit log (``wapsi.audit``)."""
+    append_event(bundle.audit, AuditEvent(at=at or utcnow(), actor=actor, role=role, action=action,
+                                          object_type=object_type, object_id=object_id, details=details),
+                 case_id=bundle.case.case_id)
+
+
+def _draft_created(bundle: CaseBundle, d: Draft, **kw) -> None:
+    _audit(bundle, "draft_created", "draft", d.draft_id, kind=d.kind.value, version=d.version,
+           account_id=d.account_id, llm_model=d.llm_model, draft_sha256=draft_fingerprint(d), **kw)
 
 
 def group_complaints(ledger: Ledger, complaints: Iterable[Complaint]) -> list[list[str]]:
@@ -91,7 +100,12 @@ def process_case(
     case_id: str | None = None,
     assigned_to: str | None = None,
     draft: bool = True,
+    lea_request=None,
 ) -> CaseBundle:
+    """``lea_request`` (optional ``wapsi.verify.lea_request.LeaHoldRequest``): a police / LEA hold request for this
+    case, checked against the eight-field checklist once the plan exists; the result (missing fields, the hold
+    limited to the identifiable amount and the clarification letter) is recorded as a ``lea_request_checked`` audit
+    event. It never changes the plan."""
     from wapsi.classify import classify_trace
     from wapsi.domain.clocks import clocks_for_bundle
     from wapsi.draft.drafter import draft_case
@@ -124,6 +138,8 @@ def process_case(
     bundle.trace = trace_case(ledger, ncrp_ids, cfg.trace, case_id=case_id)
     bundle.case.status = CaseStatus.TRACED
     timings["trace_s"] = time.perf_counter() - t
+    _audit(bundle, "trace_built", "trace", case_id, accounts=len(bundle.trace.accounts),
+           edges=len(bundle.trace.edges), trace_sha256=sha256_hex(bundle.trace.model_dump(mode="json")))
 
     t = time.perf_counter()
     bundle.classifications = classify_trace(ledger, bundle.trace, cfg.classify, model=scorer)
@@ -137,12 +153,20 @@ def process_case(
     bundle.verifications[plan_report.draft_id] = plan_report
     timings["plan_s"] = time.perf_counter() - t
     timings["time_to_hold_plan_s"] = time.perf_counter() - t0
+    _audit(bundle, "hold_plan_built", "plan", case_id, total_hold=bundle.plan.total_hold,
+           total_recoverable=bundle.plan.total_recoverable, passed=plan_report.passed,
+           plan_sha256=sha256_hex(bundle.plan.model_dump(mode="json")))
+
+    if lea_request is not None:
+        check_lea(bundle, lea_request, ledger, guard=guard)
 
     if draft:
         t = time.perf_counter()
         bundle.drafts = draft_case(bundle, ledger, llm, search)
         bundle.case.status = CaseStatus.DRAFTED
         timings["draft_s"] = time.perf_counter() - t
+        for d in bundle.drafts:
+            _draft_created(bundle, d)
 
         t = time.perf_counter()
         for d in bundle.drafts:
@@ -240,6 +264,11 @@ def approve(
     fingerprint = draft_fingerprint(draft)
     now = utcnow()
     previous = _latest_approval(bundle, draft_id)
+    account_level = draft.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST
+    if account_level and decision == ApprovalDecision.APPROVED:
+        requester = str(draft.structured.get("requested_by") or "").strip()
+        if not requester or requester.casefold() == approver.strip().casefold():
+            raise PermissionError("maker-checker: the officer who requested the exception cannot approve it")
 
     if decision == ApprovalDecision.APPROVED:
         if (
@@ -249,8 +278,28 @@ def approve(
         ):
             _audit(bundle, "approval_duplicate_ignored", "draft", draft_id, actor=approver, role=role, at=now)
             return bundle
-        if previous is not None and previous.decision == ApprovalDecision.REJECTED:
+        # the rejected content stays rejected; a new version of the draft (a redraft after an approved exception
+        # keeps the id and raises ``version``, so its fingerprint differs) gets its own decision
+        if (
+            previous is not None
+            and previous.decision == ApprovalDecision.REJECTED
+            and (not previous.draft_sha256 or previous.draft_sha256 == fingerprint)
+        ):
             raise ValueError(f"draft {draft_id} was rejected; regenerate it before approving")
+        if account_level:
+            # checked before anything is recorded: applying the exception redrafts and re-verifies the account's
+            # drafts (needs the ledger), and it can only be applied on an amount-specific hold (e.g. not a second
+            # request for an account whose exception is already applied)
+            from wapsi.graph.holdplan import ACCOUNT_LEVEL_BASE
+
+            if ledger is None:
+                raise ValueError(f"approving {draft_id} needs the ledger: the account's hold instruction is "
+                                 "redrafted and its drafts re-verified against the changed plan")
+            dec = next((d for d in bundle.plan.decisions if d.account_id == draft.account_id), None) \
+                if bundle.plan is not None else None
+            if dec is None or dec.disposition not in ACCOUNT_LEVEL_BASE:
+                state = dec.disposition.value if dec is not None else "no plan decision"
+                raise ValueError(f"{draft.account_id}: no amount-specific hold to apply the exception to ({state})")
         if ledger is not None:
             from wapsi.verify import verify_draft
 
@@ -267,13 +316,15 @@ def approve(
             if _verified_fingerprint(bundle, draft_id) != fingerprint:
                 raise ValueError(f"draft {draft_id} changed after it was verified; verify it again")
 
-    bundle.approvals.append(Approval(
+    approval = Approval(
         approval_id=f"APR-{uuid.uuid4().hex[:10]}", case_id=bundle.case.case_id, draft_id=draft_id,
         decision=decision, approver=approver, role=role, reason_code=reason_code, comment=comment, at=now,
         draft_sha256=fingerprint,
-    ))
+    )
+    bundle.approvals.append(approval)
+    # the approved content's fingerprint is sealed into the hash chain with the decision
     _audit(bundle, f"draft_{decision.value.lower()}", "draft", draft_id, actor=approver, role=role, at=now,
-           reason_code=reason_code, draft_sha256=fingerprint)
+           reason_code=reason_code, draft_sha256=fingerprint, approval_id=approval.approval_id)
 
     if decision == ApprovalDecision.APPROVED:
         kind = _ACTION_FOR_DRAFT.get(draft.kind)
@@ -282,7 +333,9 @@ def approve(
             actions.append(Action(
                 action_id=f"ACT-{uuid.uuid4().hex[:10]}", case_id=bundle.case.case_id, kind=kind,
                 payload={"draft_id": draft_id, "account_id": draft.account_id, "title": draft.title,
-                         "draft_sha256": fingerprint},
+                         "draft_sha256": fingerprint,
+                         # Wapsi is not connected to the CFCFRMS portal: these actions are recorded, not sent
+                         **({"interface": SIMULATED_CFCFRMS} if kind == ActionKind.CFCFRMS_UPDATE else {})},
                 created_at=now,
             ))
         if draft.kind == DraftKind.HOLD_INSTRUCTION:
@@ -296,10 +349,115 @@ def approve(
             done = sink.submit(a) if sink is not None else a
             bundle.actions.append(done)
             _audit(bundle, "action_" + done.status.value.lower(), "action", done.action_id, actor=approver,
-                   role=role, at=now, kind=done.kind.value)
+                   role=role, at=now, kind=done.kind.value, draft_id=draft_id)
+        if account_level:
+            _apply_account_level(bundle, draft, approver=approver, role=role, at=now, ledger=ledger, search=search,
+                                 guard=guard)
     _refresh_case_status(bundle)
     bundle.clocks = clocks_for_bundle(bundle, now)
     return bundle
+
+
+def _apply_account_level(bundle: CaseBundle, request: Draft, *, approver: str, role: str, at: datetime,
+                         ledger: Ledger | None, search: DocSearch | None, guard: Guard | None) -> None:
+    """A supervisor approved an officer's request: apply the exception to the plan and re-check it."""
+    from wapsi.graph.holdplan import apply_account_level_hold
+    from wapsi.verify import verify_draft, verify_plan
+
+    if bundle.plan is None or request.account_id is None:
+        raise ValueError("the case has no hold plan to apply the exception to")
+    requester = str(request.structured.get("requested_by") or "")
+    reasons = list(request.structured.get("reasons") or [])
+    bundle.plan = apply_account_level_hold(bundle.plan, request.account_id, reasons, requested_by=requester,
+                                           approved_by=approver)
+    plan_report = verify_plan(bundle, ledger)
+    bundle.verifications[plan_report.draft_id] = plan_report
+    _audit(bundle, "account_level_hold_applied", "account", request.account_id, actor=approver, role=role, at=at,
+           draft_id=request.draft_id, reasons=reasons, requested_by=requester, plan_passed=plan_report.passed)
+    if ledger is None:
+        return
+    # the hold instruction written for the amount-specific decision is redrafted (new version, fresh approval), and
+    # so is the case-level CFCFRMS update (its rows carry every account's disposition); the account's other drafts
+    # are re-checked against the changed plan
+    from wapsi.draft.drafter import redraft_cfcfrms_update, redraft_hold_instruction
+
+    redrafted = [redraft_hold_instruction(bundle, ledger, request.account_id, search=search)]
+    if any(d.kind == DraftKind.CFCFRMS_UPDATE for d in bundle.drafts):
+        redrafted.append(redraft_cfcfrms_update(bundle, ledger, search=search))
+    for new in redrafted:
+        bundle.drafts = [new if d.draft_id == new.draft_id else d for d in bundle.drafts]
+        if all(d.draft_id != new.draft_id for d in bundle.drafts):
+            bundle.drafts.append(new)
+        _draft_created(bundle, new, at=at, reason="EXCEPTIONAL_ACCOUNT_LEVEL_HOLD")
+    # unapproved drafts written for the amount-only decision are withdrawn: the customer notice ("only this amount
+    # is on hold"; the officer informs the holder) and an innocent holder's EDD memo (it recommends no account-level
+    # action, and the verifier accepts an EDD memo only for HOLD_AMOUNT_NO_ESCALATION)
+    stale = [d for d in bundle.drafts if d.kind in (DraftKind.CUSTOMER_NOTICE, DraftKind.EDD_MEMO)
+             and d.account_id == request.account_id and _latest_approval(bundle, d.draft_id) is None]
+    for d in stale:
+        bundle.drafts.remove(d)
+        bundle.verifications.pop(d.draft_id, None)
+        _audit(bundle, "draft_withdrawn", "draft", d.draft_id, actor=approver, role=role, at=at,
+               reason="EXCEPTIONAL_ACCOUNT_LEVEL_HOLD")
+    rechecked = {new.draft_id for new in redrafted}
+    for d in bundle.drafts:
+        if (d.account_id == request.account_id or d.draft_id in rechecked) and d.draft_id != request.draft_id:
+            report = verify_draft(d, bundle, ledger, search=search, guard=guard)
+            bundle.verifications[d.draft_id] = report
+            _audit(bundle, "draft_verified", "draft", d.draft_id, actor=approver, role=role, at=at,
+                   passed=report.passed, draft_sha256=draft_fingerprint(d))
+
+
+def request_account_level_hold(
+    bundle: CaseBundle,
+    ledger: Ledger,
+    account_id: str,
+    reasons: Iterable[str],
+    *,
+    requested_by: str,
+    role: str,
+    note: str = "",
+    search: DocSearch | None = None,
+    guard: Guard | None = None,
+) -> Draft:
+    """An officer (maker) requests an exceptional account-level hold on ``account_id``.
+
+    Amount-specific holds are the default; account-level action is only a recorded exception. The request needs
+    >= 1 reason from ``wapsi.models.AccountLevelReason`` and an eligible account; it is drafted, verified and added
+    to the bundle, and nothing changes in the plan until a supervisor other than ``requested_by`` approves it with
+    ``approve`` (fingerprint-bound). Raises ``PermissionError`` for the auditor role and ``ValueError`` for a missing
+    / unknown reason or an ineligible account.
+    """
+    from wapsi.draft.drafter import draft_account_level_request
+    from wapsi.verify import verify_draft
+
+    if role.strip().lower() == "auditor":
+        raise PermissionError("auditors are read-only")
+    draft = draft_account_level_request(bundle, ledger, account_id, list(reasons), requested_by=requested_by,
+                                        requester_role=role, note=note, search=search)
+    report = verify_draft(draft, bundle, ledger, search=search, guard=guard)
+    bundle.drafts.append(draft)
+    bundle.verifications[draft.draft_id] = report
+    now = utcnow()
+    _audit(bundle, "account_level_hold_requested", "account", account_id, actor=requested_by, role=role, at=now,
+           draft_id=draft.draft_id, reasons=list(draft.structured.get("reasons", [])))
+    _draft_created(bundle, draft, actor=requested_by, role=role, at=now)
+    _audit(bundle, "draft_verified", "draft", draft.draft_id, actor=requested_by, role=role, at=now,
+           passed=report.passed, draft_sha256=draft_fingerprint(draft))
+    return draft
+
+
+def check_lea(bundle: CaseBundle, request, ledger: Ledger | None = None, *, guard: Guard | None = None,
+              now: datetime | None = None, actor: str = SYSTEM_ACTOR, role: str = "system"):
+    """Check a police / LEA hold request against the case (``wapsi.verify.lea_request``) and record the result as
+    a ``lea_request_checked`` audit event. Returns the ``LeaRequestCheck``; the plan is never changed."""
+    from wapsi.verify.lea_request import check_lea_request, summary
+
+    at = now or utcnow()
+    result = check_lea_request(request, bundle, ledger, now=at, guard=guard)
+    _audit(bundle, "lea_request_checked", "lea_request", request.request_id, actor=actor, role=role, at=at,
+           **summary(result), letter=result.letter)
+    return result
 
 
 def pending_holds(bundle: CaseBundle) -> list[str]:

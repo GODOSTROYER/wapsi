@@ -6,7 +6,7 @@ tools:
   - grep
   - glob
   - bash
-  - snowflakesqlexecute
+  - snowflake_sql_execute
 model: claude-haiku-4-5
 ---
 

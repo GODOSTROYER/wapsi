@@ -256,24 +256,38 @@ def test_pmlr_rules_and_definition_clauses():
     assert {c.citation_id for c in chunks if c.section_key == "8"} == {"PMLR-8"}
 
 
-def test_rbi_paragraph_numbering_follows_chapters():
-    src = sources_by_id()["rbi-frm-md-2024"]
+def test_rbi_directions_paragraphs_run_through_chapters():
+    src = sources_by_id()["rbi-frm-dir-2026"]
     text = (
-        "RBI/DOS/2024-25/118\nDear Sir,\nAnnex\nINTRODUCTION\nIn exercise of the powers\nCHAPTER III\n"
-        "3. Early Detection of Frauds\n3.1 Governance Structure\n3.1.1 Banks shall have a framework for EWS\n"
-        "4.1 Not in chapter four yet\nCHAPTER IV\n4.1 Credit facility\nList of Circulars Repealed\n"
-        "1. DOS.CO circular\n* Export-Import Bank\n2 RRBs shall report"
+        "RBI/DoS/2026-27/412\nJuly 31, 2026\nChapter III – Early Detection of Frauds\nA. Governance Structure\n"
+        "Introduction\nThese Directions are issued\nChapter I - Preliminary\nA. Short Title and Commencement\n"
+        "1. These Directions shall be called\n(1) Not a paragraph\n3. Out of sequence, not a paragraph\n"
+        "Chapter III – Early Detection of Frauds\nA. Governance Structure\n"
+        "2. The bank shall have a framework for EWS and Red Flagging of Accounts (RFA) under the overall Fraud "
+        "Risk Management Policy approved by the Board.\n"
+        "C. EWS Framework for Other Banking / Non-Credit Related Transactions\n"
+        "3. The bank shall remain vigilant in monitoring transactions / unusual activities, specifically in the "
+        "non-KYC compliant and money mule accounts, to contain unauthorised / fraudulent transactions.\n"
+        "(C. Saravanan)\n1 Refer to the judgement\n2 Refer to Large Exposure Framework"
     )
-    secs = detect_sections(_doc([text], "rbi-frm-md-2024", kind="html"), src)
-    keys = [s.key for s in secs]
-    assert keys == [
-        "Covering letter", "Master Directions", "Introduction", "3", "3.1", "3.1.1", "4.1",
-        "Annex (circulars repealed)", "Footnotes",
-    ]  # fmt: skip
+    secs = detect_sections(_doc([text], "rbi-frm-dir-2026", kind="html"), src)
+    assert [s.key for s in secs] == ["Header", "Introduction", "1", "2", "3", "Footnotes"]
     by = {s.key: s for s in secs}
-    assert "Not in chapter four yet" in by["3.1.1"].text()
-    chunks = chunk_document(_doc([text], "rbi-frm-md-2024", kind="html"), src)
-    assert {c.citation_id for c in chunks if c.section_key.startswith("3")} == {"RBI-FRM-MD-2024"}
+    assert "Chapter III" in by["Header"].text()  # table-of-contents headings stay in the header
+    assert by["1"].text().startswith("Chapter I - Preliminary\nA. Short Title")  # headings open the paragraph
+    assert "Out of sequence" in by["1"].text()
+    assert by["3"].title == "EWS Framework for Other Banking / Non-Credit Related Transactions"
+    assert by["3"].label == "RBI FRM Directions Para 3"
+    quotes = {
+        "RBI-FRM-DIR-2026": "The bank shall remain vigilant in monitoring transactions / unusual activities, "
+        "specifically in the non-KYC compliant and money mule accounts",
+        "RBI-FRM-DIR-2026-EWS": "The bank shall have a framework for EWS and Red Flagging of Accounts (RFA)",
+    }
+    chunks = chunk_document(_doc([text], "rbi-frm-dir-2026", kind="html"), src, quotes)
+    assert {c.section_key: c.citation_ids for c in chunks if c.citation_ids} == {
+        "2": ["RBI-FRM-DIR-2026-EWS"],  # quote contained (the synthetic para numbers are not mapped)
+        "3": ["RBI-FRM-DIR-2026"],
+    }
     assert all(c.page is None for c in chunks)  # HTML has no pages
 
 

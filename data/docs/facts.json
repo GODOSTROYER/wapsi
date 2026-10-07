@@ -1,5 +1,5 @@
 {
-  "note": "Figures and time limits taken verbatim from the MHA/I4C SOP (02.01.2026) as circulated by the High Court of Uttarakhand, plus the FIU-IND FAQ for the STR deadline. pdf_page = physical page of the downloaded PDF; printed_page = the SOP's own 'Page N of 98' label (pdf_page - 2). Verify with: uv run python -m wapsi.search.check_citations",
+  "note": "Figures and time limits taken verbatim from the MHA/I4C SOP (02.01.2026) as circulated by the High Court of Uttarakhand, plus the FIU-IND FAQ for the STR deadline. pdf_page = physical page of the downloaded PDF; printed_page = the SOP's own 'Page N of 98' label (pdf_page - 2). Verify with: uv run python -m wapsi.search.check_citations. CFCFRMS_*_TILL_2025_12 come from the MHA answer to Rajya Sabha Unstarred Question No. 1349 (11.02.2026), a radar-only source registered in data/docs/reg_radar.json (its printed_page is the answer's own page number). CFCFRMS_*_TILL_2026_01 come from the MHA answer to Lok Sabha Unstarred Question No. 4118 (17.03.2026); CFCFRMS_*_2026_06 and SUSPECT_REGISTRY_* from the PIB release of 28.07.2026 (ID 2290377, an HTML page, so pdf_page and printed_page are null). Both are radar-only sources registered in data/docs/reg_radar.json.",
   "source_url": "https://cdnbbsr.s3waas.gov.in/s3bc7f621451b4f5df308a8e098112185d/uploads/2026/06/202606181689326167.pdf",
   "facts": [
     {
@@ -257,6 +257,123 @@
       "printed_page": null,
       "quote": "not later than seven working days on being satisfied that the transaction is suspicious",
       "note": "The consolidated Rule 8(2) text (pmlr-2005, PDF page 10) says 'promptly'; the 7-working-day limit is from the FAQ"
+    },
+    {
+      "fact_id": "CFCFRMS_SAVED_TILL_2025_12",
+      "value": 8189,
+      "unit": "INR crore",
+      "para": "Answer, item iii",
+      "doc_id": "mha-rs-1349-2026",
+      "pdf_page": 3,
+      "printed_page": 3,
+      "quote": "Till 31.12.2025, financial amount of more than Rs. 8,189 Crore has been saved in more than 23.61 lakh complaints",
+      "display": "more than ₹8,189 crore",
+      "period": "2021 to 31.12.2025",
+      "note": "MHA answer to Rajya Sabha Unstarred Question No. 1349 (11.02.2026). A lower bound ('more than'); 'saved' is money put on hold, not money restored to victims"
+    },
+    {
+      "fact_id": "CFCFRMS_COMPLAINTS_TILL_2025_12",
+      "value": 23.61,
+      "unit": "lakh complaints",
+      "para": "Answer, item iii",
+      "doc_id": "mha-rs-1349-2026",
+      "pdf_page": 3,
+      "printed_page": 3,
+      "quote": "Till 31.12.2025, financial amount of more than Rs. 8,189 Crore has been saved in more than 23.61 lakh complaints",
+      "display": "more than 23.61 lakh complaints",
+      "period": "2021 to 31.12.2025",
+      "note": "Same sentence as CFCFRMS_SAVED_TILL_2025_12; a lower bound ('more than')"
+    },
+    {
+      "fact_id": "CFCFRMS_SAVED_TILL_2026_01",
+      "value": 8690,
+      "unit": "INR crore",
+      "para": "Answer, item iii",
+      "doc_id": "mha-ls-4118-2026",
+      "pdf_page": 3,
+      "printed_page": 3,
+      "quote": "till 31.01.2026, financial amount of more than Rs. 8,690 Crore has been saved in more than 24.65 lakh complaints",
+      "display": "more than ₹8,690 crore",
+      "period": "2021 to 31.01.2026",
+      "note": "MHA answer to Lok Sabha Unstarred Question No. 4118 (17.03.2026). A lower bound ('more than'); 'saved' is not money restored to victims"
+    },
+    {
+      "fact_id": "CFCFRMS_COMPLAINTS_TILL_2026_01",
+      "value": 24.65,
+      "unit": "lakh complaints",
+      "para": "Answer, item iii",
+      "doc_id": "mha-ls-4118-2026",
+      "pdf_page": 3,
+      "printed_page": 3,
+      "quote": "till 31.01.2026, financial amount of more than Rs. 8,690 Crore has been saved in more than 24.65 lakh complaints",
+      "display": "more than 24.65 lakh complaints",
+      "period": "2021 to 31.01.2026",
+      "note": "Same sentence as CFCFRMS_SAVED_TILL_2026_01; a lower bound ('more than')"
+    },
+    {
+      "fact_id": "CFCFRMS_SAVED_TILL_2026_06",
+      "value": 11158,
+      "unit": "INR crore",
+      "para": "PIB release 2290377 (MoS Home, written reply in the Lok Sabha)",
+      "doc_id": "pib-mha-cfcfrms-2026-07-28",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "till 30.06.2026, financial amount of more than Rs. 11,158 Crore has been saved in more than 32.80 lakh complaints",
+      "display": "more than ₹11,158 crore",
+      "period": "2021 to 30.06.2026",
+      "note": "Latest official figure found (PIB, MHA, 28.07.2026). A lower bound ('more than'); the release gives no figure for money restored to victims"
+    },
+    {
+      "fact_id": "CFCFRMS_COMPLAINTS_TILL_2026_06",
+      "value": 32.8,
+      "unit": "lakh complaints",
+      "para": "PIB release 2290377 (MoS Home, written reply in the Lok Sabha)",
+      "doc_id": "pib-mha-cfcfrms-2026-07-28",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "till 30.06.2026, financial amount of more than Rs. 11,158 Crore has been saved in more than 32.80 lakh complaints",
+      "display": "more than 32.80 lakh complaints",
+      "period": "2021 to 30.06.2026",
+      "note": "Same sentence as CFCFRMS_SAVED_TILL_2026_06; a lower bound ('more than')"
+    },
+    {
+      "fact_id": "CFCFRMS_ENTITIES_ONBOARDED_2026_06",
+      "value": 1586,
+      "unit": "entities",
+      "para": "PIB release 2290377 (MoS Home, written reply in the Lok Sabha)",
+      "doc_id": "pib-mha-cfcfrms-2026-07-28",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "Till 30.06.2026, a total of 1,586 entities have been onboarded onto the CFCFRMS platform, including 40 foreign banks operating in India.",
+      "display": "1,586 entities (including 40 foreign banks)",
+      "period": "as of 30.06.2026",
+      "note": "Banks, payment intermediaries and other entities on CFCFRMS"
+    },
+    {
+      "fact_id": "SUSPECT_REGISTRY_L1_MULES_SHARED_2026_06",
+      "value": 32.08,
+      "unit": "lakh Layer 1 mule accounts",
+      "para": "PIB release 2290377 (MoS Home, written reply in the Lok Sabha)",
+      "doc_id": "pib-mha-cfcfrms-2026-07-28",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "32.08 lakh Layer 1 mule accounts have been shared with the participating entities of Suspect Registry and declined transactions worth Rs. 25,698 crores.",
+      "display": "32.08 lakh Layer 1 mule accounts shared",
+      "period": "10.09.2024 to 30.06.2026",
+      "note": "I4C Suspect Registry, launched 10.09.2024"
+    },
+    {
+      "fact_id": "SUSPECT_REGISTRY_DECLINED_2026_06",
+      "value": 25698,
+      "unit": "INR crore",
+      "para": "PIB release 2290377 (MoS Home, written reply in the Lok Sabha)",
+      "doc_id": "pib-mha-cfcfrms-2026-07-28",
+      "pdf_page": null,
+      "printed_page": null,
+      "quote": "32.08 lakh Layer 1 mule accounts have been shared with the participating entities of Suspect Registry and declined transactions worth Rs. 25,698 crores.",
+      "display": "₹25,698 crore of transactions declined",
+      "period": "10.09.2024 to 30.06.2026",
+      "note": "Same sentence as SUSPECT_REGISTRY_L1_MULES_SHARED_2026_06"
     }
   ]
 }

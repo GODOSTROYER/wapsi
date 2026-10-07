@@ -7,6 +7,7 @@ Rules (citation ids from ``wapsi.citations``):
 | ``STR_DUE`` | approval time of the case's STR draft (APPROVED), else ``trace.computed_at`` (provisional) | 7 working days | PMLR-8 |
 | ``HOLD_LAPSE`` | hold start (see below), per holding decision | 90 calendar days | SOP-10-1 |
 | ``HOLD_LAPSE_WARNING`` | hold start | day 75 (LEA intimated 15 days before lapse) | SOP-10-1 |
+| ``FORWARD_HOLD_REVIEW`` | hold start, per decision with ``forward_hold_amount > 0`` | 90 calendar days (warns day 75) | SOP-9-1-I |
 | ``GRIEVANCE_FILING`` | hold start, ``HOLD_AMOUNT_NO_ESCALATION`` only (bank files after EDD) | 7 calendar days | SOP-10-1 |
 | ``IO_DECISION`` | grievance filing due | 15 calendar days | SOP-10-1 |
 | ``DGO_ESCALATION`` | IO decision due | 15 calendar days | SOP-10-1 |
@@ -16,12 +17,31 @@ Rules (citation ids from ``wapsi.citations``):
 | ``BANK_DATA`` | ``trace.computed_at`` | 2 calendar days | SOP-10-1 |
 
 Hold start = ``executed_at`` of a HOLD_INSTRUCTION action for the account, else the approval time of the
-account's HOLD_INSTRUCTION draft, else ``trace.computed_at``.
+account's HOLD_INSTRUCTION draft, else ``trace.computed_at`` (provisional).
+
+Hold-lapse start point (a documented choice). The SOP gives two starting points for the 90 calendar days.
+Annexure-I (the s.168 / s.94 BNSS notice the bank acts on), item 3, lets the bank remove a contested hold "after
+completion of 90 calendar days from the date of amount put on hold". SOP Para 10.1 counts the 90 calendar days
+from "the grievance being submitted by the bank" and has the bank intimate the LEA 15 calendar days before they
+expire. Wapsi counts from the hold date (Annexure-I). A grievance can only be submitted after the hold is placed,
+so the hold-date lapse is never later than the Para 10.1 lapse: the clock (and the day-75 LEA intimation) shows
+the earliest date the deadline can fall, and it needs no grievance date, which the case record does not hold.
+Every ``HOLD_LAPSE`` / ``HOLD_LAPSE_WARNING`` clock says so in ``Clock.notes`` (``LAPSE_START_NOTE``).
+
+Forward holds (SOP Para 9.1(i): a hold on future credits of a first-layer account whose balance is below the
+disputed amount) have no lapse of their own in the SOP. Each one gets a ``FORWARD_HOLD_REVIEW`` clock on the same
+90-calendar-day timeline, counted from the same hold start and warning at day 75 (the LEA intimation point of an
+amount hold), so a forward hold is reviewed and never left in place indefinitely (``FORWARD_REVIEW_NOTE``). An
+account with both an amount hold and a forward hold gets both sets of clocks.
+
+``Clock.subject`` is only the identifier the clock applies to (account, draft, NCRP id or case id); how the clock
+was counted (provisional start, lapse start point, forward-hold review) is in ``Clock.notes``.
 
 Every due time is 23:59:59 IST at the end of the due day (UTC-aware). ``warn_at`` is explicit for
-``HOLD_LAPSE_WARNING`` (7 days before its due day); every other clock warns once 80% of its duration has
-elapsed. Clock ids are deterministic: ``<case_id>:<KIND>[:<subject key>]``. A clock already marked DONE in
-``bundle.clocks`` stays DONE; ``STR_DUE`` is also DONE once a STR_EXPORT action has executed.
+``HOLD_LAPSE_WARNING`` (7 days before its due day) and ``FORWARD_HOLD_REVIEW`` (day 75); every other clock warns
+once 80% of its duration has elapsed. Clock ids are deterministic: ``<case_id>:<KIND>[:<subject key>]``. A clock
+already marked DONE in ``bundle.clocks`` stays DONE; ``STR_DUE`` is also DONE once a STR_EXPORT action has
+executed.
 """
 
 from __future__ import annotations
@@ -59,6 +79,20 @@ BANK_DATA_DAYS = 2
 WARN_FRACTION = 0.8
 
 PROVISIONAL_NOTE = "provisional: counted from trace computation; STR not yet approved"
+HOLD_PROVISIONAL_NOTE = "provisional: hold not yet executed; counted from trace computation"
+LAPSE_START_NOTE = (
+    "90 calendar days counted from the hold date (SOP Annexure-I, item 3); SOP Para 10.1 counts them from the "
+    "bank's grievance submission, which is never earlier, so this is the earliest the hold can lapse"
+)
+FORWARD_REVIEW_NOTE = (
+    "forward hold on future credits (SOP Para 9.1(i)); the SOP sets no lapse for it, so it is reviewed on the "
+    "90-calendar-day hold timeline, counted from the hold date, with a reminder at day 75"
+)
+
+
+def join_notes(*notes: str) -> str:
+    """('a', '', 'b') -> 'a; b': the notes of one clock, in order."""
+    return "; ".join(n for n in notes if n)
 
 
 def clock_id(case_id: str, kind: ClockKind, key: str | None = None) -> str:
@@ -84,6 +118,7 @@ def _clock(
     *,
     business_days: bool = False,
     warn_at: datetime | None = None,
+    notes: str = "",
 ) -> Clock:
     start = ensure_utc(start)
     due = ensure_utc(due)
@@ -97,6 +132,7 @@ def _clock(
         warn_at=ensure_utc(warn_at) if warn_at else _warn_at(start, due),
         business_days=business_days,
         citation_id=citation_id,
+        notes=notes,
     )
 
 
@@ -151,13 +187,15 @@ def _str_clocks(bundle: CaseBundle) -> list[Clock]:
     approved = _approval_time(bundle, set(str_drafts))
     label = str_drafts[0] if str_drafts else "STR"
     if approved:
-        start, subject = approved, label
+        start, notes = approved, ""
     else:
         if bundle.trace is None:
             return []
-        start, subject = ensure_utc(bundle.trace.computed_at), f"{label} ({PROVISIONAL_NOTE})"
+        start, notes = ensure_utc(bundle.trace.computed_at), PROVISIONAL_NOTE
     due = add_working_days(start, STR_WORKING_DAYS)
-    return [_clock(case_id, ClockKind.STR_DUE, None, subject, start, due, "PMLR-8", business_days=True)]
+    return [
+        _clock(case_id, ClockKind.STR_DUE, None, label, start, due, "PMLR-8", business_days=True, notes=notes)
+    ]
 
 
 def _hold_clocks(bundle: CaseBundle) -> list[Clock]:
@@ -166,33 +204,55 @@ def _hold_clocks(bundle: CaseBundle) -> list[Clock]:
     case_id = bundle.case.case_id
     out: list[Clock] = []
     for dec in sorted(bundle.plan.decisions, key=lambda d: d.account_id):
-        if dec.disposition not in HOLDING_DISPOSITIONS:
+        holding = dec.disposition in HOLDING_DISPOSITIONS
+        forward = dec.forward_hold_amount > 0
+        if not holding and not forward:
             continue
         acct = dec.account_id
         start, basis = hold_start(bundle, acct)
-        subject = acct if basis != "computed" else f"{acct} (provisional: hold not yet executed)"
+        provisional = HOLD_PROVISIONAL_NOTE if basis == "computed" else ""
         lapse = _calendar_due(start, HOLD_LAPSE_DAYS)
-        out.append(_clock(case_id, ClockKind.HOLD_LAPSE, acct, subject, start, lapse, "SOP-10-1"))
         intimate = _calendar_due(start, LEA_INTIMATION_DAY)
+        if forward:
+            out.append(
+                _clock(
+                    case_id,
+                    ClockKind.FORWARD_HOLD_REVIEW,
+                    acct,
+                    acct,
+                    start,
+                    lapse,
+                    "SOP-9-1-I",
+                    warn_at=intimate,
+                    notes=join_notes(provisional, FORWARD_REVIEW_NOTE),
+                )
+            )
+        if not holding:
+            continue
+        lapse_notes = join_notes(provisional, LAPSE_START_NOTE)
+        out.append(_clock(case_id, ClockKind.HOLD_LAPSE, acct, acct, start, lapse, "SOP-10-1", notes=lapse_notes))
         out.append(
             _clock(
                 case_id,
                 ClockKind.HOLD_LAPSE_WARNING,
                 acct,
-                subject,
+                acct,
                 start,
                 intimate,
                 "SOP-10-1",
                 warn_at=intimate - timedelta(days=LEA_INTIMATION_NOTICE_DAYS),
+                notes=lapse_notes,
             )
         )
         if dec.disposition == Disposition.HOLD_AMOUNT_NO_ESCALATION:
             filing = _calendar_due(start, GRIEVANCE_FILING_DAYS)
             io = _calendar_due(filing, IO_DECISION_DAYS)
             dgo = _calendar_due(io, DGO_ESCALATION_DAYS)
-            out.append(_clock(case_id, ClockKind.GRIEVANCE_FILING, acct, subject, start, filing, "SOP-10-1"))
-            out.append(_clock(case_id, ClockKind.IO_DECISION, acct, subject, filing, io, "SOP-10-1"))
-            out.append(_clock(case_id, ClockKind.DGO_ESCALATION, acct, subject, io, dgo, "SOP-10-1"))
+            out += [
+                _clock(case_id, ClockKind.GRIEVANCE_FILING, acct, acct, start, filing, "SOP-10-1", notes=provisional),
+                _clock(case_id, ClockKind.IO_DECISION, acct, acct, filing, io, "SOP-10-1", notes=provisional),
+                _clock(case_id, ClockKind.DGO_ESCALATION, acct, acct, io, dgo, "SOP-10-1", notes=provisional),
+            ]
     return out
 
 

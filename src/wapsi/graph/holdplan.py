@@ -1,12 +1,20 @@
 """Hold plan: one amount-specific decision per account that received tainted money (AGENTS.md, convention 6).
 
-- hold only the tainted amount, ``min(tainted_now, balance)``; never the whole account (SOP 5(ix), 9.1)
+- amount-specific holds by default: the tainted amount only, ``min(tainted_now, balance)`` (SOP 5(ix), 9.1);
+  account-level action only as a recorded, supervisor-approved exception (see below)
 - home-bank nodal / pool / escrow accounts -> ``HOLD_AMOUNT_INTERMEDIARY`` (SOP 9.1(iii)): hold the disputed
   amount only, never suspend digital banking or seize the account, never a forward hold, never an s.106 flag
 - merchants (SOP 9.2): every tainted payment paid for delivered goods -> ``NO_HOLD_UPDATE_ONLY``; otherwise
   ``HOLD_IN_POOL`` for the tainted money still in the account that paid for undelivered / cancelled /
   un-invoiced goods, ``min(undelivered, balance)``
-- innocent holders / legitimate accounts -> ``HOLD_AMOUNT_NO_ESCALATION`` (SOP 5(xii))
+- innocent holders / legitimate accounts -> ``HOLD_AMOUNT_NO_ESCALATION`` (SOP 5(xii)), split by role:
+  ``BONA_FIDE_RECIPIENT`` (no extra reason code, so plans match the legacy golden sets: no escalation, no STR by
+  default, EDD memo) and
+  ``UNWITTING_CONDUIT`` (reason codes ``UNWITTING_CONDUIT`` + ``STR_RECOMMENDED_OFFICER_DECISION``,
+  ``requires_human``: no automatic STR; the officer decides, and an STR is recommended because the account was
+  used as a conduit)
+- ``EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`` is never emitted here: ``apply_account_level_hold`` sets it only for an officer
+  request with >= 1 ``AccountLevelReason`` that a supervisor approved (``wapsi.pipeline.run.approve``)
 - other-bank accounts (including other-bank intermediaries) holding tainted money -> ``OUTBOUND_CFCFRMS_REQUEST``
   (hold 0, request in tainted_amount)
 - forward hold only on first-layer, non-intermediary accounts whose balance is below the disputed amount
@@ -18,7 +26,9 @@
 - whether other-bank accounts were followed (consortium) is read from the trace, not from ``cfg``
 - ``total_hold`` covers every holding disposition (intermediary and in-pool holds included);
   ``total_recoverable`` = holds + outbound request amounts. Money at any layer can be released to the victim
-  (SOP 5(x)). Per-victim shares of a partial hold use largest-remainder apportionment in paise.
+  (SOP 5(x)). Per-victim shares of a partial hold use largest-remainder apportionment in paise, and a victim's
+  recoverable money across accounts never adds up to more than the victim's loss (``cap_recoverable_at_loss``
+  takes per-account rounding residue back from the victim's largest share)
 """
 
 from __future__ import annotations
@@ -39,7 +49,9 @@ from wapsi.graph.common import (
 )
 from wapsi.models import (
     HOLDING_DISPOSITIONS,
+    INNOCENT_ROLES,
     INTERMEDIARY_ACCOUNT_TYPES,
+    AccountLevelReason,
     AccountState,
     AccountType,
     ClassificationResult,
@@ -66,6 +78,8 @@ DISPOSITION_CITATIONS: dict[Disposition, list[str]] = {
     Disposition.FORWARD_HOLD: ["SOP-9-1-I", "SOP-DEF-FIRST-LAYER"],
     Disposition.CASHED_OUT: ["SOP-9-1"],
     Disposition.NO_ACTION: [],
+    # never emitted by build_hold_plan; see apply_account_level_hold
+    Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD: ["SOP-5-IX", "SOP-9-1"],
 }
 FORWARD_HOLD_CITATIONS = ["SOP-9-1-I", "SOP-DEF-FIRST-LAYER"]
 ESCALATION_CITATIONS = ["BNSS-106", "CASE-KARTIK-CHATUR"]
@@ -79,8 +93,20 @@ REASON_NO_SUSPENSION = "NO_SUSPENSION_OR_SEIZURE"  # SOP 9.1(iii): hold the amou
 REASON_VICTIM_ON_TRAIL = (
     "VICTIM_ACCOUNT_ON_TRAIL"  # a victim account of the case holds another victim's money
 )
+# SOP 5(xii) innocent holders: no automatic STR; the officer decides; STR recommended where the account was used as
+# a conduit
+# a bona fide recipient (kept the money) keeps the legacy output: HOLD_AMOUNT_NO_ESCALATION, no extra code
+REASON_CONDUIT = "UNWITTING_CONDUIT"  # used as a pass-through by someone else
+REASON_STR_RECOMMENDED = "STR_RECOMMENDED_OFFICER_DECISION"  # conduit: STR recommended, the officer decides
+# exceptional account-level hold (never automatic): reason codes carry the recorded reasons and the approval
+REASON_OFFICER_REQUESTED = "OFFICER_REQUESTED_EXCEPTION"
+REASON_SUPERVISOR_APPROVED = "SUPERVISOR_APPROVED_EXCEPTION"
+ACCOUNT_LEVEL_REASON_CODES = frozenset(r.value for r in AccountLevelReason)
+ACCOUNT_LEVEL_BASE = frozenset(
+    {Disposition.HOLD_AMOUNT, Disposition.HOLD_AMOUNT_NO_ESCALATION}
+)  # dispositions an exception may be raised on (never pool / nodal / escrow, merchants or other banks)
 
-_NO_ESCALATION_ROLES = frozenset({Role.LEGIT, Role.INNOCENT_HOLDER})
+_NO_ESCALATION_ROLES = frozenset({Role.LEGIT, *INNOCENT_ROLES})
 _REVIEW_ROLES = frozenset({Role.UNKNOWN, Role.VICTIM})
 _FORWARD_ROLES = frozenset({Role.MULE, Role.UNKNOWN, Role.VICTIM})
 
@@ -194,6 +220,72 @@ def _scale(vec: Mapping[str, float], target: float, order: list[str]) -> dict[st
         paise[k] += 1
         left -= 1
     return round_vec({k: p / 100 for k, p in paise.items()}, order)
+
+
+_RECOVERABLE = frozenset({*HOLDING_DISPOSITIONS, Disposition.OUTBOUND_CFCFRMS_REQUEST})
+NOTE_ROUNDING_CAP = (
+    "Per-victim share rounded down (paisa rounding residue) so that the victim's recoverable total across accounts "
+    "does not exceed the amount the victim lost."
+)
+
+
+def cap_recoverable_at_loss(
+    decisions: list[HoldDecision], loss: Mapping[str, float], order: Iterable[str] = ()
+) -> list[HoldDecision]:
+    """Decisions whose per-victim recoverable money never adds up to more than that victim's loss.
+
+    Each account's tainted money is rounded to paise on its own, so a victim whose money is recoverable from
+    several accounts can be attributed a paisa or two more than the victim lost (three accounts holding
+    6,666.666... each -> 3 x 6,666.67 = 20,000.01 of a 20,000.00 loss). Per victim, the excess paise are taken
+    back one at a time from that victim's largest share (ties: plan order); the decision's amount (the hold, or
+    the request amount in ``tainted_amount`` of an ``OUTBOUND_CFCFRMS_REQUEST``) drops by the same paisa, so
+    shares, amounts and plan totals stay consistent, and no amount is taken to zero. ``loss`` is
+    ``TraceResult.victim_seed``; victims it does not list are left alone. Plans already within every victim's loss
+    (the showcase and golden plans) are returned unchanged.
+    """
+    order = list(order)
+    rec = [i for i, d in enumerate(decisions) if d.disposition in _RECOVERABLE]
+    amount = {
+        i: round(
+            (decisions[i].tainted_amount if decisions[i].disposition == Disposition.OUTBOUND_CFCFRMS_REQUEST
+             else decisions[i].hold_amount) * 100
+        )
+        for i in rec
+    }
+    taken: dict[int, dict[str, int]] = defaultdict(dict)  # decision index -> ncrp_id -> paise taken back
+    victims = list(dict.fromkeys([*order, *sorted({n for i in rec for n in decisions[i].per_victim})]))
+    for n in victims:
+        if n not in loss:
+            continue
+        share = {i: round(decisions[i].per_victim[n] * 100) for i in rec if decisions[i].per_victim.get(n, 0) > 0}
+        excess = sum(share.values()) - round(r2(max(loss[n], 0.0)) * 100)
+        while excess > 0:
+            spare = [i for i in share if share[i] > 0 and amount[i] - sum(taken[i].values()) > 1]
+            if not spare:
+                break
+            i = max(spare, key=lambda i: (share[i], -i))
+            share[i] -= 1
+            taken[i][n] = taken[i].get(n, 0) + 1
+            excess -= 1
+    if not any(taken.values()):
+        return decisions
+    out = list(decisions)
+    for i, per in taken.items():
+        if not per:
+            continue
+        d = decisions[i]
+        pv = {n: round(x * 100) - per.get(n, 0) for n, x in d.per_victim.items()}
+        cut = sum(per.values()) / 100
+        update: dict = {
+            "per_victim": round_vec({n: p / 100 for n, p in pv.items()}, order),
+            "notes": f"{d.notes} {NOTE_ROUNDING_CAP}".strip(),
+        }
+        if d.disposition == Disposition.OUTBOUND_CFCFRMS_REQUEST:
+            update["tainted_amount"] = r2(d.tainted_amount - cut)
+        else:
+            update["hold_amount"] = r2(d.hold_amount - cut)
+        out[i] = d.model_copy(update=update)
+    return out
 
 
 def _case_victims(ledger: Ledger, ncrp_ids: Iterable[str]) -> set[str]:
@@ -383,6 +475,13 @@ def build_hold_plan(
         if role in _REVIEW_ROLES:
             extra.append(REASON_ROLE_UNKNOWN)
             notes.append("No reliable role classification; review before acting.")
+        conduit = st.is_home_bank and role == Role.UNWITTING_CONDUIT
+        if conduit:
+            extra += [REASON_CONDUIT, REASON_STR_RECOMMENDED]
+            notes.append(
+                "Account used as a pass-through by someone else (unwitting conduit): hold the amount only, no "
+                "escalation. No automatic STR: an STR is recommended and the officer decides whether to file it."
+            )
         if on_trail_victim:
             extra.append(REASON_VICTIM_ON_TRAIL)
             notes.append(
@@ -415,10 +514,12 @@ def build_hold_plan(
                 per_victim=per_victim,
                 citation_ids=list(dict.fromkeys(citation_ids)),
                 reason_codes=list(dict.fromkeys(reason_codes)),
-                requires_human=escalate or role in _REVIEW_ROLES or on_trail_victim,
+                requires_human=escalate or role in _REVIEW_ROLES or on_trail_victim or conduit,
                 notes=" ".join(notes),
             )
         )
+
+    decisions = cap_recoverable_at_loss(decisions, trace.victim_seed, order)
 
     # ---- plan totals
     recoverable_by_victim: dict[str, float] = {n: 0.0 for n in order}
@@ -462,3 +563,108 @@ def build_hold_plan(
         restoration_process=process,
         str_ground=str_ground,
     )
+
+
+# --------------------------------------------------------------------------- exceptional account-level hold
+
+
+def account_level_reasons(reasons: Iterable[AccountLevelReason | str]) -> list[AccountLevelReason]:
+    """The recorded reasons as the closed ``AccountLevelReason`` list (order kept, duplicates dropped).
+
+    Raises ``ValueError`` when no reason is given or one is not on the list: account-level action is never taken
+    without at least one recorded reason (SOP 5(ix))."""
+    out: list[AccountLevelReason] = []
+    for r in reasons:
+        try:
+            reason = AccountLevelReason(str(r).strip().upper())
+        except ValueError:
+            allowed = ", ".join(x.value for x in AccountLevelReason)
+            raise ValueError(f"{r!r} is not a recorded account-level reason (allowed: {allowed})") from None
+        if reason not in out:
+            out.append(reason)
+    if not out:
+        raise ValueError("an account-level hold needs at least one recorded reason")
+    return out
+
+
+def account_level_block(dec: HoldDecision | None, st: AccountState | None) -> str | None:
+    """Why an account-level exception cannot be raised on this account, or None when it can.
+
+    Only home-bank accounts on the trail whose plan decision is an amount-specific hold (``HOLD_AMOUNT`` or
+    ``HOLD_AMOUNT_NO_ESCALATION``) qualify. Never nodal / pool / escrow accounts (SOP 9.1(iii): no suspension or
+    seizure), merchants (SOP 9.2), other banks' accounts (their bank decides) or victim accounts (layer 0).
+    """
+    if dec is None or st is None:
+        return "the account has no hold-plan decision on the trail"
+    if st.layer == 0:
+        return "victim accounts are restored, never held"
+    if not st.is_home_bank:
+        return "the account is at another bank; request action through CFCFRMS instead"
+    if st.account_type in INTERMEDIARY_ACCOUNT_TYPES or dec.role == Role.INTERMEDIARY:
+        return "nodal / pool / escrow accounts: hold the disputed amount only, no suspension or seizure (SOP 9.1(iii))"
+    if st.account_type == AccountType.MERCHANT or dec.role == Role.MERCHANT:
+        return "merchant accounts follow SOP 9.2 (update only, or hold in the pool)"
+    if dec.disposition == Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD:
+        return "an account-level exception is already applied"
+    if dec.disposition not in ACCOUNT_LEVEL_BASE:
+        return f"the plan has no amount-specific hold on the account ({dec.disposition.value})"
+    return None
+
+
+def apply_account_level_hold(
+    plan: HoldPlan,
+    account_id: str,
+    reasons: Iterable[AccountLevelReason | str],
+    *,
+    requested_by: str,
+    approved_by: str,
+) -> HoldPlan:
+    """A copy of ``plan`` with the approved exception applied to ``account_id``.
+
+    Call only after a supervisor approved the officer's request (``wapsi.pipeline.run.approve`` does). The
+    amount-specific hold, per-victim shares and plan totals are unchanged (they are the recoverable money); the
+    decision becomes ``EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`` with the recorded reasons as reason codes and always needs a
+    human. ``requested_by`` and ``approved_by`` must differ (maker-checker).
+    """
+    recorded = account_level_reasons(reasons)
+    if not requested_by or not approved_by or requested_by.strip().casefold() == approved_by.strip().casefold():
+        raise PermissionError("maker-checker: the officer who requested the exception cannot approve it")
+    decisions = []
+    found = False
+    for d in plan.decisions:
+        if d.account_id != account_id:
+            decisions.append(d)
+            continue
+        if d.disposition not in ACCOUNT_LEVEL_BASE:
+            raise ValueError(f"{account_id}: no amount-specific hold to raise an exception on ({d.disposition.value})")
+        found = True
+        codes = [
+            Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD.value,
+            REASON_OFFICER_REQUESTED,
+            *(r.value for r in recorded),
+            REASON_SUPERVISOR_APPROVED,
+            *(c for c in d.reason_codes if c != d.disposition.value),
+        ]
+        note = (
+            f"Exceptional account-level hold requested by {requested_by} and approved by {approved_by} "
+            f"(reasons: {', '.join(r.value for r in recorded)}). The amount-specific hold of {fmt_inr(d.hold_amount)} "
+            "stays the recoverable amount."
+        )
+        decisions.append(
+            d.model_copy(
+                update={
+                    "disposition": Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD,
+                    "reason_codes": list(dict.fromkeys(codes)),
+                    "citation_ids": list(
+                        dict.fromkeys(
+                            [*d.citation_ids, *DISPOSITION_CITATIONS[Disposition.EXCEPTIONAL_ACCOUNT_LEVEL_HOLD]]
+                        )
+                    ),
+                    "requires_human": True,
+                    "notes": f"{d.notes} {note}".strip(),
+                }
+            )
+        )
+    if not found:
+        raise KeyError(account_id)
+    return plan.model_copy(update={"decisions": decisions})

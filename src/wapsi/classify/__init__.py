@@ -14,7 +14,12 @@
 4. Safety guard (``wapsi.classify.rules.innocent_blockers``): an INNOCENT_HOLDER score becomes UNKNOWN when the
    account forwarded most of the money quickly to new counterparties, cashed it out, shares a device with the
    trail, woke from dormancy or was reported repeatedly. Uncertain cases go to the officer, not to a label.
+   An innocent-band account that passes the guard is a BONA_FIDE_RECIPIENT (legacy value INNOCENT_HOLDER), or an
+   UNWITTING_CONDUIT when it passed most of the victim money on (``wapsi.classify.rules.conduit_indicators``).
 5. Reasons: rule reasons, or the top indicators from the scorer's contributions (``wapsi.classify.explain``).
+
+A scorer with the optional ``bind_trace(ledger, trace)`` hook (``wapsi.classify.scoring.TraceAwareScorer``, e.g. the
+AMD edition's GNN) receives the trace before step 3, so it never has to re-infer the case window from the features.
 
 Heavy dependencies (xgboost, sklearn) and ``wapsi.graph`` are never imported at module import time.
 """
@@ -25,10 +30,10 @@ import math
 
 from wapsi.classify.explain import explain, explain_blocked
 from wapsi.classify.features import FEATURE_COLUMNS, account_features
-from wapsi.classify.rules import RuleHit, hard_rules, innocent_blockers
-from wapsi.classify.scoring import HeuristicScorer, Scorer, XgbScorer
+from wapsi.classify.rules import RuleHit, conduit_indicators, hard_rules, innocent_blockers
+from wapsi.classify.scoring import HeuristicScorer, Scorer, TraceAwareScorer, XgbScorer, scorer_for_trace
 from wapsi.config import ClassifyConfig
-from wapsi.models import ClassificationResult, Role, TraceResult
+from wapsi.models import INNOCENT_ROLES, ClassificationResult, Role, TraceResult
 from wapsi.ports import Ledger
 from wapsi.timeutil import ensure_utc
 
@@ -37,9 +42,11 @@ __all__ = [
     "HeuristicScorer",
     "RuleHit",
     "Scorer",
+    "TraceAwareScorer",
     "XgbScorer",
     "account_features",
     "classify_trace",
+    "conduit_indicators",
     "hard_rules",
     "innocent_blockers",
     "role_from_score",
@@ -70,6 +77,7 @@ def classify_trace(
         return {}
     cfg = cfg or ClassifyConfig()
     scorer: Scorer = model if model is not None else HeuristicScorer()
+    scorer = scorer_for_trace(scorer, ledger, trace)
     ids = sorted(trace.accounts)
     window_start = ensure_utc(trace.window_start)
     burst = {
@@ -108,6 +116,10 @@ def classify_trace(
                 reasons = explain(
                     role, row, contribs.loc[acct], score=score, window_hours=cfg.feature_window_hours
                 )
+                conduit = conduit_indicators(trace.accounts.get(acct)) if role in INNOCENT_ROLES else []
+                if conduit:
+                    role = Role.UNWITTING_CONDUIT
+                    reasons = [*conduit, *reasons]
             model_name = scorer.name
         out[acct] = ClassificationResult(
             account_id=acct,

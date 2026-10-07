@@ -4,7 +4,13 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from wapsi.domain.clocks import clock_id, clocks_for_bundle, evaluate_clocks
+from wapsi.domain.clocks import (
+    FORWARD_REVIEW_NOTE,
+    LAPSE_START_NOTE,
+    clock_id,
+    clocks_for_bundle,
+    evaluate_clocks,
+)
 from wapsi.fixtures import showcase as sc
 from wapsi.fixtures.bundles import showcase_bundle
 from wapsi.models import (
@@ -13,8 +19,10 @@ from wapsi.models import (
     ActionStatus,
     Approval,
     ApprovalDecision,
+    Clock,
     ClockKind,
     ClockStatus,
+    Disposition,
     Draft,
     DraftKind,
     RestorationProcess,
@@ -54,7 +62,8 @@ def test_str_due_provisional(b1, b2):
     assert c.start == datetime(2026, 9, 10, 13, 45, tzinfo=IST)  # trace.computed_at
     assert c.due == eod(2026, 9, 19)  # 7 working days; Sat 12 (2nd) and Sun 13 skipped, Sat 19 (3rd) counted
     assert c.business_days and c.citation_id == "PMLR-8"
-    assert "provisional" in c.subject
+    assert c.subject == "STR"  # an identifier only; how it was counted is in the notes
+    assert c.notes.startswith("provisional")
     assert c.status == ClockStatus.OPEN
     assert one(clocks_for_bundle(b2, NOW), ClockKind.STR_DUE).due == eod(2026, 9, 21)
 
@@ -94,7 +103,7 @@ def test_str_due_from_approval(b1):
     c = one(clocks_for_bundle(b1, NOW), ClockKind.STR_DUE)
     assert c.start == approved_at
     assert c.due == eod(2026, 9, 22)  # 15,16,17,18,19(3rd Sat),21,22
-    assert c.subject == "D-STR"
+    assert c.subject == "D-STR" and c.notes == ""
     assert c.clock_id == "CASE-31009260000101:STR_DUE"  # stable across approval
 
 
@@ -133,7 +142,11 @@ def test_hold_lapse_90_and_75_days(b1):
     assert warning.warn_at == eod(2026, 11, 17)  # explicit: a week before the intimation deadline
     assert lapse.warn_at == start + (lapse.due - start) * 0.8
     assert not lapse.business_days and lapse.citation_id == warning.citation_id == "SOP-10-1"
-    assert "provisional" in lapse.subject
+    assert lapse.subject == warning.subject == sc.A
+    assert lapse.notes.startswith("provisional: hold not yet executed")
+    # the documented lapse start point: hold date (Annexure-I), never later than the Para 10.1 grievance date
+    assert LAPSE_START_NOTE in lapse.notes and LAPSE_START_NOTE in warning.notes
+    assert "Annexure-I" in LAPSE_START_NOTE and "10.1" in LAPSE_START_NOTE
 
 
 @pytest.mark.parametrize(
@@ -170,6 +183,7 @@ def test_hold_start_from_executed_action(b2):
     assert lapse.start == executed
     assert lapse.due == eod(2026, 12, 11)
     assert lapse.subject == sc.M
+    assert lapse.notes == LAPSE_START_NOTE  # executed: no longer provisional
 
 
 def test_hold_start_from_approval(b2):
@@ -253,8 +267,10 @@ def test_ids_deterministic_and_unique(b1, b2):
         assert sorted(first) == sorted(second)
         assert len(first) == len(set(first))
     assert clock_id("C1", ClockKind.HOLD_LAPSE, sc.A) == f"C1:HOLD_LAPSE:{sc.A}"
-    assert len(clocks_for_bundle(b1, NOW)) == 1 + 5 * 2 + 3 + 3 + 1
-    assert len(clocks_for_bundle(b2, NOW)) == 1 + 2 + 2 * 3 + 1
+    # STR + 5 holds x (lapse, LEA warning) + forward review (A) + grievance chain (L) + P1 x 3 + bank data
+    assert len(clocks_for_bundle(b1, NOW)) == 1 + 5 * 2 + 1 + 3 + 3 + 1
+    # STR + lapse, warning + forward review (M) + P2 x 2 victims x 3 + bank data
+    assert len(clocks_for_bundle(b2, NOW)) == 1 + 2 + 1 + 2 * 3 + 1
 
 
 def test_done_is_preserved(b1):
@@ -282,3 +298,47 @@ def test_no_trace_no_plan(b1):
     clocks = clocks_for_bundle(b1, NOW)
     # without a plan every complaint still gets P1 clocks; nothing else can be computed
     assert {c.kind for c in clocks} == {ClockKind.P1_NOTICE, ClockKind.P1_REPLY, ClockKind.P1_REMIT}
+
+
+def test_forward_hold_review_clock(b1, b2):
+    """SOP 9.1(i) forward holds get a 90-day review clock (they had none): A (amount + forward hold) and M."""
+    for b, acct in ((b1, sc.A), (b2, sc.M)):
+        clocks = clocks_for_bundle(b, NOW)
+        review = one(clocks, ClockKind.FORWARD_HOLD_REVIEW, acct)
+        lapse = one(clocks, ClockKind.HOLD_LAPSE, acct)
+        assert review.clock_id == f"{b.case.case_id}:FORWARD_HOLD_REVIEW:{acct}"
+        assert review.subject == acct and review.citation_id == "SOP-9-1-I"
+        assert review.start == lapse.start and review.due == lapse.due  # same 90-calendar-day timeline
+        assert review.warn_at == one(clocks, ClockKind.HOLD_LAPSE_WARNING, acct).due  # reminder at day 75
+        assert FORWARD_REVIEW_NOTE in review.notes and review.notes.startswith("provisional")
+    # only accounts with a forward hold get one
+    assert {c.subject for c in clocks_for_bundle(b1, NOW) if c.kind == ClockKind.FORWARD_HOLD_REVIEW} == {sc.A}
+
+
+def test_forward_only_decision_gets_review_but_no_lapse(b1):
+    """A FORWARD_HOLD decision (nothing holdable now) is not a holding disposition: review clock only."""
+    dec = next(d for d in b1.plan.decisions if d.account_id == sc.A)
+    b1.plan.decisions = [
+        d.model_copy(update={"disposition": Disposition.FORWARD_HOLD, "hold_amount": 0.0}) if d is dec else d
+        for d in b1.plan.decisions
+    ]
+    clocks = clocks_for_bundle(b1, NOW)
+    assert one(clocks, ClockKind.FORWARD_HOLD_REVIEW, sc.A).due == eod(2026, 12, 9)
+    assert not [c for c in clocks if c.kind in (ClockKind.HOLD_LAPSE, ClockKind.HOLD_LAPSE_WARNING)
+                and c.subject == sc.A]
+
+
+def test_forward_review_statuses(b1):
+    assert one(clocks_for_bundle(b1, NOW), ClockKind.FORWARD_HOLD_REVIEW, sc.A).status == ClockStatus.OPEN
+    day75 = datetime(2026, 11, 25, 0, 0, tzinfo=IST)
+    assert one(clocks_for_bundle(b1, day75), ClockKind.FORWARD_HOLD_REVIEW, sc.A).status == ClockStatus.WARNING
+    after = datetime(2026, 12, 10, 0, 0, tzinfo=IST)
+    assert one(clocks_for_bundle(b1, after), ClockKind.FORWARD_HOLD_REVIEW, sc.A).status == ClockStatus.OVERDUE
+
+
+def test_clock_notes_default_for_legacy_records():
+    """Clocks stored before ``notes`` existed still load (their note is in the subject)."""
+    c = Clock.model_validate({"clock_id": "C:HOLD_LAPSE:X", "case_id": "C", "kind": "HOLD_LAPSE",
+                              "subject": "X (provisional: hold not yet executed)",
+                              "start": "2026-09-10T08:15:00Z", "due": "2026-12-09T18:29:59Z"})
+    assert c.notes == ""

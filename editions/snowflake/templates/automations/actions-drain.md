@@ -32,12 +32,13 @@ Reference prompt — run by `drain_actions.ps1` through `cortex -p`. You are the
    ```sql
    UPDATE WAPSI.CASEMGMT.ACTIONS SET status = 'DONE', executed_at = CURRENT_TIMESTAMP(), result = '<issue key or message ts>'
     WHERE action_id = '<id>';
-   INSERT INTO WAPSI.CASEMGMT.AUDIT_LOG (at, actor, role, action, object_type, object_id, case_id, details)
-   SELECT CURRENT_TIMESTAMP(), 'coco-local-drain', 'WAPSI_ACTIONS_RUNNER', 'action_executed', 'action', '<id>', '<case_id>',
-          OBJECT_CONSTRUCT('kind', '<kind>', 'result', '<result>');
+   CALL WAPSI.CASEMGMT.APPEND_AUDIT('<case_id>', 'action_executed', 'action', '<id>',
+                                    '{"kind": "<kind>", "result": "<result>"}');
    ```
-   On failure: set `result` to the error text (≤ 300 chars); set `status = 'FAILED'` when `attempts >= 3`, else
-   `claimed_at = NULL` so the next pass retries. Log the failure in `AUDIT_LOG` the same way.
+   `APPEND_AUDIT` seals the event onto the case's hash-chained audit log; the runner has no direct `INSERT` on
+   `AUDIT_LOG`. On failure: set `result` to the error text (≤ 300 chars); set `status = 'FAILED'` when
+   `attempts >= 3`, else `claimed_at = NULL` so the next pass retries. Record the failure with `APPEND_AUDIT`
+   (`'action_failed'`).
 5. Finish with one line: `drained <n>: <k> Jira, <m> Slack, <f> failed`.
 
 ## Never

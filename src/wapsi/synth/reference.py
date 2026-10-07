@@ -5,7 +5,9 @@ frames), so golden answers are an independent check of the product.
 
 Trace semantics (default ``TraceConfig``):
 - seeds = the complaint transactions; window = [first seed ts, first seed ts + 72 h]; victims are layer 0.
-- Events are replayed in (ts, txn_id) order. When a tracked account sends money, the transfer carries
+- Events are replayed in (ts, txn_id) order, except that within one second a credit into an account is applied
+  before the debits from that account (AGENTS.md; ``replay_order``). When a tracked account sends money, the
+  transfer carries
   ``taint_vector * amount / balance_before`` (pro-rata, SOP 5(xiii)); clean credits dilute the ratio.
 - The first tainted receipt starts tracking an account with its ledger balance just before that transaction.
 - Merchants and nodal/pool/escrow accounts are terminals (keep everything they received; their later
@@ -16,11 +18,18 @@ Trace semantics (default ``TraceConfig``):
 Dispositions follow AGENTS.md item 6 (see ``_decide``); home nodal/pool/escrow accounts get an amount-specific
 ``HOLD_AMOUNT_INTERMEDIARY`` (SOP 9.1(iii)), never a forward hold or an escalation flag. Money is rounded per
 victim with ``r2``; totals are sums of rounded components and ``unlocated`` is the residual.
+
+A victim's recoverable money (holds + outbound requests) never adds up to more than the victim's loss:
+per-account rounding can attribute a paisa or two too many (3 x 6,666.67 of a 20,000.00 loss), and
+``_cap_at_loss`` takes the excess paise back from that victim's largest share (ties: decision order).
+``RefCase.rounding_trim`` records the paise taken back per victim, so on worlds where every rupee is held
+``holdable + intermediary == total_hold + trim``.
 """
 
 from __future__ import annotations
 
 import heapq
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -148,6 +157,8 @@ class RefCase:
     str_ground: StrGround | None
     escalation_candidates: list[str]
     warnings: list[str]
+    # ncrp_id -> rupees of paisa rounding residue taken back so recoverable <= loss (``_cap_at_loss``); usually {}
+    rounding_trim: dict[str, float] = field(default_factory=dict)
 
     def decision(self, account_id: str) -> RefDecision:
         return next(d for d in self.decisions if d.account_id == account_id)
@@ -187,6 +198,68 @@ class _State:
 def _add(dst: dict[str, float], src: dict[str, float], sign: float = 1.0) -> None:
     for k, v in src.items():
         dst[k] = dst.get(k, 0.0) + sign * v
+
+
+def _credit_first(frm: list[int], to: list[int]) -> list[int]:
+    """Order one same-second group (rows given in txn_id order): a row crediting account X comes before every row
+    debiting X. Stable topological order (the smallest txn_id among the rows that are free goes first); rows left
+    in a same-second cycle keep their txn_id order."""
+    n = len(frm)
+    debits: dict[int, list[int]] = defaultdict(list)
+    for j, f in enumerate(frm):
+        if f >= 0 and f != to[j]:
+            debits[f].append(j)
+    succ = [
+        [j for j in debits.get(t, ()) if j != i] if t >= 0 and t != frm[i] else [] for i, t in enumerate(to)
+    ]
+    indeg = [0] * n
+    for i in range(n):
+        for j in succ[i]:
+            indeg[j] += 1
+    free = [i for i in range(n) if indeg[i] == 0]
+    heapq.heapify(free)
+    out: list[int] = []
+    while free:
+        i = heapq.heappop(free)
+        out.append(i)
+        for j in succ[i]:
+            indeg[j] -= 1
+            if indeg[j] == 0:
+                heapq.heappush(free, j)
+    if len(out) < n:
+        done = set(out)
+        out += [i for i in range(n) if i not in done]
+    return out
+
+
+def replay_order(ts: np.ndarray, frm: np.ndarray, to: np.ndarray) -> np.ndarray | None:
+    """Replay permutation of rows already sorted by (ts, txn_id) (AGENTS.md: a same-second credit into an account is
+    applied before the debits it funds). Only same-second groups where some account is debited before it is
+    credited are reordered (``_credit_first``); ``None`` when (ts, txn_id) order already satisfies the rule."""
+    n = int(ts.size)
+    if n < 2 or not bool((ts[1:] == ts[:-1]).any()):
+        return None
+    new = np.r_[True, ts[1:] != ts[:-1]]
+    gid = np.cumsum(new) - 1
+    starts = np.flatnonzero(new)
+    sizes = np.diff(np.r_[starts, n])
+    rows = np.flatnonzero(sizes[gid] > 1)
+    g, f, t = gid[rows], frm[rows], to[rows]
+    real = f != t
+    deb = pd.DataFrame({"g": g, "a": f, "p": rows})[(f >= 0) & real]
+    cre = pd.DataFrame({"g": g, "a": t, "p": rows})[(t >= 0) & real]
+    first_debit = deb.groupby(["g", "a"])["p"].min()
+    last_credit = cre.groupby(["g", "a"])["p"].max()
+    both = pd.concat([first_debit.rename("d"), last_credit.rename("c")], axis=1, join="inner")
+    bad = sorted({int(x) for x in both.index[both["d"] < both["c"]].get_level_values(0)})
+    if not bad:
+        return None
+    perm = np.arange(n)
+    for grp in bad:
+        lo, hi = int(starts[grp]), int(starts[grp] + sizes[grp])
+        order = _credit_first(frm[lo:hi].tolist(), to[lo:hi].tolist())
+        perm[lo:hi] = lo + np.asarray(order, dtype=np.int64)
+    return perm
 
 
 class ReferenceWorld:
@@ -232,6 +305,10 @@ class ReferenceWorld:
         self.amt = tx["amount"].to_numpy(float)
         self.chan = tx["channel"].astype(str).to_numpy()
         self.txn_id = tx["txn_id"].astype(str).to_numpy()
+        perm = replay_order(self.ts, self.frm, self.to)  # same second: credits before the debits they fund
+        if perm is not None:
+            self.ts, self.frm, self.to = self.ts[perm], self.frm[perm], self.to[perm]
+            self.amt, self.chan, self.txn_id = self.amt[perm], self.chan[perm], self.txn_id[perm]
         # per-account rows (CSR)
         rows = np.arange(len(tx), dtype=np.int64)
         m_from = self.frm >= 0
@@ -491,6 +568,8 @@ class ReferenceWorld:
         totals["unlocated"] = _clean(stolen - sum(totals[k] for k in parts))
 
         decisions = self._decide(ncrp_ids, accounts)
+        victim_seed = {n: _clean(v) for n, v in seed_amount.items()}
+        trim = _cap_at_loss(decisions, victim_seed, list(ncrp_ids))
         total_hold = _clean(sum(d.hold_amount for d in decisions))
         total_fwd = _clean(sum(d.forward_hold_amount for d in decisions))
         outbound = [d for d in decisions if d.disposition == Disposition.OUTBOUND_CFCFRMS_REQUEST]
@@ -508,7 +587,7 @@ class ReferenceWorld:
             ncrp_ids=list(ncrp_ids),
             window_start_us=start,
             window_end_us=end,
-            victim_seed={n: _clean(v) for n, v in seed_amount.items()},
+            victim_seed=victim_seed,
             edges=ref_edges,
             accounts=accounts,
             totals=totals,
@@ -530,6 +609,7 @@ class ReferenceWorld:
             str_ground=StrGround.PROCEEDS_OF_CRIME if mule_home else None,
             escalation_candidates=sorted(d.account_id for d in decisions if d.requires_human),
             warnings=warnings,
+            rounding_trim=trim,
         )
 
     def _decide(self, ncrp_ids: list[str], accounts: dict[str, RefAccount]) -> list[RefDecision]:
@@ -630,3 +710,44 @@ def _scale(vec: dict[str, float], f: float) -> dict[str, float]:
     if abs(f - 1.0) < 1e-12:
         return dict(vec)
     return _rvec({k: v * f for k, v in vec.items()})
+
+
+def _paise(x: float) -> int:
+    return round(x * 100)
+
+
+def _cap_at_loss(decisions: list[RefDecision], loss: dict[str, float], ncrp_ids: list[str]) -> dict[str, float]:
+    """Take per-account rounding residue back so no victim's recoverable money exceeds the victim's loss (r9).
+
+    Recoverable = holds (``hold_amount > 0``) and outbound requests (amount in ``tainted_amount``). Per victim
+    (``ncrp_ids`` order), each excess paisa comes off the victim's largest share, ties to the earlier decision
+    ((layer, account_id) order), and off that decision's amount with it; no amount drops below one paisa. Victims
+    without a known loss are left alone. Decisions are updated in place; returns {ncrp_id: rupees taken back}.
+    """
+    outbound = Disposition.OUTBOUND_CFCFRMS_REQUEST
+    rec = [d for d in decisions if d.hold_amount > 0 or d.disposition == outbound]
+
+    def amount_attr(d: RefDecision) -> str:
+        return "tainted_amount" if d.disposition == outbound else "hold_amount"
+
+    trim: dict[str, float] = {}
+    for n in dict.fromkeys([*ncrp_ids, *sorted({v for d in rec for v in d.per_victim})]):
+        if n not in loss:
+            continue
+        holders = [d for d in rec if d.per_victim.get(n, 0.0) > 0]
+        excess = sum(_paise(d.per_victim[n]) for d in holders) - _paise(max(loss[n], 0.0))
+        taken = 0
+        while excess > 0:
+            spare = [
+                d for d in holders if _paise(d.per_victim[n]) > 0 and _paise(getattr(d, amount_attr(d))) > 1
+            ]
+            if not spare:
+                break
+            d = max(spare, key=lambda d: _paise(d.per_victim[n]))  # first maximum = earliest decision
+            d.per_victim[n] = r2(d.per_victim[n] - 0.01)
+            setattr(d, amount_attr(d), r2(getattr(d, amount_attr(d)) - 0.01))
+            taken += 1
+            excess -= 1
+        if taken:
+            trim[n] = taken / 100
+    return trim

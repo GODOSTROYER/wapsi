@@ -225,7 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     base = latest.get("baseline", {})
     if base:
         print(
-            f"\nBaseline: whole-account freeze would immobilise {fmt(base.get('whole_account_freeze_inr'), 'inr')} "
+            f"\nWhole-account freeze baseline (comparison only): "
+            f"{fmt(base.get('whole_account_freeze_inr'), 'inr')} "
             f"across {base.get('accounts_frozen_baseline', '?')} accounts; Wapsi holds "
             f"{fmt(base.get('wapsi_hold_inr'), 'inr')} across {base.get('accounts_held', '?')}."
         )

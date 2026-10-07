@@ -7,7 +7,7 @@ tools:
   - glob
   - write
   - edit
-  - snowflakesqlexecute
+  - snowflake_sql_execute
 model: claude-sonnet-5
 ---
 

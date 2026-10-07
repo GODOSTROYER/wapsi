@@ -141,7 +141,7 @@ def render(ctx: Ctx) -> None:
 
     baseline = report.get("baseline") or {}
     if baseline and _num(baseline.get("whole_account_freeze_inr")):
-        md(h.section("Whole-account freeze vs Wapsi, across the golden set"))
+        md(h.section("Whole-account freeze baseline vs Wapsi, across the golden set"))
         md(baseline_strip_html(BaselineSummary(
             freeze_amount=_num(baseline.get("whole_account_freeze_inr")) or 0.0,
             freeze_accounts=int(_num(baseline.get("accounts_frozen_baseline")) or 0),

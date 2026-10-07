@@ -1,10 +1,11 @@
 {
   "world": "demo",
-  "generated_at": "2026-09-16T18:56:50.983108+00:00",
+  "generated_at": "2026-09-29T03:32:08.379043+00:00",
   "config": {
     "rule": "PRO_RATA",
     "llm": "fake-llm",
-    "scorer": "heuristic",
+    "scorer": "heuristic-v2",
+    "scorer_spec": "heuristic",
     "search": true
   },
   "cases": 39,
@@ -39,9 +40,9 @@
     "llm_prose_fallback_rate": 0.0,
     "injection_flag_recall": 1.0,
     "injection_leaks": 0,
-    "p50_time_to_hold_plan_s": 0.1086,
-    "p95_time_to_hold_plan_s": 0.1391,
-    "p95_total_s": 0.2609
+    "p50_time_to_hold_plan_s": 0.4164,
+    "p95_time_to_hold_plan_s": 0.5183,
+    "p95_total_s": 1.0422
   },
   "baseline": {
     "whole_account_freeze_inr": 352590069.78,
@@ -100,6 +101,22 @@
       "hold_exact_match_rate": 1.0,
       "disposition_accuracy": 1.0
     }
+  },
+  "classification": {
+    "accounts": 106,
+    "truth": {
+      "INNOCENT_HOLDER": 10,
+      "MULE": 96
+    },
+    "predicted": {
+      "INNOCENT_HOLDER": 10,
+      "MULE": 96
+    },
+    "unknown_rate": 0.0,
+    "mule_auc": 1.0,
+    "best_single_feature_auc": 1.0,
+    "best_single_feature": "hist_distinct_payers_90d",
+    "victim_on_trail_called_mule": 0
   },
   "failures": []
 }

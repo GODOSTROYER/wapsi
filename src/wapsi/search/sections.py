@@ -7,7 +7,8 @@ rendered as a compact key:
               ``Annexure-V Illustration 2``
 - ``bnss``  : ``94``, ``106`` ... (body headings ``94. Title.—``; the arrangement of sections is ignored)
 - ``pmlr``  : ``2``, ``2(1)(g)``, ``8``
-- ``rbi_md``: ``1.1``, ``3``, ``3.1.1``
+- ``rbi_dir``: ``Introduction``, ``1`` ... ``70``, ``Footnotes`` (RBI Directions, 2026 format: paragraphs
+              numbered straight through the chapters)
 - ``faq``   : the question text
 """
 
@@ -319,50 +320,53 @@ def detect_pmlr(doc: ExtractedDoc, source: Source) -> list[Section]:
     return b.finish()
 
 
-# --------------------------------------------------------------------------- RBI Master Directions
+# --------------------------------------------------------------------------- RBI Directions (2026 format)
 
-_RBI_PARA = re.compile(r"^(\d{1,2})((?:\.\d{1,2}){1,3})\.?\s+(\S.*)$")
-_RBI_TOP = re.compile(r"^(\d{1,2})\.\s+([A-Z].*)$")
-_RBI_CHAPTER = re.compile(r"^CHAPTER\s+([IVX]+)\b")
-_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10}
-
-
-def _roman_to_int(s: str) -> int:
-    total = 0
-    for i, ch in enumerate(s):
-        v = _ROMAN_VALUES[ch]
-        total += -v if i + 1 < len(s) and _ROMAN_VALUES[s[i + 1]] > v else v
-    return total
+_RBI_DIR_CHAPTER = re.compile(r"^Chapter\s+[IVX]+\s*[-–—]\s*(\S.*)$")
+_RBI_DIR_HEAD = re.compile(r"^[A-H]\.\s+([A-Z].*)$")  # "C. EWS Framework for Other Banking / ..."
+_RBI_DIR_PARA = re.compile(r"^(\d{1,3})\.\s+\S")
+_RBI_DIR_FOOTNOTE = re.compile(r"^1\s+[A-Z][a-z]")  # "1 Refer to the judgement ..." after the signature
 
 
-def detect_rbi_md(doc: ExtractedDoc, source: Source) -> list[Section]:
-    b = _Builder("RBI MD Para", "RBI MD", source.front_matter)
-    chapter = 0
-    frozen = False  # after the body: list of repealed circulars and footnotes
+def detect_rbi_dir(doc: ExtractedDoc, source: Source) -> list[Section]:
+    """RBI Directions, 2026 format: paragraphs 1..N run straight through Chapters I-X.
+
+    Chapter and lettered headings open the next paragraph (so its chunks carry them) and give its title.
+    Nothing before the "Introduction" line is a heading (the table of contents repeats them).
+    """
+    b = _Builder("RBI FRM Directions Para", "RBI FRM Directions", source.front_matter)
+    para = 0
+    in_body = False
+    frozen = False  # footnotes after the signature
+    heading = ""
+    pending: list[Line] = []
     for line in iter_lines(doc, source.skip_pages):
         t = line.text
-        if t == "Annex" and chapter == 0:
-            b.start(("Master Directions",), "Master Directions")
-        elif t.upper() == "INTRODUCTION" and chapter == 0:
-            b.start(("Introduction",), "Introduction")
-        elif t.startswith("List of Circulars Repealed"):
+        if not in_body or frozen:
+            if not in_body and t.lower() == "introduction":
+                in_body = True
+                b.start(("Introduction",), "Introduction")
+            b.add(line)
+            continue
+        mc = _RBI_DIR_CHAPTER.match(t)
+        mh = _RBI_DIR_HEAD.match(t) if len(t) < 200 else None
+        if mc or mh:
+            heading = (mc or mh).group(1).strip()
+            pending.append(line)
+            continue
+        mp = _RBI_DIR_PARA.match(t)
+        if mp and int(mp.group(1)) == para + 1:
+            para += 1
+            b.start((str(para),), heading)
+        elif para and _RBI_DIR_FOOTNOTE.match(t):
             frozen = True
-            b.start(("Annex (circulars repealed)",), "List of Circulars Repealed")
-        elif frozen and t.startswith("* ") and not b.current.path[0].startswith("Footnotes"):
             b.start(("Footnotes",), "Footnotes")
-        elif not frozen:
-            mc = _RBI_CHAPTER.match(t)
-            mp = _RBI_PARA.match(t)
-            mt = _RBI_TOP.match(t)
-            if mc:
-                chapter = _roman_to_int(mc.group(1))
-            elif mp and int(mp.group(1)) == chapter:
-                parts = f"{mp.group(1)}{mp.group(2)}".split(".")
-                path = tuple(".".join(parts[: i + 1]) for i in range(len(parts)))
-                b.start(path, mp.group(3)[:120])
-            elif mt and int(mt.group(1)) == chapter:
-                b.start((mt.group(1),), mt.group(2).strip())
+        for held in pending:
+            b.add(held)
+        pending.clear()
         b.add(line)
+    for held in pending:
+        b.add(held)
     return b.finish()
 
 
@@ -383,7 +387,7 @@ DETECTORS: dict[str, Callable[[ExtractedDoc, Source], list[Section]]] = {
     "sop": detect_sop,
     "bnss": detect_bnss,
     "pmlr": detect_pmlr,
-    "rbi_md": detect_rbi_md,
+    "rbi_dir": detect_rbi_dir,
     "faq": detect_faq,
 }
 

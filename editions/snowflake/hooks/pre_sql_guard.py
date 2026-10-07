@@ -1,16 +1,18 @@
-"""CoCo PreToolUse guardrail (matcher `snowflakesqlexecute|bash`): block destructive, costly or governance-breaking SQL.
+"""CoCo PreToolUse guardrail (matcher `snowflake_sql_execute|sql_execute|bash`): block destructive, costly or governance-breaking SQL.
 
 Blocks (exit 2, reason on stderr and as {"decision": "block"} on stdout):
   - DROP DATABASE / DROP SCHEMA; DROP or TRUNCATE of WAPSI.CASEMGMT tables          (override: WAPSI_ALLOW_DESTRUCTIVE=1)
-  - any DELETE / UPDATE / TRUNCATE / DROP on CASEMGMT.AUDIT_LOG or APPROVALS         (append-only; no override)
+  - any DELETE / UPDATE / TRUNCATE / DROP / MERGE on CASEMGMT.AUDIT_LOG, AUDIT_ANCHOR or APPROVALS
+                                                                                     (append-only; no override)
   - UPDATE of CASEMGMT.HOLD_PLAN amounts by hand (rebuild with BUILD_HOLD_PLAN)      (no override)
   - GRANT on WAPSI.ML (ground truth) to an app role                                  (no override)
   - warehouse sizes above SMALL; AUTO_SUSPEND above 300 s                            (override: WAPSI_ALLOW_COST=1)
   - ALTER ACCOUNT other than CORTEX_ENABLED_CROSS_REGION / AI_SETTINGS               (override: WAPSI_ALLOW_DESTRUCTIVE=1)
   - CREATE EXTERNAL ACCESS INTEGRATION (trial accounts have no egress; stage actions in CASEMGMT.ACTIONS)
                                                                                      (override: WAPSI_ALLOW_EGRESS=1)
-The CoCo tool name (`snowflakesqlexecute`) and its input key are taken from the CoCo tools doc; the script accepts
-`sql`, `query`, `statement` or `command` keys. Confirm in the first session with a harmless `DROP SCHEMA` dry test.
+Checked against CoCo CLI 1.1.87: the SQL tool is `snowflake_sql_execute` (input keys `sql`, `description`), the
+shell tool is `bash` (input key `command`), and matchers are anchored, case-insensitive regexes (`^(?:matcher)$`).
+The script also accepts `query`, `statement` or `cmd` keys. Confirm live in S02 with a harmless `DROP SCHEMA` test.
 """
 
 from __future__ import annotations
@@ -44,10 +46,10 @@ RULES: list[tuple[str, re.Pattern[str], str | None, str]] = [
         re.compile(
             r"\b(?:DELETE\s+FROM\s+|UPDATE\s+|TRUNCATE\s+(?:TABLE\s+)?(?:IF\s+EXISTS\s+)?"
             r"|DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?|MERGE\s+INTO\s+)"
-            r"(?:WAPSI\.)?(?:CASEMGMT\.)?(?:AUDIT_LOG|APPROVALS)\b"
+            r"(?:WAPSI\.)?(?:CASEMGMT\.)?(?:AUDIT_LOG|AUDIT_ANCHOR|APPROVALS)\b"
         ),
         None,
-        "AUDIT_LOG and APPROVALS are append-only (SOP 5(ix) accountability).",
+        "AUDIT_LOG, AUDIT_ANCHOR and APPROVALS are append-only (hash-chained audit trail; SOP 5(ix) accountability).",
     ),
     (
         "hand-edited-hold",

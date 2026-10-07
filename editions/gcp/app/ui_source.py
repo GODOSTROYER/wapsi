@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from ui.data_source import Outcome, ShowcaseDataSource, build_showcase_bundles, doc_search
+from wapsi.audit.chain import append_event, chain_extend
 from wapsi.models import ApprovalDecision, AuditEvent, CaseBundle
 from wapsi.timeutil import utcnow
 
@@ -60,8 +61,12 @@ class CaseStoreDataSource(ShowcaseDataSource):
     def append_audit(self, case_id: str | None, event: AuditEvent) -> None:
         super().append_audit(case_id, event)
         if case_id and case_id in self._bundles:
+            # store the link just sealed into the session's chain, not the unsealed original: a store that keeps
+            # events as given (Firestore) would otherwise hold an unsealed event (the chain reads as broken) and,
+            # on the next put_bundle, a second, sealed copy of it
+            sealed = self._bundles[case_id].audit[-1].model_copy(deep=True)
             try:
-                self.services.store.append_audit(case_id, event)
+                self.services.store.append_audit(case_id, sealed)
             except Exception:  # noqa: BLE001
                 log.exception("could not append audit for %s", case_id)
 
@@ -84,10 +89,11 @@ class CaseStoreDataSource(ShowcaseDataSource):
             return Outcome(False, f"Drafts couldn't be generated: {exc}")
         fresh.case.opened_at = bundle.case.opened_at
         fresh.approvals = list(bundle.approvals) + list(fresh.approvals)
-        fresh.audit = list(bundle.audit) + list(fresh.audit)
-        fresh.audit.append(AuditEvent(at=utcnow(), actor=actor, role=role, action="pipeline_run",
-                                      object_type="case", object_id=case_id,
-                                      details={"drafts": len(fresh.drafts), "llm": getattr(svc.llm, "name", "")}))
+        fresh.audit = chain_extend(bundle.audit, fresh.audit, case_id=case_id)  # one hash chain, history first
+        append_event(fresh.audit, AuditEvent(at=utcnow(), actor=actor, role=role, action="pipeline_run",
+                                             object_type="case", object_id=case_id,
+                                             details={"drafts": len(fresh.drafts),
+                                                      "llm": getattr(svc.llm, "name", "")}), case_id=case_id)
         self._bundles[case_id] = fresh
         self._clock_cache = {k: v for k, v in self._clock_cache.items() if k[0] != case_id}
         self._persist(fresh)

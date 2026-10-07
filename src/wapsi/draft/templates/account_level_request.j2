@@ -1,0 +1,33 @@
+{#- Officer's request for an exceptional account-level hold. Amount-specific holds are the default (SOP Para 5(ix),
+    9.1); account-level action is only a recorded exception that a supervisor approves (maker-checker). Every
+    amount, account id, UTR and date comes from `s` (slots); `c` carries words and flags only. -#}
+# Exceptional account-level hold request: A/c No. {{ s.account_id }}
+
+- **From:** {{ c.requested_by }} ({{ c.requester_role }}), Cyber Fraud Cell, {{ c.home_bank_name }}
+- **To:** Supervisor (checker), {{ c.home_bank_name }}
+- **Case:** {{ c.case_id }}
+- **Complaint(s):** {{ s.ncrp_ids }}
+- **Status:** request only. Supervisor approval is required before any account-level action; the requesting officer cannot approve it.
+
+## Default: amount-specific hold
+
+The plan holds {{ s.hold_amount }} in A/c No. {{ s.account_id }}: the victim money still in the account, capped at the balance of {{ s.balance_now }}. The disputed credit was received vide UTR/TRX ID {{ s.utrs }} on {{ s.inflow_dates }} [SOP-9-1] [SOP-ANNEX-I]. Amount-specific holds are the default, and unwarranted orders freezing accounts are discouraged [SOP-5-IX].
+
+## Recorded reasons for the exception
+
+{% for r in c.reasons %}
+- {{ r.code }}: {{ r.text }}.
+{% endfor %}
+{% if c.is_innocent %}
+- Note: the hold plan assesses this account as an innocent holder [SOP-5-XII]; the recorded reasons above must explain why that assessment no longer holds.
+{% endif %}
+
+## Requested exception
+
+The officer asks for account-level action on A/c No. {{ s.account_id }}, beyond the amount-specific hold, for the recorded reasons above. The amount-specific hold of {{ s.hold_amount }} stays the amount recoverable for the victims; any further restriction on the account is not victim money in hand. High Courts have favoured a lien confined to the identifiable disputed amount [CASE-KARTIK-CHATUR] [CASE-SHREE-BALAJI], and a debit freeze of the account needs an order of the Magistrate under Section 107 BNSS [BNSS-107]. Keep the order or the evidence behind each recorded reason on the case file.
+{% if c.note %}
+
+Officer's note, as recorded: "{{ c.note }}"
+{% endif %}
+
+_Prepared by Wapsi. Nothing in this request is executed until a supervisor other than the requesting officer approves it._

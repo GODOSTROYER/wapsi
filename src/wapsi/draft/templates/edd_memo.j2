@@ -1,10 +1,16 @@
-{#- Enhanced due diligence memo for a possible innocent holder (SOP Para 5(xii), 10.1). -#}
+{#- Enhanced due diligence memo for a possible innocent holder (SOP Para 5(xii), 10.1): a bona fide recipient (no STR
+    by default) or an unwitting conduit (STR recommended for the officer's decision; never automatic). -#}
 # Enhanced due diligence memo: A/c No. {{ s.account_id }}
 
 - **Case:** {{ c.case_id }}
 - **Complaint(s):** {{ s.ncrp_ids }}
-- **Assessment:** possible innocent holder, account operated without the holder's knowledge or connivance [SOP-5-XII]
-- **Planned action:** {{ s.disposition }} (hold the amount only; no escalation; no STR)
+{% if c.is_conduit %}
+- **Assessment:** possible innocent holder, unwitting conduit: the account appears to have been used as a pass-through by someone else, without the holder's knowledge or connivance [SOP-5-XII]
+- **Planned action:** {{ s.disposition }} (hold the amount only; no escalation; STR recommended, the officer decides)
+{% else %}
+- **Assessment:** possible innocent holder, bona fide recipient: the money appears to have been received in good faith, without the holder's knowledge of or connivance in the fraud [SOP-5-XII]
+- **Planned action:** {{ s.disposition }} (hold the amount only; no escalation; no STR by default)
+{% endif %}
 
 ## Facts
 
@@ -40,8 +46,12 @@
 
 ## Recommendation
 
-- Keep the amount-specific hold of {{ s.hold_amount }}; do not freeze the account and do not escalate [SOP-9-1] [SOP-5-IX].
-- Do not file an STR on this account on the present facts; re-assess if new information emerges.
+- Keep the amount-specific hold of {{ s.hold_amount }}; no account-level action and no escalation on the present facts [SOP-9-1] [SOP-5-IX].
+{% if c.is_conduit %}
+- STR: recommended because the account was used as a conduit. There is no automatic STR; the officer decides whether to file one [PMLR-2-1-G].
+{% else %}
+- STR: none by default; the officer decides and re-assesses if new information emerges.
+{% endif %}
 - Advise the holder to file a grievance with documents that support the credit (for example a rent agreement or an invoice) [SOP-10-1].
 - Complete enhanced due diligence (KYC refresh, source of the credit, relationship with the remitter) and record the outcome on CFCFRMS [SOP-10-1].
 

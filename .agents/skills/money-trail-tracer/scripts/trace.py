@@ -140,7 +140,8 @@ def render(trace: TraceResult) -> str:
         lines += ["", "### Warnings", ""] + [f"- {w}" for w in trace.warnings]
     lines += [
         "",
-        "Holds are amount-specific (tainted amount only, never the whole account; SOP Para 5(ix), 9.1)."
+        "Holds are amount-specific by default (tainted amount only; SOP Para 5(ix), 9.1); account-level action"
+        " only as a recorded, supervisor-approved exception."
         " Use $lien-calculator for dispositions.",
     ]
     return "\n".join(lines)

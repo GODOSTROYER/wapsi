@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import BaseLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined
 
 from wapsi import money
 from wapsi.citations import KNOWN_IDS
@@ -86,10 +86,17 @@ def plural(n: int, word: str, suffix: str = "s") -> str:
     return word if n == 1 else word + suffix
 
 
+def _loader() -> BaseLoader:
+    """Templates from the source tree, or from the package when imported from a zip (Snowpark IMPORTS)."""
+    if TEMPLATE_DIR.is_dir():
+        return FileSystemLoader(str(TEMPLATE_DIR))
+    return PackageLoader("wapsi.draft", "templates")
+
+
 @lru_cache(maxsize=1)
 def environment() -> Environment:
     return Environment(
-        loader=FileSystemLoader(str(TEMPLATE_DIR)),
+        loader=_loader(),
         autoescape=False,
         undefined=StrictUndefined,
         trim_blocks=True,

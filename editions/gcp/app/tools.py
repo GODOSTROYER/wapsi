@@ -20,6 +20,7 @@ from wapsi.models import CaseBundle, GuardResult, VerificationReport
 from wapsi.money import fmt_inr
 from wapsi.pipeline.run import approve, group_complaints, pending_holds, process_case
 from wapsi.timeutil import ensure_utc, fmt_ist, utcnow
+from wapsi.verify.report import code_of, text_of
 from wapsi.verify.runner import PLAN_DRAFT_ID
 
 from .identity import display_name, verified_role
@@ -39,11 +40,14 @@ MAX_BODY = 2400
 MAX_NCRP_PER_CASE = 20
 
 HARD_RULES = [
-    "Hold the tainted amount only (min(tainted, balance)), never the whole account [SOP-5-IX] [SOP-9-1].",
+    "Amount-specific holds by default: hold the tainted amount only (min(tainted, balance)) [SOP-5-IX] [SOP-9-1]; "
+    "account-level action only as a recorded, supervisor-approved exception.",
     "Forward holds only on first-layer accounts, never on nodal/pool/escrow accounts [SOP-9-1].",
     "Nodal/pool/escrow accounts: hold the disputed amount only; no suspension or seizure.",
     "Merchant with delivered goods: no hold, update only; undelivered: hold in pool [SOP-9-2].",
-    "Innocent holder: hold without escalation, no STR, EDD memo [SOP-5-XII].",
+    "Innocent holder: hold without escalation, EDD memo [SOP-5-XII]; no automatic STR, the officer decides; STR "
+    "recommended where the account was used as a conduit.",
+    "CFCFRMS is a simulated interface: updates and requests are prepared, never sent to the portal.",
     "s.106 escalation is only a flag for a human (needs FIR and at least two prior reports).",
 ]
 
@@ -127,9 +131,11 @@ def _report_view(report: VerificationReport) -> dict[str, Any]:
     failing = [c for c in report.checks if not c.passed]
     return {
         "passed": report.passed,
-        "errors": [{"check": c.name, "message": c.message[:300], "spans": [s[:120] for s in c.spans[:3]]}
+        "errors": [{"check": c.name, "code": code_of(c), "message": text_of(c)[:300],
+                    "spans": [s[:120] for s in c.spans[:3]]}
                    for c in failing if c.severity == "error"],
-        "warnings": [{"check": c.name, "message": c.message[:300]} for c in failing if c.severity != "error"],
+        "warnings": [{"check": c.name, "code": code_of(c), "message": text_of(c)[:300]}
+                     for c in failing if c.severity != "error"],
         "checks_run": sorted({c.name for c in report.checks}),
     }
 
@@ -616,7 +622,8 @@ def case_clocks(case_id: str, tool_context: Any = None) -> dict[str, Any]:
         "case_id": bundle.case.case_id,
         "as_of": fmt_ist(now),
         "clocks": [{"kind": c.kind.value, "subject": c.subject, "start": fmt_ist(c.start), "due": fmt_ist(c.due),
-                    "status": c.status.value, "business_days": c.business_days, "citation_id": c.citation_id}
+                    "status": c.status.value, "business_days": c.business_days, "citation_id": c.citation_id,
+                    "notes": c.notes}
                    for c in clocks[:MAX_ROWS]],
         "by_status": dict(Counter(c.status.value for c in clocks)),
     }

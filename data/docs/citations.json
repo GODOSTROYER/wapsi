@@ -96,11 +96,19 @@
     "page": null
   },
   {
-    "citation_id": "RBI-FRM-MD-2024",
-    "source_title": "RBI Master Directions on Fraud Risk Management in Commercial Banks (incl. RRBs) and AIFIs (15.07.2024)",
-    "section": "Para 3.1.1: framework for Early Warning Signals (EWS) and Red Flagging of Accounts (RFA)",
-    "quote": "Banks shall have a framework for Early Warning Signals (EWS) and Red Flagging of Accounts (RFA)",
-    "url": "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12702&Mode=0",
+    "citation_id": "RBI-FRM-DIR-2026",
+    "source_title": "Reserve Bank of India (Commercial Banks - Fraud Risk Management) Directions, 2026 (RBI/DoS/2026-27/412, 31.07.2026)",
+    "section": "Para 24: EWS for other banking / non-credit transactions; monitoring of non-KYC compliant and money mule accounts",
+    "quote": "The bank shall remain vigilant in monitoring transactions / unusual activities, specifically in the non-KYC compliant and money mule accounts",
+    "url": "https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=13641&Mode=0",
+    "page": null
+  },
+  {
+    "citation_id": "RBI-FRM-DIR-2026-EWS",
+    "source_title": "Reserve Bank of India (Commercial Banks - Fraud Risk Management) Directions, 2026 (RBI/DoS/2026-27/412, 31.07.2026)",
+    "section": "Para 12: framework for Early Warning Signals (EWS) and Red Flagging of Accounts (RFA)",
+    "quote": "The bank shall have a framework for EWS and Red Flagging of Accounts (RFA) under the overall Fraud Risk Management Policy approved by the Board.",
+    "url": "https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=13641&Mode=0",
     "page": null
   },
   {

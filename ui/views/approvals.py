@@ -12,14 +12,24 @@ from ui.components.formatting import (
     APPROVAL_LABELS,
     APPROVAL_REASON_LABELS,
     DRAFT_KIND_LABELS,
+    SIMULATED_CFCFRMS_NOTE,
     humanize,
     inr_short,
     ist,
 )
 from ui.components.theme import APPROVAL_TONE
 from ui.data_source import latest_approval, plan_reports
+from ui.views.audit import chain_chip, chain_report
 from ui.views.common import Ctx, case_bar, flash, head, md, nav_button, need_case
-from wapsi.models import HOLDING_DISPOSITIONS, Approval, ApprovalDecision, CaseBundle, VerificationReport
+from wapsi.models import (
+    HOLDING_DISPOSITIONS,
+    ActionKind,
+    Approval,
+    ApprovalDecision,
+    CaseBundle,
+    DraftKind,
+    VerificationReport,
+)
 
 REASONS = APPROVAL_REASON_LABELS
 ALL_REASONS = ALL_APPROVAL_REASONS
@@ -39,6 +49,7 @@ class Item:
     detail: str
     report_ok: bool | None  # None = no checks recorded
     latest: Approval | None
+    requested_by: str = ""  # an account-level hold request: its requesting officer (maker)
 
 
 def items_for(bundle: CaseBundle) -> list[Item]:
@@ -63,6 +74,8 @@ def items_for(bundle: CaseBundle) -> list[Item]:
             detail=d.account_id or "Case-level document",
             report_ok=None if rep is None else rep.passed,
             latest=latest_approval(bundle, d.draft_id),
+            requested_by=str(d.structured.get("requested_by") or "")
+            if d.kind == DraftKind.ACCOUNT_LEVEL_HOLD_REQUEST else "",
         ))
     return out
 
@@ -95,6 +108,8 @@ def render(ctx: Ctx) -> None:
         counts["Pending" if it.latest is None else APPROVAL_LABELS[it.latest.decision]] += 1
     md(h.tiles([h.Tile(k, str(v), accent=(k == "Pending" and v > 0)) for k, v in counts.items()],
                min_width_rem=8))
+    if bundle.audit:  # every decision is sealed into the case's hash-chained audit log (verify it in Audit)
+        md(h.chips([chain_chip("Audit log", chain_report(ctx, bundle.case.case_id, bundle))]))
 
     if not bundle.drafts:
         c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
@@ -104,7 +119,8 @@ def render(ctx: Ctx) -> None:
         with c2:
             nav_button("Open drafts", "Drafts & Verification", key="appr_to_drafts")
 
-    ready = [it for it in items if _is_open(it) and it.report_ok is True]
+    # an exceptional account-level hold request always gets its own decision, never a bulk approval
+    ready = [it for it in items if _is_open(it) and it.report_ok is True and not it.requested_by]
     if ctx.viewer.can_approve and len(ready) > 1:
         with st.container(border=True):
             c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
@@ -163,6 +179,11 @@ def _item(ctx: Ctx, bundle: CaseBundle, it: Item) -> None:
 
 
 def _controls(ctx: Ctx, bundle: CaseBundle, it: Item) -> None:
+    if it.requested_by:
+        own = it.requested_by.strip().casefold() == ctx.viewer.actor.strip().casefold()
+        md('<div class="wp-note">Approving applies an exceptional account-level hold on the recorded reasons. '
+           + ("You requested it, so another supervisor must decide (maker-checker)." if own else
+              f"Requested by {h.esc(it.requested_by)}; amount-specific holds stay the default.") + "</div>")
     decision = st.radio("Decision", list(REASONS), key=f"dec_{it.key}", horizontal=True,
                         format_func=lambda d: DECISION_VERBS[d])
     reasons = REASONS[decision]
@@ -203,6 +224,9 @@ def _actions(bundle: CaseBundle) -> None:
     if not bundle.actions:
         return
     md(h.section("Actions queued by approvals"))
+    if any(a.kind == ActionKind.CFCFRMS_UPDATE
+           or a.payload.get("interface") == "SIMULATED_CFCFRMS" for a in bundle.actions):
+        md(h.callout(SIMULATED_CFCFRMS_NOTE, strong="Not sent."))
     rows = [h.Row([h.Cell(ist(a.created_at), nowrap=True), h.Cell(humanize(a.kind.value)),
                    h.Cell(html=h.chip(humanize(a.status.value), {"DONE": "good", "FAILED": "bad"}.get(
                        a.status.value, "warn"))),

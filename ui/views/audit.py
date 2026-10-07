@@ -1,4 +1,5 @@
-"""Audit: every view, decision, pipeline run and role change, with actor and role."""
+"""Audit: every view, decision, pipeline run and role change, with actor and role, plus the status of each case's
+hash-chained audit log (``wapsi.audit``) and a button that re-verifies it."""
 
 from __future__ import annotations
 
@@ -10,11 +11,18 @@ import streamlit as st
 
 from ui.components import html as h
 from ui.components.formatting import ROLE_TITLES, audit_action_label, humanize, ist, reason_label
-from ui.views.common import Ctx, download, head, md
+from ui.views.common import Ctx, download, flash, head, md
+from wapsi.audit.chain import ChainReport, verify_chain
 from wapsi.models import AuditEvent, CaseBundle
+from wapsi.timeutil import utcnow
 
 MAX_ROWS = 200
 DECISION_ACTIONS = ("draft_", "plan_")
+DECISION_OUTCOMES = ("_approved", "_rejected", "_changes_requested")
+FINGERPRINT_LABELS = {"draft_sha256": "Fingerprint", "plan_sha256": "Plan fingerprint",
+                      "trace_sha256": "Trace fingerprint"}
+SESSION_CHAIN = "Session"
+CHAIN_TONES = {"intact": "good", "broken": "bad", "unchained": "gray"}
 
 
 def summarize_details(details: dict[str, Any], limit: int = 140) -> str:
@@ -26,6 +34,9 @@ def summarize_details(details: dict[str, Any], limit: int = 140) -> str:
             v = ", ".join(f"{a}={b}" for a, b in v.items())
         elif isinstance(v, (list, tuple)):
             v = ", ".join(str(x) for x in v)
+        if k in FINGERPRINT_LABELS and isinstance(v, str):
+            parts.append(f"{FINGERPRINT_LABELS[k]}: {v[:10]}…")
+            continue
         if k in ("reason_code", "kind") and isinstance(v, str):
             v = reason_label(v)
         elif k == "page" or k.endswith("_id") or k in ("from", "to"):
@@ -70,10 +81,13 @@ def render(ctx: Ctx) -> None:
 
     md(h.tiles([
         h.Tile("Events", str(len(events))),
-        h.Tile("Decisions", str(sum(1 for _, e in events if e.action.startswith(DECISION_ACTIONS)))),
+        h.Tile("Decisions", str(sum(1 for _, e in events
+                                    if e.action.startswith(DECISION_ACTIONS) and e.action.endswith(DECISION_OUTCOMES)))),
         h.Tile("Role switches", str(sum(1 for _, e in events if e.action == "role_switched"))),
         h.Tile("Page views", str(sum(1 for _, e in events if e.action == "viewed"))),
     ], min_width_rem=8))
+    this_case = scope == "This case" and bool(ctx.case_id)
+    _chain_panel(ctx, [ctx.case_id] if this_case else sorted(bundles), bundles, this_case=this_case)
     if ctx.viewer.masked:
         md(h.callout("Names and mobile numbers are masked for the auditor role.", strong="Masked view."))
 
@@ -121,3 +135,64 @@ def _csv(ctx: Ctx, events: list[tuple[str | None, AuditEvent]], bundles: dict[st
         details = ctx.mask(details, b) if b else ctx.viewer.text(details)
         w.writerow([e.at.isoformat(), e.actor, e.role, e.action, e.object_type, e.object_id, cid or "", details])
     return buf.getvalue()
+
+
+# --------------------------------------------------------------------------- audit chain
+
+
+def chain_report(ctx: Ctx, case_id: str | None, bundle: CaseBundle | None = None) -> ChainReport:
+    """Verify one case's audit chain (``None``: the session's own events, e.g. role switches)."""
+    verify = getattr(ctx.ds, "verify_audit", None)
+    if callable(verify):
+        return verify(case_id)
+    return verify_chain(bundle.audit if bundle is not None else [], case_id=case_id)
+
+
+def chain_chip(label: str, report: ChainReport) -> str:
+    """Small status badge for one audit chain; the tooltip carries the full finding."""
+    if report.status == "intact":
+        text = f"{label} · chain intact · {report.length} event{'s' if report.length != 1 else ''}"
+    elif report.status == "unchained":
+        text = f"{label} · not chained"
+    else:
+        text = f"{label} · chain broken at event #{report.first_bad_seq}"
+    return h.chip(text, CHAIN_TONES[report.status], title=report.summary())
+
+
+def _chain_panel(ctx: Ctx, case_ids: list[str], bundles: dict[str, CaseBundle], *, this_case: bool) -> None:
+    targets: list[tuple[str, str | None]] = [(cid, cid) for cid in case_ids if cid in bundles]
+    if not this_case and any(c is None for c, _ in ctx.ds.audit_events()):
+        targets.append((SESSION_CHAIN, None))
+    if not targets:
+        return
+    reports = [(label, chain_report(ctx, cid, bundles.get(cid) if cid else None)) for label, cid in targets]
+    c1, c2 = st.columns([4, 1.2], vertical_alignment="center")
+    with c1:
+        md('<div class="wp-note">Hash-chained audit log: editing, deleting or reordering a recorded event breaks '
+           "the chain.</div>" + h.chips([chain_chip(label, r) for label, r in reports]))
+    with c2:
+        st.button("Verify chain", key="audit_verify_chain", on_click=_verify_chains, args=(ctx, targets, this_case),
+                  help="Recompute every event's hash from the first event and check each link.")
+
+
+def _verify_chains(ctx: Ctx, targets: list[tuple[str, str | None]], this_case: bool) -> None:
+    """Button callback: verify each chain, report the result and record the check itself in the audit trail."""
+    reports = [(label, chain_report(ctx, cid, ctx.ds.get_bundle(cid) if cid else None)) for label, cid in targets]
+    broken = [(label, r) for label, r in reports if r.status == "broken"]
+    intact = [r for _, r in reports if r.ok]
+    unchained = [label for label, r in reports if r.status == "unchained"]
+    events = sum(r.length for r in intact)
+    note = (f" Not chained yet (their store does not seal events): {', '.join(unchained)}." if unchained else "")
+    if broken:
+        flash(" ".join(f"{label}: {r.summary()}" for label, r in broken) + note, "error")
+    elif intact:
+        flash(f"Verified {events} events in {len(intact)} chain{'s' if len(intact) != 1 else ''}: every hash "
+              "and link checks out." + note, "info" if unchained else "success")
+    else:
+        flash(note.strip(), "info")
+    ctx.ds.append_audit(None, AuditEvent(
+        at=utcnow(), actor=ctx.viewer.actor, role=ctx.viewer.role, action="audit_chain_verified",
+        object_type="audit_log", object_id=ctx.case_id if this_case and ctx.case_id else "all cases",
+        details={"chains": len(reports), "events": events,
+                 "broken": [f"{label}@{r.first_bad_seq}" for label, r in broken], "not_chained": unchained},
+    ))

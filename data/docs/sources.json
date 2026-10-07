@@ -210,39 +210,56 @@
       "notes": ""
     },
     {
-      "id": "rbi-frm-md-2024",
-      "title": "RBI Master Directions on Fraud Risk Management in Commercial Banks (including Regional Rural Banks) and All India Financial Institutions, RBI/DOS/2024-25/118, 15.07.2024",
+      "id": "rbi-frm-dir-2026",
+      "title": "Reserve Bank of India (Commercial Banks - Fraud Risk Management) Directions, 2026, RBI/DoS/2026-27/412, DoS.CO.FMG.6/23.04.001/2026-27, 31.07.2026",
       "publisher": "Reserve Bank of India",
       "type": "html",
-      "url": "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12702&Mode=0",
-      "mirrors": [
-        "https://rbidocs.rbi.org.in/rdocs/notification/PDFs/118MDE97B8ED9A09B4B21BE7FDDE5F836CD09.PDF"
-      ],
+      "url": "https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=13641&Mode=0",
+      "mirrors": [],
       "licence": "RBI website content (see rbi.org.in Disclaimer); not redistributed; short verbatim quotes only.",
-      "profile": "rbi_md",
+      "profile": "rbi_dir",
       "citation_ids": [
-        "RBI-FRM-MD-2024"
+        "RBI-FRM-DIR-2026",
+        "RBI-FRM-DIR-2026-EWS"
       ],
-      "expect_text": "Early Warning Signals",
-      "start_marker": "RBI/DOS/2024-25/118",
+      "expect_text": "money mule accounts",
+      "start_marker": "RBI/DoS/2026-27/412",
       "end_marker": "All Months",
       "drop_regex": [
-        "^CONTENTS\\s*$.*?(?=^INTRODUCTION\\s*\\n(?:In exercise))"
+        "^Table of Contents\\s*$.*?(?=^Introduction\\s*$)"
       ],
       "skip_pages": [],
-      "front_matter": "Covering letter",
+      "front_matter": "Header",
       "headings_from_page": 1,
       "index_sections": [],
       "expect_sections": [
-        "1.1",
-        "3",
-        "3.1.1",
-        "3.4.2"
+        "Introduction",
+        "1",
+        "12",
+        "23",
+        "24",
+        "25",
+        "67",
+        "70",
+        "Footnotes"
       ],
       "section_citations": {
-        "3": "RBI-FRM-MD-2024"
+        "12": "RBI-FRM-DIR-2026-EWS",
+        "13": "RBI-FRM-DIR-2026-EWS",
+        "14": "RBI-FRM-DIR-2026-EWS",
+        "15": "RBI-FRM-DIR-2026-EWS",
+        "16": "RBI-FRM-DIR-2026-EWS",
+        "17": "RBI-FRM-DIR-2026-EWS",
+        "18": "RBI-FRM-DIR-2026-EWS",
+        "19": "RBI-FRM-DIR-2026-EWS",
+        "20": "RBI-FRM-DIR-2026-EWS",
+        "21": "RBI-FRM-DIR-2026-EWS",
+        "22": "RBI-FRM-DIR-2026-EWS",
+        "23": "RBI-FRM-DIR-2026",
+        "24": "RBI-FRM-DIR-2026",
+        "25": "RBI-FRM-DIR-2026"
       },
-      "notes": "The HTML notification page carries the full text. The rbidocs PDF mirror sits behind a JavaScript bot challenge and cannot be fetched by scripts."
+      "notes": "Para 67 repeals the earlier fraud risk management instructions for Commercial Banks, listed in circular DoS.CO.PPG.66/11.01.005/2026-27 of 31.07.2026; this replaces the RBI Master Directions on Fraud Risk Management of 15.07.2024 (RBI/DOS/2024-25/118, NotificationUser.aspx?Id=12702, formerly source rbi-frm-md-2024 / citation RBI-FRM-MD-2024), which RBI lists among the circulars withdrawn by the Department of Supervision. Applies to Commercial Banks only (not SFBs, Payments Banks or LABs; the 2024 MD also covered RRBs and AIFIs). The HTML notification page carries the full text; the PDF (rbidocs.rbi.org.in/rdocs/notification/PDFs/412MD5B6CA712E156413BACDEA9DD5CF5D1EF.PDF) is not used because citations are pinned to the HTML text (page null)."
     }
   ],
   "case_law_urls": {

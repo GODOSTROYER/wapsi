@@ -1,0 +1,111 @@
+# MkDocs (Material) site for Wapsi.
+# Build:  uv run --with mkdocs-material mkdocs build --strict -d .site_build
+# Serve:  uv run --with mkdocs-material mkdocs serve
+site_name: Wapsi
+site_description: >-
+  Money-trail and victim-restoration copilot for a bank's cyber-fraud nodal officer:
+  amount-specific holds under the MHA/I4C SOP for NCRP-CFCFRMS (02.01.2026). Synthetic data only.
+copyright: Wapsi is MIT-licensed. All banking data is synthetic. Not legal advice.
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - assets/extra.css
+
+# Several pages link to repository files outside docs/ (editions/*/README.md, SECURITY.md, CONTRIBUTING.md,
+# README.md). Those links work on GitHub but are not part of this site, so MkDocs cannot resolve them. They are
+# logged at INFO so `--strict` passes; broken anchors, nav entries and pages left out of the nav still fail it.
+# A mistyped link to a page inside docs/ is also only INFO, so before a release list every unresolved link with
+#   WAPSI_DOCS_LINKS=warn uv run --with mkdocs-material mkdocs build
+# and check that each one points to a real file outside docs/.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: !ENV [WAPSI_DOCS_LINKS, info]
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Overview: overview.md
+  - Architecture & editions:
+      - Architecture: architecture.md
+      - Editions: editions.md
+  - Legal spine: legal-spine.md
+  - Algorithms:
+      - Money trail: algorithms/money-trail.md
+      - Hold plan: algorithms/hold-plan.md
+      - Account classification: algorithms/classification.md
+  - Trust & safety: trust-and-safety.md
+  - Evaluation:
+      - Evaluation: evaluation.md
+      - Synthetic data: synthetic-data.md
+  - User guide: user-guide.md
+  - Developers:
+      - Developer guide: developer-guide.md
+      - API reference: api-reference.md
+  - ADRs:
+      - adr/README.md
+      - "0001 Amount-specific holds": adr/0001-amount-specific-holds.md
+      - "0002 Pro-rata apportionment": adr/0002-pro-rata-apportionment.md
+      - "0003 Numbers from data, words from the LLM": adr/0003-numbers-from-data-words-from-llm.md
+      - "0004 Intermediary accounts (SOP 9.1(iii))": adr/0004-intermediary-accounts-sop-9-1-iii.md
+      - "0005 One core, three editions": adr/0005-one-core-three-editions.md
+      - "0006 Heuristic classifier by default": adr/0006-transparent-heuristic-classifier-default.md
+      - "0007 Synthetic data only": adr/0007-synthetic-data-only.md
+      - "0008 Verifier independent of planner": adr/0008-verifier-independent-of-planner.md
+      - "0009 Account-level hold as a recorded exception": adr/0009-account-level-hold-as-recorded-exception.md
+  - Contracts:
+      - Data contract: data-contract.md
+      - Draft contract: draft-contract.md
+      - Eval report format: eval-report.md
+  - Originality: originality.md
+  - FAQ: faq.md
+  - Limitations & roadmap: limitations-and-roadmap.md
+  - Glossary: glossary.md

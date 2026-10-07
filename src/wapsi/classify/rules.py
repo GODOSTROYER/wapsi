@@ -10,6 +10,11 @@ Order (first match wins):
 UNKNOWN (officer review) when the account *did* something a genuine holder would not normally do with the money.
 A legitimate-looking profile (tenure, customer base, turnover) must never outweigh those actions on its own:
 between MULE and INNOCENT_HOLDER the product prefers a human decision to a confident wrong label.
+
+``conduit_indicators`` splits the innocent band (SOP Para 5(xii)) after the guard: an account that kept the victim
+money is a BONA_FIDE_RECIPIENT (legacy label INNOCENT_HOLDER); one that passed most of it on is an
+UNWITTING_CONDUIT, used as a pass-through by someone else. Both are held amount-only and never escalated; for a
+conduit an STR is recommended for the officer's decision, never filed automatically.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from dataclasses import dataclass, field
 
 from wapsi.models import (
     INTERMEDIARY_ACCOUNT_TYPES,
+    AccountState,
     AccountType,
     Invoice,
     OrderStatus,
@@ -49,6 +55,12 @@ BLOCK_FAST_MINUTES = 120.0  # forwarding within about two hours
 BLOCK_UNEXPLAINED_PASS_THROUGH = 0.5  # half the inflow sent on to counterparties it never paid before
 BLOCK_EXIT_SHARE = 0.5  # half the inflow taken out as cash / crypto
 BLOCK_PRIOR_REPORTS = 2  # repeatedly reported on NCRP (the s.106 escalation threshold)
+# conduit_indicators threshold: share of the victim money received that left the account again
+CONDUIT_SHARE = 0.5
+CONDUIT_REASON = (
+    "Passed on most of the victim money it received: the account appears to have been used as a pass-through "
+    "by someone else"
+)
 
 
 def _f(row: Mapping[str, float], key: str) -> float:
@@ -79,6 +91,17 @@ def innocent_blockers(row: Mapping[str, float]) -> list[str]:
     if _f(row, "ncrp_prior_reports") >= BLOCK_PRIOR_REPORTS:
         out.append("Reported on NCRP more than once before")
     return out
+
+
+def conduit_indicators(st: AccountState | None) -> list[str]:
+    """Reasons to label an innocent-band account (no ``innocent_blockers``) UNWITTING_CONDUIT rather than
+    BONA_FIDE_RECIPIENT: it passed at least ``CONDUIT_SHARE`` of the victim money it received on (trace amounts,
+    pro-rata). Empty list = the account kept the money (bona fide recipient)."""
+    if st is None or st.tainted_received_total <= 0:
+        return []
+    if st.tainted_sent_total >= CONDUIT_SHARE * st.tainted_received_total:
+        return [CONDUIT_REASON]
+    return []
 
 
 @dataclass(frozen=True)

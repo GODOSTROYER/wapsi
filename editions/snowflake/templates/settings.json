@@ -13,7 +13,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "snowflakesqlexecute|bash",
+        "matcher": "snowflake_sql_execute|sql_execute|bash",
         "hooks": [
           {
             "type": "command",
@@ -25,7 +25,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "edit|write",
+        "matcher": "edit|write|apply_patch",
         "hooks": [
           {
             "type": "command",

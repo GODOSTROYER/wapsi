@@ -10,6 +10,11 @@ reasons prefer what the bank itself observed (tenure, flows, devices) over third
 
 Rupee amounts in reasons (e.g. the burst inflow) are feature values, not hold-plan slots: drafts should quote
 reasons as context, not as verified figures.
+
+Graph models may add a ``graph_neighbourhood`` contribution (``wapsi.classify.scoring.GRAPH_NEIGHBOURHOOD``): what
+the account's position in the transaction graph adds to its score. It gets one sentence naming what the graph model
+looked at (who paid the account, whom it paid, the devices it shares); it is ranked below what the bank observed
+directly, since it is a model's summary rather than a single observable fact.
 """
 
 from __future__ import annotations
@@ -20,14 +25,14 @@ from collections.abc import Callable
 import pandas as pd
 
 from wapsi.classify.features import NO_FORWARD_MINUTES, TURNOVER_RATIO_CAP
-from wapsi.classify.scoring import BIAS
+from wapsi.classify.scoring import BIAS, GRAPH_NEIGHBOURHOOD
 from wapsi.models import Role
 from wapsi.money import fmt_inr
 
 MIN_CONTRIBUTION = 0.25  # log-odds; smaller effects are not worth a sentence
 STRONG_CONTRIBUTION = 0.6  # the one-per-group diversity pass only considers effects at least this large
 # presentation priority per feature group: facts the bank observed itself (tenure, flows) before third-party scores
-RANK_FACTOR = {"tenure": 1.5, "profile": 1.2, "kyc": 0.8, "external": 0.6}
+RANK_FACTOR = {"tenure": 1.5, "profile": 1.2, "kyc": 0.8, "graph": 0.8, "external": 0.6}
 MERGE_MIN_PASS_THROUGH = 0.5  # below this, forwarding speed is described on its own
 SOP_5XII = "may have been operated without the holder's knowledge (SOP Para 5(xii))"
 # a couple of past payers (family, employer) is not a customer base: never describe fewer as "established",
@@ -68,6 +73,7 @@ GROUP = {
     "hist_distinct_payers_90d": "profile",
     "hist_credit_turnover_ratio": "profile",
     "known_payee_out_ratio_24h": "flow",
+    GRAPH_NEIGHBOURHOOD: "graph",
 }
 # picking the key suppresses the listed features (their fact is already in the sentence)
 SUPPRESSES = {"shared_device_with_seed_accounts": ("device_shared_count",)}
@@ -333,6 +339,15 @@ def _known_payees(r, c, h):
     return f"{pct(x)} of the money received was paid within {_hours(h)} to accounts it had already paid before the fraud"
 
 
+def _graph(r, c, h):
+    # a model contribution, not a feature value: the row carries nothing to quote, so name what the model looked at
+    direction = "raise" if c > 0 else "lower"
+    return (
+        "The accounts it received money from and sent money to, and the devices it shares, "
+        f"{direction} the graph model's mule score"
+    )
+
+
 def _flag(key: str, text: str, sign: int):
     def f(r, c, h):
         return text if c * sign > 0 and _n(r, key) else None
@@ -374,6 +389,7 @@ DESCRIBERS: dict[str, Describer] = {
     "hist_distinct_payers_90d": _hist_payers,
     "hist_credit_turnover_ratio": _turnover,
     "known_payee_out_ratio_24h": _known_payees,
+    GRAPH_NEIGHBOURHOOD: _graph,
 }
 
 

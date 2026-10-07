@@ -140,9 +140,15 @@ def _summ_explain(r: dict[str, Any]) -> str:
 
 
 def _summ_clocks(r: dict[str, Any]) -> str:
+    # ``subject`` is an identifier only; a provisional start (hold / STR not yet approved) is in ``notes``
+    def subject(c: dict[str, Any]) -> str:
+        if not c["subject"]:
+            return ""
+        flag = ", provisional" if str(c.get("notes") or "").startswith("provisional") else ""
+        return f" ({c['subject']}{flag})"
+
     return f"Clocks for {r['case_id']} as of {r['as_of']}:\n" + _lines(
-        [f"{c['kind']}{' (' + c['subject'] + ')' if c['subject'] else ''}: due {c['due']} [{c['status']}]"
-         for c in r["clocks"]])
+        [f"{c['kind']}{subject(c)}: due {c['due']} [{c['status']}]" for c in r["clocks"]])
 
 
 def _summ_search(r: dict[str, Any]) -> str:
