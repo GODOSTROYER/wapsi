@@ -25,8 +25,8 @@ On Windows, run `export PYTHONUTF8=1` (Git Bash) or `$env:PYTHONUTF8 = "1"` (Pow
 [Windows notes](#windows-notes). `uv sync --all-extras` (what CI runs) also installs the Google Cloud and AMD
 dependencies, PyTorch among them; see [Optional extras](#optional-extras).
 
-What you should see on 29-09-2026: the core suite (1,467 tests, everything but `tests/gcp` and `tests/amd`)
-passes, and the full suite of 1,707 tests passes with all extras; the demo world has 2,997 accounts, 62,162
+What you should see: the core suite (everything but `tests/gcp` and `tests/amd`) passes, and the full suite
+passes with all extras ([Tests](#tests) has the counts); the demo world has 2,997 accounts, 62,162
 transactions and 39 golden cases; and the harness reports hold exact-match 1.0, over-hold ₹0.00, 0 false freezes,
 disposition accuracy 1.0, draft verification pass rate 1.0 and 0 injection leaks, the same as the committed
 `evals/reports/demo.json`.
@@ -115,8 +115,9 @@ uv run pytest --ignore=tests/gcp --ignore=tests/amd -q  # core suite; should end
 With `uv sync --all-extras` (what CI runs), plain `uv run pytest` runs the edition suites too. Without the `amd`
 extra, always add `--ignore=tests/amd`: several of its modules import PyTorch directly and fail at collection.
 
-On 29-09-2026 the full suite collected **1,707 tests** and passed with 0 failures (`pitch/NUMBERS.md`, row
-`cmd_tests`); the core suite is 1,467 of them. Run time depends on the machine and on what else is running.
+On 07-10-2026 the full suite collected **1,623 tests** and passed with 0 failures (`pitch/NUMBERS.md`, row
+`cmd_tests`). The current per-area counts are under [Tests](#tests). Run time depends on the machine and on what
+else is running.
 
 ---
 
@@ -195,7 +196,6 @@ All commands run from the repository root.
 | Regenerate the source list | `uv run python -m wapsi.search.sources` | `data/docs/sources.json` |
 | Golden-set evaluation | `uv run python -m evals.harness --world demo` | `evals/reports/demo-<UTC stamp>.json` and `.md`, `evals/reports/latest.json` |
 | Compare scorers on the hard world | `uv run python -m evals.harness --world hard --scorer heuristic --scorer xgb:models/xgb_hard202.json` | `evals/reports/hard-<UTC stamp>.json` and `.md`, `evals/reports/hard.json` |
-| Snowflake deploy plan | `uv run python -m editions.snowflake.deploy --step all --dry-run` | nothing (prints every statement) |
 | Guard evaluation | `uv run python -m evals.adversarial.run` | `evals/reports/guard-latest.json` |
 | Rebuild the guard corpus | `uv run python -m evals.adversarial.build_corpus` | `evals/adversarial/corpus.jsonl` |
 | Train XGBoost scorer | `uv run python -m wapsi.classify.train --world data/generated/demo --out models/xgb_demo.json` | `models/` |
@@ -220,7 +220,7 @@ uv run pytest -k escalation                     # by keyword
 uv run pytest --co -q | tail -1                 # count tests without running them
 ```
 
-On 29-09-2026 `uv run pytest --co -q` collected 1,707 tests:
+On 07-10-2026 `uv run pytest --co -q` collected 1,623 tests:
 
 | Area | Tests | Area | Tests |
 |---|---|---|---|
@@ -228,12 +228,11 @@ On 29-09-2026 `uv run pytest --co -q` collected 1,707 tests:
 | `tests/graph` | 288 | `tests/synth` | 49 |
 | `tests/ui` | 152 | `tests/audit` | 42 |
 | `tests/draft` | 124 | `tests/pipeline` | 35 |
-| `tests/classify` | 110 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_coco_hooks.py`, ...) | 14 |
+| `tests/classify` | 110 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, ...) | 10 |
 | `tests/search` | 98 | `tests/pitch` | 6 |
 | `tests/gcp` (edition) | 127 | `tests/amd` (edition) | 113 |
-| `tests/snowflake` (edition) | 80 | | |
 
-The core suite (everything but `tests/gcp` and `tests/amd`) is 1,467 tests. The suites keep growing, so count
+The core suite (everything but `tests/gcp` and `tests/amd`) is 1,383 tests. The suites keep growing, so count
 your own checkout with `uv run pytest --co -q | tail -1`. `tests/amd` imports PyTorch at collection time: collecting that folder
 alone took 15 to 25 s here. For a fast loop on the core, add `--ignore=tests/gcp --ignore=tests/amd`.
 
@@ -459,8 +458,8 @@ auditor.
 | `WAPSI_UI_RAISE=1` | re-raise page errors instead of showing the error panel (debugging) |
 
 Streamlit settings (theme, no usage statistics) are in `.streamlit/config.toml`, with an identical copy in
-`ui/.streamlit/config.toml` for hosts that treat `ui/` as the app root (Streamlit in Snowflake). Keep the two
-files the same.
+`ui/.streamlit/config.toml`: current Streamlit releases also read the config next to the main script, so
+`streamlit run ui/app.py` gets the same settings when started from another directory. Keep the two files the same.
 
 ### Other environment variables
 
@@ -476,7 +475,7 @@ The Google Cloud variables (`WAPSI_PROJECT`, `WAPSI_GEMINI_BACKEND` and others) 
 ### Agent skills
 
 `.claude/skills/` holds six skills (`lien-calculator`, `money-trail-tracer`, `sop-citer`, `str-drafter`,
-`synth-fraud-ledger`, `wapsi-eval`) used by Claude Code and Snowflake CoCo. Gemini CLI reads
+`synth-fraud-ledger`, `wapsi-eval`) used by Claude Code. Gemini CLI reads
 `.agents/skills/`, which is a mirror:
 
 ```bash
@@ -506,8 +505,7 @@ wapsi/
 │   ├── citations.py           the citation IDs (35 on 28-09-2026); quotes come from data/docs/citations.json
 │   ├── _data/citations.json   packaged copy of data/docs/citations.json (must stay identical)
 │   ├── adapters/              memory.py, parquet_ledger.py, llm_fake.py, llm_openai_compat.py,
-│   │                          bigquery_ledger.py, firestore_store.py, gemini_llm.py, model_armor_guard.py,
-│   │                          snowflake_ledger.py, cortex_llm.py
+│   │                          bigquery_ledger.py, firestore_store.py, gemini_llm.py, model_armor_guard.py
 │   ├── fixtures/              showcase.py (hand-computed worlds), bundles.py (hand-built CaseBundles)
 │   ├── graph/                 expand.py, taint.py, trace.py, holdplan.py, common.py
 │   ├── classify/              features.py, rules.py, scoring.py, explain.py, train.py
@@ -529,10 +527,10 @@ wapsi/
 │   │                          (raw/, index/ ignored)
 │   ├── golden/                showcase/, demo/, full/: cases.jsonl + SUMMARY.md; README.md
 │   └── generated/             Parquet worlds (gitignored)
-├── tests/                     one folder per area, plus test_contracts.py and test_sop_annexure_v.py
+├── tests/                     one folder per area, plus test_contracts.py, test_sop_annexure_v.py, test_packaging.py
 ├── scripts/                   sync_skills.py (skill mirror); capture_screenshots.py (docs screenshots, Playwright)
 ├── .claude/skills/            six skills (mirrored to .agents/skills/)
-├── editions/                  snowflake/, gcp/, amd/ (thin platform layers)
+├── editions/                  gcp/, amd/ (thin platform layers)
 └── docs/                      this documentation
 ```
 
@@ -548,8 +546,7 @@ incomplete police request).
 ### The pipeline
 
 `wapsi.pipeline.run.process_case` runs one case from complaint to verified drafts. The Google Cloud and AMD
-editions call it with their own adapters. The Snowflake edition is designed to run the same core inside
-Snowpark procedures, which are built in CoCo sessions (see its README for their status).
+editions call it with their own adapters.
 
 ```mermaid
 flowchart TD
@@ -615,9 +612,9 @@ flowchart TB
     AS --> A1["RecordingActionSink"]
 ```
 
-| Port | In the core package | Google Cloud edition (`src/wapsi/adapters/`) | Snowflake and AMD editions |
+| Port | In the core package | Google Cloud edition (`src/wapsi/adapters/`) | AMD edition |
 |---|---|---|---|
-| `Ledger` | `InMemoryLedger`, `ParquetLedger` | `BigQueryLedger` | see [`editions/snowflake/README.md`](../editions/snowflake/README.md) and [`editions/amd/README.md`](../editions/amd/README.md) |
+| `Ledger` | `InMemoryLedger`, `ParquetLedger` | `BigQueryLedger` | see [`editions/amd/README.md`](../editions/amd/README.md) |
 | `DocSearch` | `LocalDocSearch` | same | same |
 | `LLM` | `FakeLLM`, `OpenAICompatLLM` (vLLM, Ollama, OpenAI-compatible Gemini endpoint) | `GeminiLLM`; the optional, paid Gemma service through an `OpenAICompatLLM` client (`gemma_private_llm`) | edition README |
 | `Guard` | `RulesGuard` | `ModelArmorGuard` (unions its result with `RulesGuard` by default; falls back to it on error) | edition README |
@@ -869,7 +866,7 @@ adapter. Test with `httpx.MockTransport` (see `tests/draft/test_draft_llm_adapte
 
 | Port | Contract | Reference implementation |
 |---|---|---|
-| `CaseStore` | `put_bundle` stores a whole `CaseBundle` and keeps its audit log append-only (`wapsi.audit.extend_stored`); `get_bundle` returns a copy or `None`; `list_cases`; `append_audit` seals the event as the next link (`wapsi.audit.append_event`) and never rewrites history. Keep an anchor (`anchor_of`) per case outside the log | `InMemoryCaseStore` (deep copies, chained, `audit_anchor`, `verify_audit`); `SnowflakeCaseStore` (insert-only `AUDIT_LOG` plus `AUDIT_ANCHOR`); `FirestoreCaseStore` (chunked, generation-switched, audit as an append-only subcollection; not chained yet) |
+| `CaseStore` | `put_bundle` stores a whole `CaseBundle` and keeps its audit log append-only (`wapsi.audit.extend_stored`); `get_bundle` returns a copy or `None`; `list_cases`; `append_audit` seals the event as the next link (`wapsi.audit.append_event`) and never rewrites history. Keep an anchor (`anchor_of`) per case outside the log | `InMemoryCaseStore` (deep copies, chained, `audit_anchor`, `verify_audit`); `FirestoreCaseStore` (chunked, generation-switched, audit as an append-only subcollection; not chained yet) |
 | `Guard` | `screen(text) -> GuardResult` with `flagged`, `categories`, verbatim `quoted_spans` and a `sanitized_text`; flagged text is quoted to the officer, never acted on | `RulesGuard`; `ModelArmorGuard` unions its result with `RulesGuard` by default (`combine_with_rules=True`) and falls back to it on error |
 | `ActionSink` | `submit(action) -> Action` returns the action with its final `status`, `executed_at` and `result` | `RecordingActionSink` |
 | `Scorer` (`wapsi.classify.scoring`) | `name`, `score(features) -> Series` in [0, 1] (P(MULE)), `contributions(features) -> DataFrame` of additive log-odds per feature plus `bias` | `HeuristicScorer`, `XgbScorer` |
@@ -900,11 +897,9 @@ An edition is a thin platform layer. It must not fork the core rules.
 7. Respect the event boundaries in AGENTS.md ("Originality and event boundaries") and
    [originality.md](originality.md). AMD edition code under `editions/amd/` may be prepared before the event
    but is disclosed, and every run on AMD hardware and every reported GPU number happens during 12–18 Oct 2026;
-   label CPU development numbers as such. Snowflake-native work is built in CoCo sessions, with evidence in
-   `editions/snowflake/coco-sessions/`. Do not use Gemini outputs to train other models.
+   label CPU development numbers as such. Do not use Gemini outputs to train other models.
 
-Existing editions: [Snowflake](../editions/snowflake/README.md), [Google Cloud](../editions/gcp/README.md)
-and [AMD](../editions/amd/README.md) (prepared before the event; no GPU runs yet). The
+Existing editions: [Google Cloud](../editions/gcp/README.md) and [AMD](../editions/amd/README.md) (prepared before the event; no GPU runs yet). The
 [editions page](editions.md) compares them.
 
 ---

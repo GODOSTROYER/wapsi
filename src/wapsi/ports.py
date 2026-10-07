@@ -1,4 +1,4 @@
-"""Provider-agnostic interfaces. Editions supply adapters (Snowflake, BigQuery, Postgres, Gemini, vLLM, ...)."""
+"""Provider-agnostic interfaces. Editions supply adapters (BigQuery, Firestore, Gemini, vLLM, ...)."""
 
 from __future__ import annotations
 

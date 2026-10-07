@@ -1277,7 +1277,8 @@ wapsi.adapters.memory.RecordingActionSink()
 ```
 
 `ActionSink` that marks each action `DONE` with `executed_at` set and `result="recorded"`, and keeps them in
-`actions`. Editions replace it with Jira, Slack or table sinks. See the `approve` example.
+`actions`. Both editions use it; a deployment can plug in a Jira, Slack or ticketing sink through the `ActionSink`
+port. See the `approve` example.
 
 ### Google Cloud adapters
 
@@ -1285,14 +1286,6 @@ wapsi.adapters.memory.RecordingActionSink()
 (`firestore_store.py`), `GeminiLLM` (`gemini_llm.py`) and `ModelArmorGuard` (`model_armor_guard.py`). They need
 the `gcp` extra and are documented with the edition in [`editions/gcp/README.md`](../editions/gcp/README.md).
 `FirestoreCaseStore` does not seal the audit chain yet.
-
-### Snowflake adapters
-
-`SnowflakeLedger` (`snowflake_ledger.py`: one bind-parameter query per `Ledger` call on `WAPSI.RAW`, and
-`snapshot_ledger` to pull a schema into a local `ParquetLedger`) and `CortexLLM` (`cortex_llm.py`: Cortex
-`AI_COMPLETE` through a Snowpark session, prose only, prompt always a bind) live in the core so they can be
-tested offline. The case store (`SnowflakeCaseStore`) and `CortexDocSearch` live in
-`editions/snowflake/snowpark/wapsi_sf/` ([Editions](editions.md#snowflake-edition-coco)).
 
 ---
 
@@ -1544,7 +1537,6 @@ assert sc.SHOWCASE_1["baseline_freeze_amount"] == 50350000.0
 | `python -m wapsi.search.check_citations` | verify every citation quote, fact and radar quote against the documents |
 | `python -m wapsi.search.radar fetch` / `verify [--write]` | fetch the radar's extra documents (not indexed) / re-check every radar quote |
 | `python -m wapsi.audit drill` / `verify FILE.json` | audit-chain tamper drill / verify a stored bundle's chain |
-| `python -m editions.snowflake.deploy --step all --dry-run` | print the Snowflake deploy plan and every SQL statement |
 | `python -m wapsi.search.sources` | regenerate `data/docs/sources.json` |
 | `python -m wapsi.classify.train` | train the XGBoost role model |
 | `python -m evals.harness` | golden-set evaluation |

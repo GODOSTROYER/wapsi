@@ -22,7 +22,6 @@ docs
 *.ckpt
 *.safetensors
 *.pt
-editions/snowflake
 editions/gcp
 editions/amd/app
 editions/amd/bench

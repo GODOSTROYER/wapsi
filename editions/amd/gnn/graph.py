@@ -8,7 +8,7 @@ Two builders share one feature definition (``NODE_COLUMNS`` / ``EDGE_COLUMNS``):
   to ``max_device_peers`` device-sharing peers. Edges are every visible transaction between two nodes inside
   ``[as_of - lookback_days, end]`` (a directed multigraph: one edge per transaction) plus device-link edges.
   Built only through the ``wapsi.ports.Ledger`` protocol, so it works on ``ParquetLedger``, ``InMemoryLedger`` and
-  the Snowflake / BigQuery adapters alike.
+  the BigQuery adapter alike.
 * ``build_world_graph`` - one graph over a whole time window (every account that transacted in it), vectorised from
   ``ParquetLedger.transactions_frame()``. Used for global statistics and edge-level pre-training; node features are
   the degree statistics (``account_features`` for 60k accounts is optional: it is correct but CPU-heavy).

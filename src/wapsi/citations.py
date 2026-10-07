@@ -78,7 +78,7 @@ _BASE: dict[str, tuple[str, str, str]] = {
 }
 
 CITATIONS_JSON = Path(__file__).resolve().parents[2] / "data" / "docs" / "citations.json"
-PACKAGED_CITATIONS = "_data/citations.json"  # copy shipped inside the package (Snowpark zip imports, wheels)
+PACKAGED_CITATIONS = "_data/citations.json"  # copy shipped inside the package (wheels, zip imports)
 
 
 def _load_quotes() -> dict[str, dict]:

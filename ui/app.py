@@ -1,7 +1,6 @@
 """Wapsi · Money-trail copilot — the nodal officer's case room.
 
 Run locally:   uv run streamlit run ui/app.py
-Streamlit in Snowflake: upload the repo with ``ui/app.py`` as the main file (see editions/snowflake).
 The officer lands on the Inbox, never on a chatbot.
 
 Data source: the showcase world by default. ``WAPSI_DATA_SOURCE=demo`` (a world under ``data/generated/``) or

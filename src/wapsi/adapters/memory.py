@@ -227,7 +227,7 @@ class InMemoryCaseStore:
 
 
 class RecordingActionSink:
-    """Marks actions DONE and keeps them; editions replace this with Jira/Slack/table sinks."""
+    """Marks actions DONE and keeps them. Both editions use it; a Jira/Slack/ticketing sink can plug in via ActionSink."""
 
     def __init__(self) -> None:
         self.actions: list[Action] = []

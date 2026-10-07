@@ -11,7 +11,7 @@ practice, so a reviewer can check it instead of taking it on trust.
 | [0002](0002-pro-rata-apportionment.md) | Apportion mixed money to victims pro-rata, by exact replay of every transaction | Accepted | 2026-09-16 |
 | [0003](0003-numbers-from-data-words-from-llm.md) | Numbers come from data, words come from the LLM | Accepted | 2026-09-16 |
 | [0004](0004-intermediary-accounts-sop-9-1-iii.md) | Nodal, pool and escrow accounts: hold the disputed amount only (SOP Para 9.1(iii)), replacing an earlier "never hold" rule | Accepted; supersedes the earlier `BLOCK_NODAL_POOL_ESCROW` rule | 2026-09-16 |
-| [0005](0005-one-core-three-editions.md) | One portable core behind six ports, three thin platform editions | Accepted | 2026-09-16 |
+| [0005](0005-one-core-two-editions.md) | One portable core behind six ports, two thin platform editions | Accepted | 2026-09-16 |
 | [0006](0006-transparent-heuristic-classifier-default.md) | A transparent heuristic classifier by default; XGBoost only on request | Accepted | 2026-09-16 |
 | [0007](0007-synthetic-data-only.md) | Synthetic banking data only; public legal texts fetched, not redistributed | Accepted | 2026-09-16 |
 | [0008](0008-verifier-independent-of-planner.md) | The verifier re-implements the rules instead of trusting the planner | Accepted | 2026-09-16 |
@@ -19,10 +19,10 @@ practice, so a reviewer can check it instead of taking it on trust.
 
 The dates are when the decision took effect in the code. Work started on 2026-09-16, but the first git commit is
 dated 2026-09-23 ([originality.md](../originality.md)), so the history behind these decisions is not in the
-commit log. It is in dated records inside the repository: the "Legal corrections applied on 2026-09-16" block of
-`editions/snowflake/COCO_PLAYBOOK.md`, the timestamps inside `evals/reports/*.json`, and `AGENTS.md`. These
-records were written on 2026-09-23 and re-checked against the repository on 2026-09-28; ADR 0009 was added on
-2026-09-29.
+commit log. It is in dated records: the timestamps inside `evals/reports/*.json`, `AGENTS.md`, and the "Legal
+corrections applied on 2026-09-16" block of a build playbook that was removed from the tree on 2026-10-07 and is
+still readable in the git history (commits `b27a8de` to `13ee458`). These records were written on 2026-09-23 and
+re-checked against the repository on 2026-09-28; ADR 0009 was added on 2026-09-29.
 
 ## How the decisions fit together
 
@@ -35,7 +35,7 @@ flowchart TB
     A4 --> A8
     A6["0006 Transparent classifier"] --> A1
     A7["0007 Synthetic data only"] --> A6
-    A5["0005 One core, three editions"] --> A3
+    A5["0005 One core, two editions"] --> A3
     A5 --> A8
     A9["0009 Account-level exception"] --> A1
     A9 --> A8
@@ -48,7 +48,7 @@ flowchart TB
   by default, account-level only as a recorded, supervisor-approved exception.
 - Synthetic data (0007) limits what any classifier score can prove, which is one reason the default classifier is
   a transparent heuristic (0006).
-- One core for three editions (0005) is only safe because the rules and their checks live in that core.
+- One core for two editions (0005) is only safe because the rules and their checks live in that core.
 
 ## Format
 

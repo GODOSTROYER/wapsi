@@ -1,6 +1,6 @@
 # AI Builder Cup deck (PDF): 12 slides, Google Cloud only
 
-Theme: **BFSI**, with a social-impact angle (Most Impactful). Export to PDF. **Keep Snowflake, AMD and any other cloud
+Theme: **BFSI**, with a social-impact angle (Most Impactful). Export to PDF. **Keep AMD and any other cloud
 out of the diagram, the text and the screenshots**: the judged entry is the Google Cloud edition
 ([`editions/gcp/`](../../editions/gcp/README.md)). Every number is a row in [`../NUMBERS.md`](../NUMBERS.md).
 
