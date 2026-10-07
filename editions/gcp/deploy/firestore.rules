@@ -11,8 +11,10 @@ rules_version = '2';
 // append-only contract any future client path must keep: an audit event is created once, at the next position,
 // together with the anchor that seals it, and is never updated or deleted; the anchor only moves forward.
 //
-// Deploy: firebase deploy --only firestore:rules   (Firebase CLI, project linked to the GCP project)
-//         or paste this file into Console > Firestore > Rules.
+// Deploy (Firebase CLI; firebase.json next to this file points at it; Firebase must be added to the project
+// once with `firebase projects:addfirebase PROJECT_ID`):
+//   cd editions/gcp/deploy && firebase deploy --only firestore:rules --project PROJECT_ID
+// or paste this file into the Firebase console, Firestore Database > Rules, and publish.
 // Check with the Firestore emulator before relying on them [verify].
 
 service cloud.firestore {

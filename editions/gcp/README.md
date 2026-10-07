@@ -157,7 +157,7 @@ editions/gcp/
   ui_app.py        Streamlit entry point (shared ui/app.py on the case store)
   Dockerfile       python:3.11-slim + uv, non-root, optional baked demo world; one image for API and UI
   deploy/          cloudrun.sh (PROFILE=free|paid), gemma_vllm_service.sh (paid add-on), cloudbuild.yaml,
-                   bigquery_setup.sql, model_armor_template.json, iam.md, firestore.rules
+                   bigquery_setup.sql, model_armor_template.json, iam.md, firestore.rules (+ firebase.json)
 src/wapsi/adapters/
   bigquery_ledger.py  firestore_store.py  model_armor_guard.py  gemini_llm.py
 tests/gcp/         offline tests (SQLite-backed BigQuery fake, in-memory Firestore, fake Model Armor/Gemini,
@@ -295,17 +295,22 @@ audit_anchors/{case_id}            the anchor: event count + head hash, outside 
 - **`put_bundle` never rewrites history.** Recorded events are kept; only the bundle's new events are sealed onto
   the head, in the same transaction that switches the case to its new chunks.
 - **`verify_audit(case_id)`** reads the log in seq order and checks it against the anchor. It reports an edited,
-  deleted, inserted or swapped event, events removed from the end, a re-hashed log, a deleted anchor and events
-  written straight into the log without advancing the anchor. New events always go to the anchor's head, so a
-  truncation stays visible after later writes; with the anchor gone the store refuses to write (`AuditChainError`).
-  The UI's chip and **Verify chain** button use the store's verification, not the session's copy.
+  deleted, inserted or swapped event, a document edited so that it no longer parses (reported at its position; the
+  case still loads), events removed from the end, a re-hashed log, a deleted anchor and events written straight
+  into the log without advancing the anchor. New events always go to the anchor's head, so a truncation stays
+  visible after later writes; with the anchor gone, or a document already sitting at the head, the store refuses to
+  write (`AuditChainError`) and the clock sweep carries on with the other cases. The UI's chip and **Verify chain**
+  button use the store's verification, not the session's copy.
 
 What enforces append-only, and what only detects tampering:
 
 - **Security rules** ([deploy/firestore.rules](deploy/firestore.rules)) deny every web or mobile client by default,
-  make `audit/{seq}` create-only (never updated or deleted) and let the anchor only move forward. Deploy them with
-  `firebase deploy --only firestore:rules` or paste them into the console. They do not bind the Cloud Run services:
-  server client libraries authenticate with IAM and bypass rules.
+  make `audit/{seq}` create-only (never updated or deleted) and let the anchor only move forward. `cloudrun.sh`
+  does not deploy them. Deploy them with the Firebase CLI (once per project: `firebase projects:addfirebase
+  "$PROJECT_ID"`), from the folder whose `firebase.json` points at the file:
+  `cd editions/gcp/deploy && firebase deploy --only firestore:rules --project "$PROJECT_ID"`, or paste the file into
+  the Firebase console (Firestore Database > Rules) **[verify]**. They do not bind the Cloud Run services: server
+  client libraries authenticate with IAM and bypass rules.
 - **IAM** has no per-collection permissions: `roles/datastore.user` on `wapsi-api@` and `wapsi-ui@` can update and
   delete any document. The store's code only ever creates audit documents, and the chain plus the anchor make any
   other change visible. Give people `roles/datastore.viewer` at most, and remove `roles/datastore.owner` from the
@@ -320,7 +325,8 @@ What enforces append-only, and what only detects tampering:
 Offline proof: `uv run pytest tests/gcp/test_gcp_firestore_audit_chain.py -v` runs the store under the real
 `transactional` decorator against an in-memory Firestore with serializable transactions: sealing and parity with
 `InMemoryCaseStore`, the six tampers of `python -m wapsi.audit drill` applied to the stored documents, a deleted
-anchor and a forged append, contended and threaded appends, a lost commit response, and the Audit page's chip.
+anchor and a forged append (and the refusal to write on top of it), documents that no longer parse, contended
+and threaded appends, a lost commit response, the clock sweep, and the Audit page's chip.
 
 ## What was verified and what was assumed
 

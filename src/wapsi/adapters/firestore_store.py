@@ -22,11 +22,15 @@ The audit log is sealed exactly like ``InMemoryCaseStore`` does it:
   and hash are already recorded) and never recorded twice.
 - ``put_bundle`` keeps recorded events and seals only the bundle's new ones onto the head
   (``wapsi.audit.chain.extend_stored``), in the same transaction that flips the header to the new generation.
-- Reads (``get_bundle``, ``verify_audit``) return the log in seq order (document id order).
-- ``verify_audit`` checks the chain against the anchor: an edited, deleted, inserted or swapped event, events
-  removed from the end, a re-hashed log, a deleted anchor and events written without advancing the anchor are all
-  reported. New events are always placed at the anchor's head, never after whatever documents are left, so a
-  truncation or deletion stays visible after later writes.
+- Reads (``get_bundle``, ``verify_audit``) return the log in seq order (document id order). A document that no
+  longer parses as an ``AuditEvent`` (a field added, removed or retyped in the console) is read as an unsealed
+  ``audit_record_unreadable`` placeholder at its position, so the case still loads and the chain reads as broken
+  there instead of raising.
+- ``verify_audit`` checks the chain against the anchor: an edited, deleted, inserted, swapped or unreadable event,
+  events removed from the end, a re-hashed log, a deleted anchor and events written without advancing the anchor
+  are all reported. New events are always placed at the anchor's head, never after whatever documents are left,
+  so a truncation or deletion stays visible after later writes; if a document already sits at the head (written
+  without advancing the anchor) the store refuses to write (``AuditChainError``).
 
 Server client libraries bypass Firestore security rules; ``editions/gcp/deploy/firestore.rules`` and the edition
 README describe the append-only rules and the IAM / external-anchor measures for production.
@@ -42,15 +46,20 @@ surface works (``tests/gcp/gcp_fakes.FakeFirestore`` is an offline one).
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import uuid
 import zlib
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, TypeVar
+
+from pydantic import ValidationError
 
 from wapsi.audit.chain import (
     ANCHOR,
+    CONTENT,
     GENESIS_HASH,
     ChainAnchor,
     ChainReport,
@@ -70,13 +79,16 @@ SEQ_WIDTH = 10  # audit/{seq:010d}: document id order == seq order
 DEFAULT_ANCHOR_COLLECTION = "audit_anchors"
 MAX_ATTEMPTS = 5  # transaction attempts (google.cloud.firestore's default)
 VERIFY_ATTEMPTS = 3  # re-reads when an append lands while verify_audit is reading
+UNREADABLE_ACTION = "audit_record_unreadable"  # placeholder for a stored audit document that no longer parses
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 T = TypeVar("T")
 
 
 class AuditChainError(RuntimeError):
-    """The case's audit log and its anchor disagree in a way a write would hide (e.g. the anchor is missing while
-    the log holds events). Nothing was written; ``verify_audit`` reports the finding."""
+    """The case's audit log and its anchor disagree in a way a write would hide (the anchor is missing while the
+    log holds events, or a document already sits at the anchor's head). Nothing was written; ``verify_audit``
+    reports the finding."""
 
 
 def audit_doc_id(seq: int) -> str:
@@ -188,11 +200,21 @@ class FirestoreCaseStore:
     def _anchor_ref(self, case_id: str) -> Any:
         return self.client.collection(self.anchor_collection).document(_valid_name(case_id, "case id"))
 
-    def _transact(self, fn: Callable[[Any], T]) -> T:
-        """Run ``fn(transaction)`` in a Firestore transaction; contention (ABORTED) re-runs it from scratch."""
-        from google.cloud.firestore import transactional  # lazy
+    def _transact(self, case_id: str, fn: Callable[[Any], T]) -> T:
+        """Run ``fn(transaction)`` in a Firestore transaction; contention (ABORTED) re-runs it from scratch.
 
-        return transactional(fn)(self.client.transaction(max_attempts=self.max_attempts))
+        The only ``create`` writes are audit documents at the anchor's head, so ALREADY_EXISTS means a document was
+        written there without advancing the anchor: refuse (``AuditChainError``) rather than surface a raw 409."""
+        from google.api_core.exceptions import AlreadyExists  # lazy
+        from google.cloud.firestore import transactional
+
+        try:
+            return transactional(fn)(self.client.transaction(max_attempts=self.max_attempts))
+        except AlreadyExists as exc:
+            raise AuditChainError(
+                f"case {case_id}: an audit document already sits at the head recorded by "
+                f"{self.anchor_collection}/{case_id} (written without advancing the anchor); refusing to write "
+                "(verify_audit reports the log)") from exc
 
     # ------------------------------------------------------------------ CaseStore protocol
     def put_bundle(self, bundle: CaseBundle) -> None:
@@ -237,7 +259,7 @@ class FirestoreCaseStore:
             return len(rest)
 
         try:
-            while self._transact(write):
+            while self._transact(case_id, write):
                 pass
         except BaseException:
             self._drop_orphan_chunks(doc, generation, len(chunks))
@@ -313,15 +335,15 @@ class FirestoreCaseStore:
                     and 0 <= event.seq < head.length):
                 # a retry of an append that already committed: the store holds this exact link
                 snap = audit_col.document(audit_doc_id(event.seq)).get(transaction=txn)
-                stored = ((snap.to_dict() or {}).get("event") or {}) if getattr(snap, "exists", False) else {}
-                if stored.get("hash") == event.hash:
+                stored = (snap.to_dict() or {}).get("event") if getattr(snap, "exists", False) else None
+                if isinstance(stored, dict) and stored.get("hash") == event.hash:
                     return False
             seal(event, seq=head.length, prev_hash=head.head, case_id=case_id)
             txn.create(audit_col.document(audit_doc_id(head.length)), self._audit_doc(event))
             txn.set(anchor_ref, self._anchor_doc(case_id, head.length + 1, event.hash or GENESIS_HASH))
             return True
 
-        self._transact(append)
+        self._transact(case_id, append)
 
     # ------------------------------------------------------------------ audit chain (not part of the protocol)
     def audit_anchor(self, case_id: str) -> ChainAnchor | None:
@@ -338,12 +360,33 @@ class FirestoreCaseStore:
         # read anchor, log, anchor: equal anchors mean no append landed in between (every append moves it)
         anchor = self._read_anchor(anchor_ref)
         for _ in range(VERIFY_ATTEMPTS):
-            events = self._read_events(audit_col)
+            rows = self._read_rows(audit_col)
             after = self._read_anchor(anchor_ref)
             if after == anchor:
                 break
             anchor = after
+        events: list[AuditEvent] = []
+        unreadable: tuple[int, str, str] | None = None
+        for i, (doc_id, data) in enumerate(rows):
+            event, problem = self._parse_row(doc_id, data)
+            events.append(event)
+            if problem and unreadable is None:
+                unreadable = (i, doc_id, problem)
+        if unreadable is not None:
+            return self._unreadable(case_id, events, anchor, *unreadable)
         return self._verify(case_id, events, anchor)
+
+    @staticmethod
+    def _unreadable(case_id: str, events: list[AuditEvent], anchor: ChainAnchor | None, k: int, doc_id: str,
+                    problem: str) -> ChainReport:
+        """The first unreadable document breaks the chain at its position (unless an earlier event already does)."""
+        before = verify_chain(events[:k], case_id=case_id)
+        if not before.ok:
+            return dataclasses.replace(before, length=len(events), anchored=anchor is not None)
+        return ChainReport(ok=False, first_bad_seq=k, code=CONTENT, length=len(events), head=before.head,
+                           anchored=anchor is not None,
+                           reason=f"event #{k} (document audit/{doc_id}) can no longer be read as an audit event "
+                                  f"({problem}): its stored record was altered")
 
     @staticmethod
     def _verify(case_id: str, events: list[AuditEvent], anchor: ChainAnchor | None) -> ChainReport:
@@ -383,15 +426,39 @@ class FirestoreCaseStore:
         return ChainAnchor(length=0, head=GENESIS_HASH)
 
     @staticmethod
-    def _read_events(audit_col: Any, txn: Any = None) -> list[AuditEvent]:
-        """The audit log in seq order (document id = zero-padded seq, i.e. the storage position)."""
-        rows: list[tuple[str, dict[str, Any]]] = []
-        for snap in audit_col.stream(transaction=txn):
-            data = snap.to_dict() or {}
-            if isinstance(data.get("event"), dict):
-                rows.append((snap.id, data["event"]))
+    def _read_rows(audit_col: Any, txn: Any = None) -> list[tuple[str, dict[str, Any]]]:
+        """Every stored audit document as (id, data), in id order (id = zero-padded seq = storage position)."""
+        rows = [(snap.id, snap.to_dict() or {}) for snap in audit_col.stream(transaction=txn)]
         rows.sort(key=lambda r: r[0])
-        return [AuditEvent.model_validate(event) for _, event in rows]
+        return rows
+
+    @staticmethod
+    def _parse_row(doc_id: str, data: dict[str, Any]) -> tuple[AuditEvent, str | None]:
+        """(event, None), or (an unsealed placeholder, what is wrong) for a document that no longer parses. The
+        placeholder is deterministic (same document, same placeholder), so a caller's copy of the log that carries
+        it is matched by ``extend_stored`` instead of being recorded again; it is never written back as is."""
+        raw = data.get("event")
+        try:
+            if not isinstance(raw, dict):
+                raise TypeError("the 'event' map is missing or not a map")
+            return AuditEvent.model_validate(raw), None
+        except ValidationError as exc:
+            fields = sorted({".".join(str(p) for p in err.get("loc", ())) or "event" for err in exc.errors()})
+            problem = f"invalid field(s): {', '.join(fields)}"
+        except (TypeError, ValueError) as exc:
+            problem = str(exc)
+        problem = problem[:200]  # field names come from the stored document: keep the reason short
+        at = data.get("at")
+        placeholder = AuditEvent(
+            at=ensure_utc(at) if isinstance(at, datetime) else _EPOCH, actor="wapsi.case_store", role="system",
+            action=UNREADABLE_ACTION, object_type="audit_record", object_id=f"audit/{doc_id}",
+            details={"problem": problem})
+        return placeholder, problem
+
+    @classmethod
+    def _read_events(cls, audit_col: Any, txn: Any = None) -> list[AuditEvent]:
+        """The audit log in seq order; an unreadable document becomes a placeholder at its position."""
+        return [cls._parse_row(doc_id, data)[0] for doc_id, data in cls._read_rows(audit_col, txn)]
 
     def _anchor_doc(self, case_id: str, length: int, head: str) -> dict[str, Any]:
         return {"case_id": case_id, "collection": self.collection_name, "length": length, "head": head,

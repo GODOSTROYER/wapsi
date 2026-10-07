@@ -9,6 +9,7 @@ ABORTED and the decorator re-runs it), so the store's transaction code runs as i
 
 from __future__ import annotations
 
+import copy
 import html
 import sys
 import threading
@@ -19,7 +20,12 @@ import pytest
 from gcp_fakes import FakeFirestore
 
 from wapsi.adapters import firestore_store
-from wapsi.adapters.firestore_store import AuditChainError, FirestoreCaseStore, audit_doc_id
+from wapsi.adapters.firestore_store import (
+    UNREADABLE_ACTION,
+    AuditChainError,
+    FirestoreCaseStore,
+    audit_doc_id,
+)
 from wapsi.adapters.llm_fake import FakeLLM
 from wapsi.adapters.memory import InMemoryCaseStore, RecordingActionSink
 from wapsi.audit.chain import (
@@ -253,6 +259,63 @@ def test_deleted_anchor_and_forged_append_are_detected(approved):
 
     fs.docs[f"audit_anchors/{cid}"] = anchor_doc  # the anchor is back: the truncation shows
     assert store.verify_audit(cid).code == TRUNCATED
+
+
+def test_forged_document_at_the_head_blocks_writes_with_a_chain_error(approved):
+    """A document written at the anchor's head without advancing the anchor makes the next create collide (409
+    ALREADY_EXISTS); the store refuses with ``AuditChainError`` instead of a raw Google error, writes nothing and
+    keeps reporting the forgery."""
+    fs, store = _store()
+    store.put_bundle(approved)
+    cid = approved.case.case_id
+    n = len(approved.audit)
+    forged = _event(action="draft_approved", actor="mallory")
+    head = store.audit_anchor(cid).head
+    forged.seq, forged.case_id, forged.prev_hash = n, cid, head
+    forged.hash = link_hash(forged, seq=n, prev_hash=head, case_id=cid)
+    fs.docs[f"cases/{cid}/audit/{audit_doc_id(n)}"] = FirestoreCaseStore._audit_doc(forged)
+    before = copy.deepcopy(fs.docs)
+
+    with pytest.raises(AuditChainError, match="without advancing the anchor"):
+        store.append_audit(cid, _event())
+    grown = approved.model_copy(deep=True)
+    grown.audit.append(_event(action="note_added"))
+    with pytest.raises(AuditChainError):
+        store.put_bundle(grown)
+    assert fs.docs == before  # nothing written; the failed put's chunks were cleaned up
+    assert (store.verify_audit(cid).code, store.verify_audit(cid).first_bad_seq) == (ANCHOR, n)
+
+
+@pytest.mark.parametrize("edit", ["extra_field", "retyped_field", "removed_field", "no_event_map"])
+def test_unreadable_audit_document_is_reported_at_its_position(approved, edit):
+    """An audit document edited in the console so that it no longer parses (Wapsi's models forbid extra fields)
+    must not crash reads or hide behind the session's copy: the case still loads with a placeholder at that
+    position, ``verify_audit`` reports the chain broken there, and writes carry on at the anchor's head."""
+    fs, store = _store()
+    store.put_bundle(approved)
+    cid = approved.case.case_id
+    n, k = len(approved.audit), 3
+    doc = fs.docs[f"cases/{cid}/audit/{audit_doc_id(k)}"]
+    {"extra_field": lambda: doc["event"].update(note="added in the console"),
+     "retyped_field": lambda: doc["event"].update(actor=7),
+     "removed_field": lambda: doc["event"].pop("at"),
+     "no_event_map": lambda: doc.pop("event")}[edit]()
+
+    report = store.verify_audit(cid)
+    assert (report.ok, report.code, report.first_bad_seq) == (False, CONTENT, k), report.summary()
+    assert "can no longer be read" in report.reason and report.length == n and report.anchored
+
+    loaded = store.get_bundle(cid)  # no exception: the UI keeps working
+    assert len(loaded.audit) == n and loaded.audit[k].action == UNREADABLE_ACTION
+    assert loaded.audit[k].object_id == f"audit/{audit_doc_id(k)}" and loaded.audit[k].hash is None
+    session = verify_chain(loaded.audit, case_id=cid)  # the session's copy shows the break too
+    assert (session.ok, session.first_bad_seq) == (False, k)
+
+    store.put_bundle(loaded)  # the placeholder is matched, never written back
+    assert len(_audit_paths(fs, cid)) == n
+    store.append_audit(cid, _event())
+    assert store.audit_anchor(cid).length == n + 1 and len(_audit_paths(fs, cid)) == n + 1
+    assert (store.verify_audit(cid).code, store.verify_audit(cid).first_bad_seq) == (CONTENT, k)
 
 
 def test_later_writes_never_paper_over_a_truncation(approved):
@@ -508,3 +571,45 @@ def test_audit_page_shows_chain_intact_for_a_fresh_firestore_case(demo_services,
     at.run()
     text = "\n".join(html.unescape(m.value) for m in at.markdown)
     assert f"{cid} · chain broken at event #0" in text
+
+
+def test_audit_page_survives_an_unreadable_firestore_document(demo_services, monkeypatch):
+    """A console edit that breaks an audit document's schema shows as a broken chain on the page, not a crash and
+    not the session's (intact) copy."""
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("WAPSI_UI_RAISE", "1")
+    fs, ds = _firestore_ds(demo_services)
+    cid = f"CASE-{sc.N1}"
+    fs.docs[f"cases/{cid}/audit/{audit_doc_id(2)}"]["event"]["note"] = "added in the console"
+    at = AppTest.from_file(str(ROOT / "editions" / "gcp" / "ui_app.py"), default_timeout=120)
+    at.session_state["_wapsi_ds"] = ds
+    at.session_state["case_id"] = cid
+    at.session_state["role"] = "auditor"
+    at.session_state["page"] = "Audit"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    text = "\n".join(html.unescape(m.value) for m in at.markdown)
+    assert f"{cid} · chain broken at event #2" in text and "can no longer be read" in text
+    assert f"CASE-{sc.N2} · chain intact" in text
+
+
+# --------------------------------------------------------------------------- the clock sweep
+
+
+def test_clock_sweep_keeps_going_when_one_case_refuses_audit_writes(demo_services):
+    """A case whose anchor was deleted refuses audit writes (``AuditChainError``); the twice-daily sweep must still
+    alert on, and record, every other case."""
+    from editions.gcp.app import workflow as wf
+
+    fs, _ = _firestore_ds(demo_services)
+    broken, fine = f"CASE-{sc.N1}", f"CASE-{sc.N2}"
+    del fs.docs[f"audit_anchors/{broken}"]
+    result = wf.sweep_clocks({})
+    assert result["outcome"] == "clocks_swept" and result["cases"] == 2
+    alerted = {a["case_id"] for a in result["alerts"]}
+    assert result["audit_failed"] == ([broken] if broken in alerted else [])
+    if fine in alerted:
+        assert demo_services.store.get_bundle(fine).audit[-1].action == "clock_sweep"
+        assert demo_services.store.verify_audit(fine).ok
