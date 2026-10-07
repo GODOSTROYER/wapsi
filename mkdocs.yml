@@ -83,6 +83,7 @@ nav:
       - Hold plan: algorithms/hold-plan.md
       - Account classification: algorithms/classification.md
   - Trust & safety: trust-and-safety.md
+  - Voice intake: voice-intake.md
   - Evaluation:
       - Evaluation: evaluation.md
       - Synthetic data: synthetic-data.md

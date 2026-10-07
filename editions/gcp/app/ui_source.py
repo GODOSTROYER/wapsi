@@ -104,3 +104,11 @@ class CaseStoreDataSource(ShowcaseDataSource):
         msg += " — all passed their checks." if failed == 0 else f" — {failed} need attention."
         return Outcome(True, msg, bundle=fresh)
 
+
+    def open_case_for_ncrp(self, ncrp_ids: list[str], *, actor: str, role: str,
+                           details: dict[str, Any] | None = None) -> Outcome:
+        """Voice intake's "Open case": link or open the case, then persist it (and its audit link) to the store."""
+        out = super().open_case_for_ncrp(ncrp_ids, actor=actor, role=role, details=details)
+        if out.ok:
+            self._persist(out.bundle)
+        return out

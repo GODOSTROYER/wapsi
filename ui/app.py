@@ -59,7 +59,18 @@ from ui.data_source import (  # noqa: E402
     now_for_ui,
     resolve_source,
 )
-from ui.views import approvals, audit, case_room, clocks, drafts, hold_plan, inbox, kpis, radar  # noqa: E402
+from ui.views import (  # noqa: E402
+    approvals,
+    audit,
+    case_room,
+    clocks,
+    drafts,
+    hold_plan,
+    inbox,
+    intake,
+    kpis,
+    radar,
+)
 from ui.views.common import (  # noqa: E402
     CASE_PAGES,
     K_CASE,
@@ -78,6 +89,7 @@ log = logging.getLogger("wapsi.ui")
 
 RENDERERS = {
     "Inbox": inbox.render,
+    "Voice Intake": intake.render,
     "Case Room": case_room.render,
     "Hold Plan": hold_plan.render,
     "Drafts & Verification": drafts.render,
