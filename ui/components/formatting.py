@@ -324,6 +324,7 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     "plan_rejected": "Hold plan rejected",
     "plan_changes_requested": "Changes requested on hold plan",
     "pipeline_run": "Drafts generated",
+    "agent_trace": "Agent run recorded (tool trace)",
     "pipeline_unavailable": "Draft generation unavailable",
     "pipeline_failed": "Draft generation failed",
     "action_done": "Action recorded",

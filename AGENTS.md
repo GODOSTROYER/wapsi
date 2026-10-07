@@ -169,6 +169,12 @@ uv run streamlit run ui/app.py             # local UI
   event_type, case_id, payload_digest, prev_hash); `GENESIS_HASH` starts every chain. `InMemoryCaseStore`,
   `FirestoreCaseStore` (one Firestore transaction per append; anchor in `audit_anchors/{case_id}`; `verify_audit`)
   and the AMD `FileCaseStore` chain on write.
+- `wapsi.agenttrace.ToolTraceRecorder` (pure Python; the GCP edition drives it from `ToolTracePlugin`),
+  `AgentTrace` / `TraceStep` / `GuardVerdict` / `VerifierVerdict`, `trace_event(trace, case_id=)` (an `agent_trace`
+  audit event; its stored trace is size-bounded by `bounded`, its totals count every call), `traces_from_audit(events,
+  case_id=)`, `redact_text` / `redact_value` (accounts, phones, e-mails, names, secrets; untrusted complaint text is
+  never copied into a trace). Summaries and verdicts are taken from tool results, never computed by a model. Each
+  run anchors its own wall-clock time; `AgentTrace.user_id` scopes `GET /wapsi/traces` behind IAP.
 
 ## Originality and event boundaries
 - AI Builder Cup: only work created on or after 2026-09-01 (repo created 2026-09-16).

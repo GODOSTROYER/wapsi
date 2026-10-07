@@ -3,13 +3,15 @@
     uv run streamlit run editions/gcp/ui_app.py
 
 Seeds the shared UI (``ui/app.py``) with ``CaseStoreDataSource`` (Firestore + BigQuery on Cloud Run; in-memory
-showcase in demo mode) and then runs the shared app unchanged.
+showcase in demo mode, plus one offline ADK agent run whose traces the Case Room's Agent trace tab shows) and then
+runs the shared app unchanged.
 """
 
 from __future__ import annotations
 
 import runpy
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +32,12 @@ def _services():
 
 
 if DS_KEY not in st.session_state:
-    st.session_state[DS_KEY] = CaseStoreDataSource(_services())
+    services = _services()
+    # demo mode, first session on an empty store: seeding runs the offline ADK agent once (about 10-30 s on a
+    # laptop, mostly ADK's one-time start-up); say so instead of showing a blank page
+    first = services.settings.demo_mode and not services.store.list_cases()
+    with st.spinner("Preparing the demo: loading the showcase cases and recording one offline agent run for the "
+                    "Agent trace tab (first start only)…", show_time=True) if first else nullcontext():
+        st.session_state[DS_KEY] = CaseStoreDataSource(services, seed_agent_trace=True)
 
 runpy.run_path(str(ROOT / "ui" / "app.py"), run_name="__main__")
