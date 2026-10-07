@@ -1,0 +1,20 @@
+# What `gcloud builds submit .` uploads for the Cloud Run image (editions/gcp/deploy/deploy.ps1 / deploy.sh).
+# Everything in .gitignore stays local (generated worlds, .venv, caches, models); so do the parts of the
+# repository the image does not use. The Dockerfile reads: pyproject.toml uv.lock README.md LICENSE src ui
+# .streamlit data/docs evals editions/gcp.
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+.claude/
+.agents/
+.cache/
+.github/
+tests/
+pitch/
+scripts/
+docs/
+editions/snowflake/
+editions/amd/
+data/golden/
+data/docs/raw/

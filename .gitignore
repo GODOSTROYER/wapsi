@@ -21,3 +21,4 @@ models/
 .pytest_tmp_*/
 evals/reports/*-2026*.json
 evals/reports/*-2026*.md
+.cache/

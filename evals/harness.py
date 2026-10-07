@@ -4,6 +4,15 @@
     uv run python -m evals.harness --world showcase --llm fake
     uv run python -m evals.harness --world hard            # data/generated/hard (+ its golden/ folder)
     uv run python -m evals.harness --world hard --scorer heuristic --scorer xgb:models/xgb_demo.json
+    uv run python -m evals.harness --world demo --llm gemini   # real Gemini (needs GEMINI_API_KEY); cached reruns
+
+``--llm``: ``fake`` (default, offline), ``fake-hallucinate``, ``gemini`` / ``gemini:<model>`` (the Gemini API with
+``GEMINI_API_KEY``, or Agent Platform with ``WAPSI_GEMINI_BACKEND=vertex``), ``openai:<base_url>|<model>``. Real
+models are wrapped in ``wapsi.adapters.llm_resilience.ResilientLLM``: free-tier RPM / RPD limiting (``--rpm``,
+``--rpd``), 429 / 503 retries with backoff, and a response cache keyed by the prompt hash (``.cache/llm``; reruns are
+free; ``--no-cache`` to bypass). Such runs add an ``llm`` block (model id, calls, cache hits, retries, token usage,
+cost estimate) and an ``ab_test`` block (raw LLM-only number hallucination rate vs Wapsi's slot-bound drafts), and
+write ``<world>-<llm>.json`` (e.g. ``demo-gemini.json``) instead of ``latest.json``.
 
 Writes evals/reports/<world>-<timestamp>.json/.md plus a stable copy (schema: docs/eval-report.md):
 ``latest.json`` for the default heuristic scorer on showcase / demo / full, ``<world>.json`` for hard worlds
@@ -43,6 +52,7 @@ from wapsi.timeutil import utcnow
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "evals" / "reports"
+LLM_CACHE = ROOT / ".cache" / "llm"
 TOTAL_FIELDS = list(TraceTotals.model_fields)
 ROLES_SCORED = [Role.MULE, Role.INNOCENT_HOLDER, Role.MERCHANT, Role.INTERMEDIARY]
 
@@ -76,24 +86,69 @@ def load_ledger(world: str, world_dir: Path | None = None):
     from wapsi.adapters.parquet_ledger import ParquetLedger
 
     path = world_dir or ROOT / "data" / "generated" / world
+    if world == "showcase" and world_dir is None and not path.exists():  # same data, no generation step needed
+        from wapsi.fixtures.showcase import showcase_ledger
+
+        return showcase_ledger()
     if not path.exists():
         raise SystemExit(f"world not found: {path} (run `uv run python -m wapsi.synth --size {world} --out {path}`)")
     return ParquetLedger(path)
 
 
-def make_llm(kind: str):
+def make_gemini(model: str | None = None, *, client=None, thinking_budget: int | None = None):
+    """The raw Gemini adapter for the eval (no inner retries: ``ResilientLLM`` owns the retry policy).
+
+    Fails fast, before any case runs, when the Gemini API backend has no key: a run in which every prose call
+    falls back would otherwise produce a misleading report."""
+    import os
+
+    from wapsi.adapters.gemini_llm import (
+        DEFAULT_MODEL,
+        MISSING_KEY_MESSAGE,
+        GeminiLLM,
+        gemini_api_key,
+        resolve_backend,
+    )
+
+    backend = resolve_backend(None)
+    if client is None and backend == "aistudio" and not gemini_api_key():
+        raise SystemExit(MISSING_KEY_MESSAGE)
+    model = model or (os.environ.get("WAPSI_MODEL") or "").strip() or DEFAULT_MODEL
+    return GeminiLLM(model, backend=backend, client=client, max_retries=0, thinking_budget=thinking_budget,
+                     location=(os.environ.get("WAPSI_LOCATION") or "global").strip())
+
+
+def make_llm(kind: str, *, cache_dir: str | Path | None = LLM_CACHE, rpm: int | None = None,
+             rpd: int | None = None, thinking_budget: int | None = None, client=None):
+    """``fake`` | ``fake-hallucinate`` | ``gemini[:<model>]`` | ``openai:<base_url>|<model>``.
+
+    Real models come wrapped in ``ResilientLLM`` (rate limits, retries, prompt-hash cache under ``cache_dir``;
+    ``None`` disables the cache). ``client`` injects a google-genai client (tests)."""
     from wapsi.adapters.llm_fake import FakeLLM
+    from wapsi.adapters.llm_resilience import ResilientLLM
 
     if kind == "fake":
         return FakeLLM()
     if kind == "fake-hallucinate":
         return FakeLLM(hallucinate=True)
+    if kind == "gemini" or kind.startswith("gemini:"):
+        inner = make_gemini(kind.partition(":")[2] or None, client=client, thinking_budget=thinking_budget)
+        return ResilientLLM(inner, model_id=inner.model, backend=inner.backend, rpm=rpm, rpd=rpd,
+                            cache_dir=cache_dir)
     if kind.startswith("openai:"):  # openai:<base_url>|<model>
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
         base_url, model = kind.removeprefix("openai:").split("|", 1)
-        return OpenAICompatLLM(base_url=base_url, model=model)
+        inner = OpenAICompatLLM(base_url=base_url, model=model, max_retries=0)
+        # no response cache: a self-served model (vLLM, a fresh LoRA) can change behind the same model name
+        return ResilientLLM(inner, model_id=model, backend="openai-compatible", rpm=rpm if rpm is not None else 0,
+                            rpd=rpd if rpd is not None else 0, cache_dir=None)
     raise SystemExit(f"unknown --llm {kind}")
+
+
+def llm_tag(kind: str) -> str:
+    """Report-name tag of an ``--llm`` value: ``fake`` | ``fake-hallucinate`` | ``gemini`` | ``openai``."""
+    return kind.partition(":")[0]
 
 
 def make_scorer(spec: str, ledger):
@@ -190,6 +245,7 @@ def evaluate(
     scorer: str = "heuristic",
     world_dir: Path | None = None,
     ledger=None,
+    llm=None,
 ) -> dict:
     from wapsi.pipeline.run import process_case
     from wapsi.verify.injection import RulesGuard
@@ -200,7 +256,7 @@ def evaluate(
     model = make_scorer(scorer, ledger)
     if limit:
         golden = golden[:limit]
-    llm = make_llm(llm_kind)
+    llm = llm if llm is not None else make_llm(llm_kind)
     # the LLM-only number-hallucination baseline needs a real model; the offline FakeLLM only writes placeholders
     baseline_llm = None if llm_kind.startswith("fake") else llm
     search = None
@@ -343,6 +399,20 @@ def evaluate(
         return _ratio(tp, tp + fp), _ratio(tp, tp + fn)
 
     esc_p, esc_r = pr(counts["esc_tp"], counts["esc_fp"], counts["esc_fn"])
+    wapsi_bound_errors = counts["drafts"] - counts["numeric_ok"]
+    ab_test = None
+    if halluc_n:
+        ab_test = {
+            "question": "Does an unconstrained LLM write wrong rupee amounts, and does Wapsi's slot binding stop it?",
+            "llm_only": {"cases": halluc_n, "summaries_with_wrong_amounts": halluc,
+                         "hallucination_rate": _ratio(halluc, halluc_n)},
+            "wapsi_bound": {"drafts": counts["drafts"], "drafts_with_numeric_errors": wapsi_bound_errors,
+                            "hallucination_rate": _ratio(wapsi_bound_errors, counts["drafts"])
+                            if counts["drafts"] else 0.0},
+            "method": "LLM-only: the same model writes a case summary with amounts from the raw fact sheet; any "
+                      "amount that is not a case figure counts. Wapsi-bound: final drafts whose numeric "
+                      "verification failed (amounts come from data slots, the LLM writes words only).",
+        }
     metrics = {
         "traced_amount_recall": _ratio(m["located"], m["stolen"]),
         "totals_abs_error_inr": round(m["totals_abs_error_inr"], 2),
@@ -383,6 +453,8 @@ def evaluate(
             for k, v in sorted(per_typ.items())
         },
         "classification": classification_summary(cls_rows),
+        "llm": llm.report() if hasattr(llm, "report") else None,
+        "ab_test": ab_test,
         "failures": failures[:200],
     }
 
@@ -400,7 +472,10 @@ def scorer_summary(rep: dict) -> dict:
             **{k: rep["metrics"][k] for k in HEADLINE}, "classification": rep["classification"]}
 
 
-def report_name(world: str, scorer: str) -> str:
+def report_name(world: str, scorer: str, llm: str = "fake") -> str:
+    tag = llm_tag(llm)
+    if tag not in ("fake", "fake-hallucinate"):  # a real-model run never replaces the offline reference report
+        return f"{world}-{tag}" if scorer_kind(scorer) == "heuristic" else f"{world}-{tag}-{scorer_kind(scorer)}"
     if world.startswith("hard"):
         return world
     return "latest" if scorer_kind(scorer) == "heuristic" else f"{world}-{scorer_kind(scorer)}"
@@ -427,6 +502,28 @@ def to_markdown(rep: dict) -> str:
               "## Per typology", "", "| Typology | Cases | Hold exact | Disposition acc |", "|---|---|---|---|"]
     for k, v in rep["per_typology"].items():
         lines.append(f"| {k} | {v['cases']} | {v['hold_exact_match_rate']} | {v['disposition_accuracy']} |")
+    if rep.get("llm"):
+        x = rep["llm"]
+        t, c = x["tokens"], x["cost_estimate_usd"]
+        lines += ["", "## LLM", "",
+                  f"- Model `{x['model_id']}` ({x['backend']}): {x['requests']} requests, {x['api_calls']} API calls, "
+                  f"{x['cache_hits']} cache hits ({x['cache_hit_rate']:.0%}), {x['retries']} retries, "
+                  f"{x['rate_limited_429']} rate-limited (429), {x['errors']} errors"
+                  + (", daily quota reached" if x["quota_exhausted"] else ""),
+                  f"- Tokens: {t['prompt_tokens']} in, {t['output_tokens']} out, {t['thinking_tokens']} thinking "
+                  f"(total {t['total_tokens']}); waited {x['rate_limit_wait_s']} s for the rate limit",
+                  f"- Cost this run: ${c['this_run']:.4f} (paid-tier equivalent ${c['paid_tier_equivalent']:.4f}; "
+                  f"{c['basis']})",
+                  f"- Prose fallback rate {rep['metrics']['llm_prose_fallback_rate']}, draft verification pass rate "
+                  f"{rep['metrics']['draft_verification_pass_rate']}"]
+    if rep.get("ab_test"):
+        a = rep["ab_test"]
+        lines += ["", "## A/B: raw LLM vs Wapsi-bound drafts", "",
+                  "| Arm | Units | With wrong amounts | Hallucination rate |", "|---|---|---|---|",
+                  f"| LLM only (same model, raw fact sheet) | {a['llm_only']['cases']} summaries | "
+                  f"{a['llm_only']['summaries_with_wrong_amounts']} | {a['llm_only']['hallucination_rate']} |",
+                  f"| Wapsi (slots + verifier) | {a['wapsi_bound']['drafts']} drafts | "
+                  f"{a['wapsi_bound']['drafts_with_numeric_errors']} | {a['wapsi_bound']['hallucination_rate']} |"]
     if rep.get("classification"):
         c = rep["classification"]
         lines += ["", "## Classification (scorer-decided accounts)", "",
@@ -453,7 +550,16 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")  # ₹ on Windows cp1252 consoles
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--world", default="demo")
-    ap.add_argument("--llm", default="fake")
+    ap.add_argument("--llm", default="fake",
+                    help="fake (offline) | fake-hallucinate | gemini[:<model>] | openai:<base_url>|<model>")
+    ap.add_argument("--rpm", type=int, default=None, help="requests per minute for real models "
+                    "(default WAPSI_LLM_RPM or 10; 0 = no limit)")
+    ap.add_argument("--rpd", type=int, default=None, help="requests per day, Pacific time (default WAPSI_LLM_RPD "
+                    "or 250; 0 = no limit)")
+    ap.add_argument("--cache-dir", default=str(LLM_CACHE), help="prompt-hash response cache (real models)")
+    ap.add_argument("--no-cache", action="store_true", help="always call the model (still rate limited)")
+    ap.add_argument("--thinking-budget", type=int, default=None,
+                    help="Gemini thinking budget in tokens (default: the model's own)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-draft", action="store_true")
     ap.add_argument("--out", default=str(REPORTS))
@@ -468,8 +574,10 @@ def main(argv: list[str] | None = None) -> int:
     world_dir = Path(args.world_dir) if args.world_dir else None
     limit = 10 if args.quick else args.limit
     ledger = load_ledger(args.world, world_dir)
+    llm = make_llm(args.llm, cache_dir=None if args.no_cache else args.cache_dir, rpm=args.rpm, rpd=args.rpd,
+                   thinking_budget=args.thinking_budget)
     runs = [evaluate(args.world, args.llm, limit=limit, draft=not args.no_draft, scorer=s, world_dir=world_dir,
-                     ledger=ledger) for s in scorers]
+                     ledger=ledger, llm=llm) for s in scorers]
     rep = runs[0]
     if len(runs) > 1:
         rep["by_scorer"] = {r["config"]["scorer"]: scorer_summary(r) for r in runs}
@@ -478,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
     (out / f"{args.world}-{stamp}.json").write_text(json.dumps(rep, indent=2), encoding="utf-8")
     (out / f"{args.world}-{stamp}.md").write_text(to_markdown(rep), encoding="utf-8")
-    name = args.report_name or report_name(args.world, scorers[0])
+    name = args.report_name or report_name(args.world, scorers[0], args.llm)
     (out / f"{name}.json").write_text(json.dumps(rep, indent=2), encoding="utf-8")
     print(to_markdown(rep))
     return 0

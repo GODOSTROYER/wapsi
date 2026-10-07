@@ -3,7 +3,8 @@
 Written by `uv run python -m evals.harness --world <name>`; read by the UI KPI page, the `wapsi-eval` skill and
 `pitch/check_numbers.py`. Every run writes `<world>-<UTC stamp>.json` and `.md`, plus one stable file:
 `latest.json` for the heuristic scorer on showcase / demo / full, `<world>.json` for hard worlds (`hard.json`,
-`hard-101.json`; never `latest.json`), `<world>-<xgb|gnn>.json` otherwise. `--report-name` overrides the stable
+`hard-101.json`; never `latest.json`), `<world>-<xgb|gnn>.json` otherwise; a real-model run (`--llm gemini`) writes
+`<world>-gemini.json` and never replaces the offline reference. `--report-name` overrides the stable
 name (the committed `showcase.json` and `demo.json` were written that way). Options: [Evaluation](evaluation.md#scorers-and-harness-options).
 
 ```json
@@ -53,8 +54,29 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
     "heuristic-v2": {"scorer": "heuristic-v2", "scorer_spec": "heuristic", "disposition_accuracy": 0.9198, "...": "..."},
     "xgb:xgb_hard202": {"scorer": "xgb:xgb_hard202", "scorer_spec": "xgb:models/xgb_hard202.json", "...": "..."}
   },
+  "llm": {                                   // real models only (--llm gemini | openai:...); null with the fake LLM
+    "model_id": "gemini-3.8-flash", "backend": "aistudio",
+    "requests": 122, "api_calls": 123, "ok": 122, "cache_hits": 0, "cache_hit_rate": 0.0,
+    "retries": 1, "rate_limited_429": 1, "unavailable_5xx": 0, "errors": 0, "quota_exhausted": false,
+    "rate_limit_wait_s": 610.2, "backoff_wait_s": 7.0,
+    "limits": {"rpm": 10, "rpd": 250, "used_today": 123, "remaining_today": 127},
+    "tokens": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
+    "tokens_served_from_cache": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
+    "cost_estimate_usd": {"this_run": 0.0,     // Gemini API free tier: no charge (429 over the limit, never a bill)
+                          "paid_tier_equivalent": 0.0, "saved_by_cache_paid_equivalent": 0.0,
+                          "price_per_1m_tokens": {"input": 0.3, "output": 2.5}, "basis": "assumed list price ..."}
+  },
+  "ab_test": {                               // real models only: the same model with and without Wapsi's slot binding
+    "llm_only": {"cases": 39, "summaries_with_wrong_amounts": 0, "hallucination_rate": 0.0},
+    "wapsi_bound": {"drafts": 300, "drafts_with_numeric_errors": 0, "hallucination_rate": 0.0},
+    "method": "..."
+  },
   "failures": [{"case_id": "...", "check": "...", "detail": "..."}]
 }
 ```
+
+The `llm` and `ab_test` numbers above only show the shape (illustrative, not measured). The `llm` block comes
+from `wapsi.adapters.llm_resilience.ResilientLLM`: free-tier RPM / RPD limiting, 429 / 503 retries and a prompt-hash
+response cache under `.cache/llm` (gitignored; replay only, never training data), so a rerun costs no requests.
 
 The `classification` and `by_scorer` examples above are the values in the committed `evals/reports/hard.json`.

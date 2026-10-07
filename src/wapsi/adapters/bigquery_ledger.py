@@ -515,10 +515,13 @@ def load_world(
     location: str = "asia-south1",
     include_labels: bool = False,
     job_config_factory: Any | None = None,
+    readers: Sequence[str] = (),
 ) -> dict[str, int]:
     """Load ``<path>/<table>.parquet`` files into ``project.dataset`` (creating the dataset if needed).
 
     Returns ``{table: rows loaded}``. Label tables are skipped unless ``include_labels`` (evals only).
+    ``readers`` (``serviceAccount:<email>`` or ``<email>``) get dataset-level READER access (least privilege: the
+    runtime service accounts read this dataset only; their jobs run under ``roles/bigquery.jobUser``).
     """
     project = validate_identifier(project, "project")
     dataset = validate_identifier(dataset, "dataset")
@@ -540,6 +543,8 @@ def load_world(
         except ImportError:  # pragma: no cover - fakes without the library
             ds = dataset_id
         client.create_dataset(ds, exists_ok=True)
+    if readers:
+        grant_dataset_readers(client, dataset_id, readers)
     loaded: dict[str, int] = {}
     for table in SCHEMAS:
         if table in LABEL_TABLES and not include_labels:
@@ -552,6 +557,27 @@ def load_world(
         result = job.result()
         loaded[table] = int(getattr(result, "output_rows", None) or getattr(job, "output_rows", 0) or 0)
     return loaded
+
+
+def grant_dataset_readers(client: Any, dataset_id: str, members: Sequence[str]) -> list[str]:
+    """Add dataset-level READER entries for ``members`` (idempotent); returns the emails added."""
+    from google.cloud import bigquery  # lazy
+
+    emails = []
+    for m in members:
+        email = m.split(":", 1)[1] if ":" in m else m
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+", email):
+            raise ValueError(f"not a principal email: {m!r}")
+        emails.append(email.lower())
+    ds = client.get_dataset(dataset_id)
+    entries = list(ds.access_entries)
+    have = {(e.role, (e.entity_id or "").lower()) for e in entries}
+    added = [e for e in emails if ("READER", e) not in have]
+    if added:
+        entries += [bigquery.AccessEntry(role="READER", entity_type="userByEmail", entity_id=e) for e in added]
+        ds.access_entries = entries
+        client.update_dataset(ds, ["access_entries"])
+    return added
 
 
 def setup_sql(project: str, dataset: str, location: str = "asia-south1") -> str:
@@ -579,6 +605,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ld.add_argument("--dataset", default="wapsi")
     ld.add_argument("--location", default="asia-south1")
     ld.add_argument("--include-labels", action="store_true")
+    ld.add_argument("--reader", action="append", default=[],
+                    help="principal granted dataset-level READER (serviceAccount:<email>); repeatable")
     ddl = sub.add_parser("ddl", help="print the CREATE TABLE statements")
     ddl.add_argument("--project", required=True)
     ddl.add_argument("--dataset", default="wapsi")
@@ -588,7 +616,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(setup_sql(args.project, args.dataset, args.location), end="")
         return 0
     counts = load_world(args.world, args.project, args.dataset, location=args.location,
-                        include_labels=args.include_labels)
+                        include_labels=args.include_labels, readers=args.reader)
     for table, n in counts.items():
         print(f"{table}: {n} rows")
     return 0
