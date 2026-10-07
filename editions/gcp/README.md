@@ -148,6 +148,9 @@ editions/gcp/
     agent.py       App "wapsi_officer": LlmAgent + wapsi_intake sub-agent + plugins; Gemini API key or Vertex
     workflow.py    App "case_pipeline": ADK 2.x Workflow for Pub/Sub notices, uploads and clock sweeps
     plugins.py     guard (Model Armor -> RulesGuard), structured audit log, memory saving, 429 notice
+    tracing.py     ToolTracePlugin (first plugin): every model turn and tool call as an AgentTrace, sealed into
+                   the case's audit chain; /wapsi/traces on the API
+    trace_demo.py  offline agent-trace demo (real app + tools + guards, scripted model) and its recording
     identity.py    HMAC-signed role grants in session state
     memory.py      in-memory (default), Firestore (WAPSI_ADK_STORE=firestore) or Memory Bank (paid)
     demo_model.py  offline scripted BaseLlm so the agents run with zero cloud access
@@ -207,6 +210,41 @@ curl -s localhost:8080/run -H 'Content-Type: application/json' -d '{"app_name":"
 # a CFCFRMS notice through the Pub/Sub trigger route
 curl -s localhost:8080/apps/case_pipeline/trigger/pubsub -H 'Content-Type: application/json' -d \
   "{\"message\":{\"data\":\"$(printf '{"ncrp_ids":["31109260000102","31109260000103"]}' | base64 -w0)\"}}"
+```
+
+## Agent trace: what the agent did, step by step
+
+The Case Room has an **Agent trace** tab. It shows every tool call the ADK agent made on the case, in order:
+
+- the tool name, its arguments (account numbers, phones and names redacted) and a one-line result summary built
+  from the tool's own result (numbers come from data);
+- latency (a bar per call) and status (OK, blocked by guard, refused by maker-checker, error);
+- the safety verdicts around each call: the input screen (Model Armor or RulesGuard), argument screening,
+  the maker-checker role check, untrusted complaint text found in a result, the verifier's verdict (plan
+  policy check, draft verification, re-verification before an approval), the output screen, and a reply
+  grounding check (every rupee amount and account number in the agent's reply must appear in a tool result);
+- each model turn (model, latency, tokens when the model reports them, the tools it asked for);
+- a summary row: tool calls, time in tools, tokens, blocked calls, guard checks, verifier verdicts;
+- the raw JSON of every step.
+
+How it works: `ToolTracePlugin` is the app's **first** plugin, so it sees each callback before the guard can
+answer it (a blocked call still gets its step). The guard plugin reports its verdicts into the same
+`wapsi.agenttrace.ToolTraceRecorder` (pure Python, edition-neutral). When a run ends, its trace is appended to the
+audit log of every case it touched as an `agent_trace` event, so the case's hash chain covers it (editing a
+recorded step breaks the chain), and it is logged as one JSON line for Cloud Logging. `GET /wapsi/traces?case_id=`
+on the API service returns the runs that instance recorded.
+
+No API key needed: the showcase case shows a recorded offline run (`src/wapsi/agenttrace/showcase_recording.json`):
+the real app, tools and guards, driven by the scripted model through a fixed officer script (open a case, explain
+an account, an analyst's approval refused by maker-checker, an injected instruction rewritten by the input guard
+and the search that follows blocked). In demo mode the GCP UI also runs that script once at start-up, so its traces
+sit in the showcase cases' audit chains. With a Gemini key, live runs replace both.
+
+```bash
+uv run python -m editions.gcp.app.trace_demo            # run the script, print each run's tool sequence
+uv run python -m editions.gcp.app.trace_demo --write    # refresh the recording (one warm-up run first)
+uv run streamlit run ui/app.py                          # Case Room -> Agent trace
+curl -s 'localhost:8080/wapsi/traces?case_id=CASE-31009260000101&limit=5'
 ```
 
 ## Configuration

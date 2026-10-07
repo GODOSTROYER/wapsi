@@ -1,11 +1,16 @@
 """Streamlit data source for the GCP edition: the shared UI reads and writes cases through the ``CaseStore``
 (Firestore on Cloud Run) and the ``Ledger`` (BigQuery), so it shows the same cases the agents and the Pub/Sub
 pipeline create. Launched by ``editions/gcp/ui_app.py``.
+
+In demo mode an empty store is seeded with the showcase cases and, with ``seed_agent_trace=True`` (the UI service),
+one offline run of the real ADK agent (scripted model, ``trace_demo.DEMO_SCRIPT``) whose traces land in the
+showcase cases' hash-chained audit logs, so the Case Room's Agent trace tab shows a run recorded on this instance.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from ui.data_source import Outcome, ShowcaseDataSource, build_showcase_bundles, doc_search
@@ -20,7 +25,7 @@ SOURCE_CASE_STORE = "case_store"
 
 
 class CaseStoreDataSource(ShowcaseDataSource):
-    def __init__(self, services: Services, *, seed_demo: bool = True) -> None:
+    def __init__(self, services: Services, *, seed_demo: bool = True, seed_agent_trace: bool = False) -> None:
         self.services = services
         store = services.store
         bundles = [b for b in (store.get_bundle(c.case_id) for c in store.list_cases()) if b is not None]
@@ -29,7 +34,22 @@ class CaseStoreDataSource(ShowcaseDataSource):
             bundles, source = build_showcase_bundles(services.ledger, live=True)
             for b in bundles:
                 store.put_bundle(b)
+            if seed_agent_trace and os.environ.get("WAPSI_SEED_AGENT_TRACE", "1").strip() != "0":
+                bundles = self._seed_agent_trace(bundles)
         super().__init__(bundles=bundles, ledger=services.ledger, source=source)
+
+    def _seed_agent_trace(self, bundles: list[CaseBundle]) -> list[CaseBundle]:
+        """One offline run of the ADK agent on the showcase cases (demo mode); the store keeps its traces."""
+        try:
+            from .trace_demo import seed_case_traces
+
+            traces = seed_case_traces(self.services)
+        except Exception:  # noqa: BLE001 - the panel falls back to the recorded run
+            log.exception("could not seed the agent trace demo")
+            return bundles
+        log.info("seeded %d offline agent runs", len(traces))
+        store = self.services.store
+        return [store.get_bundle(b.case.case_id) or b for b in bundles]
 
     def refresh(self) -> None:
         """Pick up cases created elsewhere (agents, Pub/Sub pipeline)."""

@@ -162,10 +162,11 @@ flowchart TB
 | `src/wapsi/verify` | numeric, citation, policy and prompt-injection checks; police / LEA request checklist |
 | `src/wapsi/domain` | India bank working-day calendar, SOP clocks, regulatory change radar (read-only) |
 | `src/wapsi/audit` | hash-chained, append-only audit log per case and the tamper drill |
+| `src/wapsi/agenttrace` | agent trace: every tool call an agent makes, with redacted arguments, result, latency and the guard and verifier verdicts around it, sealed into the case's audit chain |
 | `src/wapsi/search` | legal corpus fetcher, section-aware chunking, pure-Python BM25, citation and radar checks |
 | `src/wapsi/synth` | synthetic Indian banking world (demo, full and hard sizes), independent reference implementation, golden sets |
 | `src/wapsi/pipeline` | end-to-end case processing, maker-checker approval, account-level requests, LEA checks |
-| `ui/` | Streamlit officer app: Inbox, Case Room, Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit |
+| `ui/` | Streamlit officer app: Inbox, Case Room (money trail and agent trace), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit |
 | `evals/` | golden-set harness (`--scorer`, `--world-dir`, `--report-name`), guard corpus and reports |
 | `editions/` | the three platform editions (below) |
 | `.claude/skills` | 6 skills shared by Snowflake CoCo, Claude Code and Gemini CLI (mirrored to `.agents/skills`) |

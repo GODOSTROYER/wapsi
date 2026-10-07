@@ -225,6 +225,17 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
             "docs_index": svc.search is not None,
         }
 
+    @adk_app.get("/wapsi/traces", include_in_schema=False)
+    async def agent_traces(case_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+        """Agent runs this instance recorded (redacted ``AgentTrace``s, oldest first); ``case_id`` filters.
+        The same traces are sealed into each case's audit log, which the UI reads."""
+        from .tracing import get_recorder
+
+        items = get_recorder().traces(case_id=case_id)[-max(1, min(int(limit), 100)):]
+        return {"traces": [t.model_dump(mode="json") for t in items],
+                "summaries": [{"trace_id": t.trace_id, "cases": t.case_ids, **t.summary().model_dump(mode="json")}
+                              for t in items]}
+
     adk_app.add_middleware(RoleStateMiddleware, settings=settings)
     return adk_app
 

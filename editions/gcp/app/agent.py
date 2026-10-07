@@ -1,6 +1,7 @@
 """The ADK application: ``wapsi_officer`` (Gemini) with the ``wapsi_intake`` multimodal sub-agent.
 
-``build_app()`` returns an ``App`` with the guard, audit, memory and quota plugins. In demo mode both agents run
+``build_app()`` returns an ``App`` with the trace, guard, audit, memory and quota plugins (the trace plugin
+first, so the Agent trace panel sees every call, including the ones the guard blocks). In demo mode both agents run
 on ``DemoScriptedLlm`` (no network). Otherwise:
 
 - ``WAPSI_GEMINI_BACKEND=aistudio`` (default, free tier): an ADK ``Gemini`` model whose google-genai client is
@@ -23,6 +24,7 @@ from google.adk.apps import App
 from google.genai import types
 
 from wapsi.adapters.gemini_llm import MISSING_KEY_MESSAGE, gemini_api_key
+from wapsi.agenttrace import ToolTraceRecorder
 
 from .config import GcpSettings
 from .intake import extract_complaint
@@ -30,6 +32,7 @@ from .memory import memory_tools
 from .plugins import AuditLogPlugin, MemoryPlugin, ModelQuotaPlugin, WapsiGuardPlugin
 from .services import get_services
 from .tools import OFFICER_TOOLS, UNTRUSTED_CLOSE, UNTRUSTED_OPEN
+from .tracing import ToolTracePlugin, get_recorder
 
 # Free-tier friendly retries inside the google-genai client: 4 attempts, 2 s -> 4 s -> 8 s (+ jitter), max 30 s.
 GEMINI_RETRY = types.HttpRetryOptions(attempts=4, initial_delay=2.0, max_delay=30.0, exp_base=2.0,
@@ -138,13 +141,16 @@ def build_agents(settings: GcpSettings | None = None) -> LlmAgent:
     )
 
 
-def build_app(settings: GcpSettings | None = None) -> App:
-    """``settings`` defaults to the process-wide services' settings (the server installs those first)."""
+def build_app(settings: GcpSettings | None = None, *, recorder: ToolTraceRecorder | None = None) -> App:
+    """``settings`` defaults to the process-wide services' settings (the server installs those first);
+    ``recorder`` to the process-wide agent-trace recorder."""
     settings = settings or get_services().settings
+    recorder = recorder or get_recorder()
     return App(
         name=APP_NAME,
         root_agent=build_agents(settings),
-        plugins=[WapsiGuardPlugin(), AuditLogPlugin(), MemoryPlugin(), ModelQuotaPlugin()],
+        plugins=[ToolTracePlugin(recorder), WapsiGuardPlugin(recorder=recorder), AuditLogPlugin(), MemoryPlugin(),
+                 ModelQuotaPlugin()],
         # explicit context caching (each agent keeps its cached prefix across transfers) on Agent Platform only by
         # default; the Gemini API applies implicit caching on its own
         context_cache_config=ContextCacheConfig() if settings.context_cache_enabled() else None,

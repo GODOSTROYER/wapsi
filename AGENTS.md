@@ -168,6 +168,11 @@ uv run streamlit run ui/app.py             # local UI
   events are never dropped, changed or reordered). Hash = SHA-256 over canonical JSON of (seq, ts, actor, role,
   event_type, case_id, payload_digest, prev_hash); `GENESIS_HASH` starts every chain. `InMemoryCaseStore` and the
   AMD `FileCaseStore` chain on write; Firestore / Snowflake stores do not seal yet (their logs verify as "not chained").
+- `wapsi.agenttrace.ToolTraceRecorder` (pure Python; the GCP edition drives it from `ToolTracePlugin`),
+  `AgentTrace` / `TraceStep` / `GuardVerdict` / `VerifierVerdict`, `trace_event(trace, case_id=)` (an `agent_trace`
+  audit event), `traces_from_audit(events, case_id=)`, `redact_text` / `redact_value` (accounts, phones, e-mails,
+  names, secrets; untrusted complaint text is never copied into a trace). Summaries and verdicts are taken from tool
+  results, never computed by a model.
 
 ## Originality and event boundaries
 - AI Builder Cup: only work created on or after 2026-09-01 (repo created 2026-09-16).

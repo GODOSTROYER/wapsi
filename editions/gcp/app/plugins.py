@@ -9,6 +9,8 @@
     refuses ``approve_draft`` for callers whose signed role is not supervisor (the tool checks again);
   - ``after_model_callback``: screens the model's reply with ``SanitizeModelResponse`` when the guard supports
     it (logged, not blocked: the verifier is the gate for drafts).
+  Every verdict (passed, rewritten, blocked, refused) is also reported to the agent-trace recorder when one is
+  given (``tracing.ToolTracePlugin`` shows them next to the step they guarded).
 
 ``AuditLogPlugin`` writes one structured JSON log line per tool call (Cloud Logging picks these up from stdout on
 Cloud Run) and appends an ``AuditEvent`` to the case in the case store.
@@ -31,6 +33,7 @@ from typing import Any
 from google.adk.plugins.base_plugin import BasePlugin
 from google.genai import types
 
+from wapsi.agenttrace import GuardVerdict
 from wapsi.models import AuditEvent, GuardResult
 from wapsi.ports import Guard
 from wapsi.timeutil import utcnow
@@ -80,11 +83,26 @@ class _Cache:
 
 
 class WapsiGuardPlugin(BasePlugin):
-    def __init__(self, guard: Guard | Callable[[], Guard] | None = None, name: str = "wapsi_guard") -> None:
+    def __init__(self, guard: Guard | Callable[[], Guard] | None = None, name: str = "wapsi_guard", *,
+                 recorder: Any | None = None) -> None:
         super().__init__(name=name)
         self._guard = guard
         self._cache = _Cache()
         self.events: list[dict[str, Any]] = []  # recent guard decisions (observability, tests)
+        self.recorder = recorder  # wapsi.agenttrace.ToolTraceRecorder (optional)
+
+    def source(self) -> str:
+        return getattr(self.guard, "last_source", "") or type(self.guard).__name__
+
+    def _report(self, ctx: Any, verdict: GuardVerdict, *, tool: str = "") -> None:
+        """Hand a verdict to the trace recorder (never raises)."""
+        if self.recorder is None or ctx is None:
+            return
+        try:
+            self.recorder.guard(str(getattr(ctx, "invocation_id", "") or ""), verdict,
+                                call_id=str(getattr(ctx, "function_call_id", "") or ""), tool=tool)
+        except Exception:  # noqa: BLE001 - tracing never breaks a run
+            log.exception("could not report a guard verdict to the trace")
 
     @property
     def guard(self) -> Guard:
@@ -107,14 +125,23 @@ class WapsiGuardPlugin(BasePlugin):
         parts = list(user_message.parts or [])
         changed = False
         new_parts = []
+        screened, cats = 0, []
         for p in parts:
             if p.text and not p.text.startswith(NOTICE_PREFIX):
                 g = self.screen(p.text, "user_message")
+                screened += 1
                 if g.flagged:
+                    cats += list(g.categories)
                     new_parts.append(types.Part(text=guard_notice(g)))
                     changed = True
                     continue
             new_parts.append(p)
+        if screened:
+            self._report(invocation_context, GuardVerdict(
+                stage="input", source=self.source(), flagged=changed, action="rewritten" if changed else "passed",
+                categories=list(dict.fromkeys(cats)),
+                detail=("instruction-like text replaced by a notice and fenced as untrusted data" if changed
+                        else "officer message screened")))
         if not changed:
             return None
         return types.Content(role=user_message.role or "user", parts=new_parts)
@@ -129,6 +156,10 @@ class WapsiGuardPlugin(BasePlugin):
                     g = self.screen(p.text, "model_request")
                     if g.flagged:
                         p.text = guard_notice(g)
+                        self._report(callback_context, GuardVerdict(
+                            stage="model_request", source=self.source(), flagged=True, action="rewritten",
+                            categories=list(g.categories),
+                            detail="user-authored text in the model request fenced as untrusted data"))
         return None
 
     async def before_tool_callback(self, *, tool: Any, tool_args: dict[str, Any],
@@ -137,14 +168,26 @@ class WapsiGuardPlugin(BasePlugin):
         if name == "approve_draft":
             _, role, _ = caller(tool_context)
             if role != "supervisor":
+                self._report(tool_context, GuardVerdict(
+                    stage="tool_policy", source="maker_checker", flagged=True, action="refused",
+                    detail=f"signed-in role is {role}; only a supervisor can approve (role read from the signed "
+                           "session grant, never from the arguments)"), tool=name)
                 return {"status": "refused", "verified_role": role,
                         "reason": "Only a supervisor can approve drafts (maker-checker)."}
+            self._report(tool_context, GuardVerdict(
+                stage="tool_policy", source="maker_checker", action="passed",
+                detail="signed-in role is supervisor"), tool=name)
         for key in FREE_TEXT_ARGS.get(name, ()):
             value = tool_args.get(key)
             text = " ".join(map(str, value)) if isinstance(value, list) else str(value or "")
             if not text.strip():
                 continue
             g = self.screen(text, f"tool_arg:{name}.{key}")
+            self._report(tool_context, GuardVerdict(
+                stage="tool_args", source=self.source(), flagged=g.flagged,
+                action="blocked" if g.flagged else "passed", categories=list(g.categories),
+                detail=f"{key} argument {'contains instruction-like text' if g.flagged else 'screened'}"),
+                tool=name)
             if g.flagged:
                 return {"status": "blocked", "reason": f"the {key} argument contains instruction-like text",
                         "categories": list(g.categories), "quoted_spans": [s[:200] for s in g.quoted_spans[:3]]}
@@ -153,17 +196,30 @@ class WapsiGuardPlugin(BasePlugin):
     async def after_model_callback(self, *, callback_context: Any, llm_response: Any) -> Any | None:
         screen_response = getattr(self.guard, "screen_response", None)
         content = getattr(llm_response, "content", None)
-        if screen_response is None or content is None:
+        if content is None or getattr(llm_response, "partial", False):
             return None
         text = " ".join(p.text for p in (content.parts or []) if p.text and not p.thought)
-        if text.strip():
-            try:
-                g = screen_response(text)
-            except Exception:  # noqa: BLE001 - response screening is advisory
-                log.exception("model response screening failed")
-                return None
-            if g.flagged:
-                log.warning("model response flagged: %s", ", ".join(g.categories))
+        if not text.strip():
+            return None
+        if screen_response is None:
+            if any(p.function_call for p in (content.parts or [])):
+                return None  # not the reply yet
+            self._report(callback_context, GuardVerdict(
+                stage="output", source=type(self.guard).__name__, action="not_screened",
+                detail="this guard screens inputs only; amounts in the reply are checked against tool results"))
+            return None
+        try:
+            g = screen_response(text)
+        except Exception:  # noqa: BLE001 - response screening is advisory
+            log.exception("model response screening failed")
+            return None
+        if g.flagged:
+            log.warning("model response flagged: %s", ", ".join(g.categories))
+        self._report(callback_context, GuardVerdict(
+            stage="output", source=self.source(), flagged=g.flagged, action="logged" if g.flagged else "passed",
+            categories=list(g.categories),
+            detail="reply flagged by response screening (logged; the verifier gates drafts)" if g.flagged
+            else "reply screened"))
         return None
 
 
