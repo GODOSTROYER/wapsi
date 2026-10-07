@@ -11,17 +11,24 @@ editions/amd/kickoff/run_all.sh --stage bench,ab  # repeat stages; --from serve 
 editions/amd/kickoff/run_all.sh --rehearsal       # the same pipeline on a laptop CPU: tiny inputs, stub models
 ```
 
+On Windows, run the rehearsal from **Git Bash** (`bash editions/amd/kickoff/run_all.sh --rehearsal`). In PowerShell,
+`bash` can be WSL's, which sees neither the uv venv nor the Windows paths of this checkout.
+
 | Stage | MI300X run | CPU rehearsal (plumbing check only) |
 |---|---|---|
-| `env` | preflight, `amd-smi static`, `uv sync`, ~120 synthetic worlds, pinned image digests, ROCm training image | preflight, four tiny worlds, a tiny AMLworld-format CSV |
+| `env` | preflight, `amd-smi static`, `uv sync`, ~120 synthetic worlds, docs index (fetches `data/docs/raw` if absent), pinned image digests, ROCm training image + `train_image_check.py` (imports, torch ranges, one LoRA step on the GPU) | preflight, four tiny worlds, a tiny AMLworld-format CSV, `train_image_check.py` on CPU |
 | `models` | Gemma 4 31B (base) and Gemma 4 E4B (verifier) into the HF cache | nothing (random tiny model) |
 | `gnn` | GraphSAGE on ROCm (+ AMLworld pre-training if the CSV is there), no-external-signals variant, held-out + hard-world eval | 2 CPU epochs, 1 AMLworld epoch, same evaluators |
 | `lora-data` | base model on vLLM-ROCm as teacher; smoke test; base serving bench; verifier-filtered dataset | stub teacher behind the OpenAI-compatible mock endpoint |
 | `lora-train`, `merge`, `lora-eval` | TRL + PEFT bf16 LoRA, fp32 merge, base vs tuned on held-out cases | tiny-cpu preset, 4 steps |
 | `serve` | compose: merged model + verifier + GNN + app, smoke tests | mock endpoints + the real GNN service |
 | `bench` | amd-smi telemetry, `llm_bench` (1/4/16/64), verifier bench, `e2e_bench` at 1/8/16, `AMD_RESULTS.md` | the same benches against stubs, no telemetry |
-| `ab` | raw free-form STR vs Wapsi-bound drafts, same model | stub LLMs that always hallucinate |
-| `evidence` | `evidence.json` + `evidence.md`, `fill_pitch.py` diff | the same, labelled CPU rehearsal; `fill_pitch.py` must refuse it |
+| `ab` | raw free-form STR vs Wapsi-bound drafts, same model, same cases; like with like: raw STRs vs the bound arm's STRs (all bound drafts alongside) | stub LLMs that always hallucinate |
+| `evidence` | `amd-smi static` (if this folder has none), `evidence.json` + `evidence.md`, `fill_pitch.py` diff | the same, labelled CPU rehearsal; `fill_pitch.py` must refuse it |
+
+Measurements (`llm_bench`, `e2e_bench`, the A/B) never stop an unattended run on the MI300X: a failed request or case
+is recorded in the result file and in the stage notes (`measure_failures`), the stage goes on, and `evidence.md` lists
+it under "Warnings"; a level or run with failures is never a headline number. The CPU rehearsal stays strict.
 
 Every stage writes `editions/amd/evidence/<UTC date>/stages/NN-<stage>.json` (UTC start and end, exit code, notes, the
 budget at that moment), a log under `logs/`, and amd-smi snapshots under `amd_smi/`. `collect_evidence.py` reads only
@@ -29,7 +36,7 @@ those files. `fill_pitch.py` writes only numbers that `collect_evidence.py` read
 whose `gpu_results_valid` is true (an MI300X in `amd-smi static`, every stage inside 12 Oct 15:00 UTC to 18 Oct
 14:00 UTC).
 
-Environment the run reads: `SCRATCH`, `HF_TOKEN` (never printed), `WAPSI_INR_PER_USD` (the day's rate, for ₹ per
+Environment the run reads: `SCRATCH` (must exist), `HF_TOKEN` and `VLLM_API_KEY` (never printed), `WAPSI_INR_PER_USD` (the day's rate, for ₹ per
 case), `WAPSI_DROPLET_STARTED_AT` and `WAPSI_SPENT_USD` (budget), `WAPSI_BUDGET_USD` (100), `WAPSI_GPU_HOUR_USD`
 (1.99), `AMLWORLD_CSV`, `ROCM_PYTORCH_IMAGE`, and the model choice (`WAPSI_BASE_MODEL`, `WAPSI_BASE_PROFILE`,
 `WAPSI_LORA_CONFIG`, `WAPSI_MERGED_NAME`; the Qwen fallback is in the RUNBOOK).

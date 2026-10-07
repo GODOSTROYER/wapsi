@@ -7,9 +7,10 @@
 #   editions/amd/kickoff/preflight.sh --json OUT.json       # also write the results as JSON (run_all.sh: evidence/<date>/preflight.json)
 #
 # Checks: amd-smi / rocm-smi and the GPU name, ROCm version, GPU memory (total, already in use), docker daemon and
-# compose >= 2.20.2, free disk on the scratch and docker volumes, HF_TOKEN present (the value is never printed or put
-# on a command line), network to huggingface.co, access to each gated model, uv + python3 >= 3.11, the amd-baseline
-# tag, the event window, pinned image digests, optional inputs (AMLworld CSV, the day's INR rate, droplet start).
+# compose >= 2.20.2, SCRATCH exists (a missing path is FAIL, never the root disk's free space) with free disk there
+# and on the docker volume, HF_TOKEN present (the value is never printed or put on a command line), network to
+# huggingface.co, access to each gated model, uv + python3 >= 3.11, the amd-baseline tag, the event window, pinned
+# image digests, optional inputs (docs corpus, AMLworld CSV, the day's INR rate, droplet start).
 # Every check below tolerates its own failure (|| true, if), so a red row never aborts the table.
 set -euo pipefail
 
@@ -30,7 +31,7 @@ for arg in "$@"; do
     --allow-after-window) ALLOW_AFTER=1 ;;
     --json=*) JSON_OUT="${arg#--json=}" ;;
     --json) JSON_OUT="__next__" ;;
-    -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)
       if [[ "${JSON_OUT}" == "__next__" ]]; then JSON_OUT="${arg}"; else echo "unexpected argument: ${arg}" >&2; exit 64; fi ;;
   esac
@@ -165,10 +166,22 @@ check_disk() {
     else add "disk (repo)" WARN "${root_free:-?} GB free (rehearsal needs ~2 GB)"; fi
     return
   fi
-  scratch_free="$(free_gb "${SCRATCH}")"
-  if [[ -z "${scratch_free}" ]]; then add "disk (SCRATCH=${SCRATCH})" FAIL "cannot stat; export SCRATCH=<the 5 TB mount from lsblk/df>"
-  elif (( scratch_free >= 400 )); then add "disk (SCRATCH=${SCRATCH})" PASS "${scratch_free} GB free"
-  else add "disk (SCRATCH=${SCRATCH})" FAIL "${scratch_free} GB free; base + merged Gemma 4 31B + caches need >= 400 GB"; fi
+  # SCRATCH must exist: free_gb would walk up to / and report the root disk (a false PASS; the models would then
+  # fill the boot disk)
+  if [[ ! -d "${SCRATCH}" ]]; then
+    add "disk (SCRATCH=${SCRATCH})" FAIL "does not exist: export SCRATCH=<the 5 TB mount from lsblk/df>, or mkdir -p it on that mount"
+  else
+    scratch_free="$(free_gb "${SCRATCH}")"
+    if [[ -z "${scratch_free}" ]]; then add "disk (SCRATCH=${SCRATCH})" FAIL "cannot stat; export SCRATCH=<the 5 TB mount from lsblk/df>"
+    elif (( scratch_free >= 400 )); then add "disk (SCRATCH=${SCRATCH})" PASS "${scratch_free} GB free"
+    else add "disk (SCRATCH=${SCRATCH})" FAIL "${scratch_free} GB free; base + merged Gemma 4 31B + caches need >= 400 GB"; fi
+    local scratch_mnt root_mnt
+    scratch_mnt="$(df -P "${SCRATCH}" 2>/dev/null | awk 'NR == 2 { print $6 }' || true)"
+    root_mnt="$(df -P / 2>/dev/null | awk 'NR == 2 { print $6 }' || true)"
+    if [[ -n "${scratch_mnt}" && "${scratch_mnt}" == "${root_mnt}" && "${SCRATCH}" != "/" ]]; then
+      add "SCRATCH mount" WARN "${SCRATCH} is on the root filesystem (${root_mnt}), not a separate scratch volume (lsblk)"
+    fi
+  fi
   docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)"
   root_free="$(free_gb "${docker_root}")"
   if [[ -n "${root_free}" ]] && (( root_free >= 80 )); then add "disk (docker ${docker_root})" PASS "${root_free} GB free"
@@ -220,6 +233,9 @@ check_inputs() {
     else add "golden cases" FAIL "data/golden/showcase/cases.jsonl missing"; fi
     return
   fi
+  if [[ -f "${ROOT}/data/docs/index/chunks.jsonl" ]]; then add "docs corpus" PASS "data/docs/index built"
+  elif [[ -f "${ROOT}/data/docs/raw/_fetch.json" ]]; then add "docs corpus" PASS "data/docs/raw present (env stage builds the index)"
+  else add "docs corpus" WARN "data/docs/raw missing (not in git): the env stage fetches it from the public sites; if that fails, e2e_bench runs without docs search. Faster: scp -r data/docs/raw from a laptop"; fi
   if [[ -f "${AMLWORLD_CSV}" ]]; then add "AMLworld HI-Small" PASS "${AMLWORLD_CSV}"
   else add "AMLworld HI-Small" WARN "${AMLWORLD_CSV} missing: GNN trains without AMLworld pre-training (Kaggle ealtman2019, CDLA-Sharing-1.0)"; fi
   if [[ -n "${WAPSI_INR_PER_USD:-}" ]]; then add "INR rate" PASS "WAPSI_INR_PER_USD=${WAPSI_INR_PER_USD}"

@@ -9,9 +9,13 @@ Default is a dry run: it prints a unified diff of ``pitch/amd/DECK_OUTLINE.md``,
 - Each slot is anchored by the literal text around it (``SLOTS``). A filled value is wrapped in
   ``<!-- slot:ID -->...<!-- /slot -->`` so a later run with newer evidence replaces it in place.
 - Every value comes from ``evidence.json`` ``headline`` (built by ``collect_evidence.py`` from the run's result
-  files). For each number it writes a row in a generated ``NUMBERS.md`` section whose locator re-reads that field, so
-  ``pitch/check_numbers.py`` keeps verifying the pitch against the evidence. A value the run did not measure keeps
-  its TBD.
+  files). For each number it writes a row in a generated ``NUMBERS.md`` section whose locator re-reads that field in
+  the bundle named in the row's Source, so ``pitch/check_numbers.py`` keeps verifying the pitch against the evidence.
+  A value the run did not measure keeps its TBD, or the value an earlier bundle filled.
+- Several bundles (later-week re-runs): the generated rows are merged, not regenerated. A newer bundle replaces the
+  rows of the values it measured; the rows of slots it did not refill stay, with their own Source. When an older value
+  of a key is still shown in a slot the newer bundle could not refill, its row stays too, as ``amd_<key>_<date>``.
+  The date-only slots (slide 7 heading, A/B heading, video date) name the dates of the values they introduce.
 - It refuses (exit 3) anything that is not a valid MI300X run: CPU-rehearsal evidence, a bundle whose
   ``gpu_results_valid`` is false (no MI300X in ``amd-smi static``, or a stage outside 2026-10-12 15:00 UTC ..
   2026-10-18 14:00 UTC), and test fixtures aimed at the real ``pitch/`` folder.
@@ -22,10 +26,11 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import math
 import re
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -59,17 +64,36 @@ class Fmt:
     value: Callable[[float], str]
 
 
+def _small_decimals(v: float) -> int:
+    """Decimals that show an amount below 1 with two significant figures (at least 2): 0.5 -> 2 (0.50),
+    0.00221 -> 4 (0.0022), 0.0000123 -> 6 (0.000012). Cost per case on an MI300X can be a fraction of a cent."""
+    r = abs(float(f"{v:.2g}"))
+    return 2 if r == 0 or r >= 0.1 else max(2, 1 - math.floor(math.log10(r)))
+
+
+def _money_decimals(v: float) -> int:
+    return 2 if abs(v) >= 1 else _small_decimals(v)
+
+
 def _inr(v: float) -> str:
-    """Indian notation with paise: 0.35 -> ₹0.35, 123456.5 -> ₹1,23,456.50."""
+    """Indian notation with paise: 0.35 -> ₹0.35, 123456.5 -> ₹1,23,456.50; below ₹1 two significant figures
+    (₹0.0010)."""
+    if abs(v) < 1:
+        return f"₹{v:.{_small_decimals(v)}f}"
     rupees, paise = divmod(round(v * 100), 100)
     return f"₹{_group_indian(int(rupees))}.{int(paise):02d}"
+
+
+def _usd(v: float) -> str:
+    return f"${v:,.2f}" if abs(v) >= 1 else f"${v:.{_small_decimals(v)}f}"
 
 
 TOK = Fmt(lambda v: f"{v:,.0f}", lambda v: f"{v:.0f}")
 SEC = Fmt(lambda v: f"{v:.2f} s", lambda v: f"{v:.2f}")
 SECONDS = Fmt(lambda v: f"{v:.2f} seconds", lambda v: f"{v:.2f}")
-USD = Fmt(lambda v: f"${v:.4f}" if v < 1 else f"${v:,.2f}", lambda v: f"{v:.4f}" if v < 1 else f"{v:.2f}")
-INR = Fmt(_inr, lambda v: f"{v:.2f}")
+# the Value column uses the decimals the pitch shows, so check_numbers.py compares like with like
+USD = Fmt(_usd, lambda v: f"{v:.{_money_decimals(v)}f}")
+INR = Fmt(_inr, lambda v: f"{v:.{_money_decimals(v)}f}")
 GB = Fmt(lambda v: f"{v:.1f} GB", lambda v: f"{v:.1f}")
 RATE = Fmt(lambda v: f"{v:.4f}".rstrip("0").rstrip(".") if v not in (0, 1) else f"{v:.1f}", lambda v: f"{v:.4f}")
 COUNT = Fmt(lambda v: f"{int(v):,}", lambda v: f"{int(v)}")
@@ -84,6 +108,7 @@ class Slot:
     after: str
     keys: tuple[tuple[str, Fmt, str], ...]  # (headline key, format, what it is: used in NUMBERS.md 'Pitched as')
     template: str  # str.format over k0, k1, ... (formatted texts) and {date}
+    date_keys: tuple[str, ...] = ()  # date-only slots: {date} = the dates of the bundles these keys' values come from
 
 
 def _k(key: str, fmt: Fmt, what: str) -> tuple[str, Fmt, str]:
@@ -91,9 +116,17 @@ def _k(key: str, fmt: Fmt, what: str) -> tuple[str, Fmt, str]:
 
 
 DECK, VIDEO = "amd/DECK_OUTLINE.md", "amd/VIDEO_SCRIPT.md"
+SLIDE7_KEYS = ("llm_tok_s_c1", "llm_tok_s_c4", "llm_tok_s_c16", "llm_tok_s_c64", "llm_ttft_p50_s_c16",
+               "llm_ttft_p95_s_c16", "verifier_tok_s_c1", "verifier_tok_s_c4", "verifier_tok_s_c16",
+               "e2e_cases_per_hour_c1", "e2e_cases_per_hour_c8", "e2e_cases_per_hour_c16", "e2e_best_usd_per_case",
+               "e2e_best_inr_per_case", "vram_llm_gb", "vram_verifier_gb", "vram_gnn_gb", "gnn_epoch_s", "gnn_val_auc",
+               "lora_base_prose_verifier_pass_rate", "lora_tuned_prose_verifier_pass_rate", "lora_base_fallback_rate",
+               "lora_tuned_fallback_rate")
+AB_KEYS = ("ab_raw_docs", "ab_raw_docs_with_wrong_amount", "ab_bound_str_docs", "ab_bound_str_docs_with_wrong_amount")
+VIDEO_BENCH_KEYS = ("llm_tok_s_c16", "llm_ttft_p95_s_c16", "e2e_best_cases_per_hour", "e2e_best_usd_per_case")
 SLOTS: tuple[Slot, ...] = (
     Slot("deck_slide7_heading", DECK, "## 7. Benchmarks on MI300X ", "(all TBD, 12 to 18 Oct)", "\n", (),
-         "(measured {date}, AMD Developer Cloud)"),
+         "(measured {date}, AMD Developer Cloud)", SLIDE7_KEYS),
     Slot("deck_llm_tps", DECK, "| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | ", "**TBD**",
          " |", (_k("llm_tok_s_c1", TOK, "drafting model output tokens/s at concurrency 1"),
                 _k("llm_tok_s_c4", TOK, "drafting model output tokens/s at concurrency 4"),
@@ -134,24 +167,29 @@ SLOTS: tuple[Slot, ...] = (
           _k("vram_gnn_gb", GB, "peak VRAM of the GNN container"),
           _k("vram_peak_gb", GB, "peak VRAM of the whole device")),
          "**llm {k0}, verifier {k1}, gnn {k2}; device peak {k3} (amd-smi, {date})**"),
-    Slot("deck_ab_heading", DECK, "**Slot 1, drafting ", "(TBD on MI300X)", ":**", (), "(measured on MI300X, {date})"),
+    # A/B, like with like: the raw arm writes one STR per case, so the bound column counts the bound arm's STRs
+    # (ab_bound_str_*); every bound draft (~10 per case) is given alongside, never instead
+    Slot("deck_ab_heading", DECK, "**Slot 1, drafting ", "(TBD on MI300X)", ":**", (), "(measured on MI300X, {date})",
+         AB_KEYS),
     Slot("deck_ab_wrong", DECK, "| Drafts with a wrong amount | ", "**TBD** | **TBD** (target 0)", " |",
-         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw drafts with a wrong amount"),
-          _k("ab_raw_docs", COUNT, "A/B raw drafts"),
-          _k("ab_bound_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound drafts with a wrong amount"),
-          _k("ab_bound_docs", COUNT, "A/B Wapsi-bound drafts")),
-         "**{k0} of {k1}** | **{k2} of {k3}** (target 0)"),
+         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw STRs with a wrong amount"),
+          _k("ab_raw_docs", COUNT, "A/B raw STRs"),
+          _k("ab_bound_str_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound STRs with a wrong amount"),
+          _k("ab_bound_str_docs", COUNT, "A/B Wapsi-bound STRs"),
+          _k("ab_bound_docs_with_wrong_amount", COUNT, "A/B all Wapsi-bound drafts with a wrong amount"),
+          _k("ab_bound_docs", COUNT, "A/B all Wapsi-bound drafts")),
+         "**{k0} of {k1}** STRs | **{k2} of {k3}** STRs (target 0; all {k5} bound drafts: {k4})"),
     Slot("deck_ab_accounts", DECK, "| Invented account numbers | ", "**TBD** | **TBD**", " |",
          (_k("ab_raw_invented_accounts", COUNT, "A/B raw invented account numbers"),
-          _k("ab_bound_invented_accounts", COUNT, "A/B Wapsi-bound invented account numbers")),
+          _k("ab_bound_str_invented_accounts", COUNT, "A/B Wapsi-bound STRs: invented account numbers")),
          "**{k0}** | **{k1}**"),
     Slot("deck_ab_citations", DECK, "| Unknown or repealed citations | ", "**TBD** | **TBD**", " |",
          (_k("ab_raw_unknown_citations", COUNT, "A/B raw unknown or repealed citations"),
-          _k("ab_bound_unknown_citations", COUNT, "A/B Wapsi-bound unknown or repealed citations")),
+          _k("ab_bound_str_unknown_citations", COUNT, "A/B Wapsi-bound STRs: unknown or repealed citations")),
          "**{k0}** | **{k1}**"),
     Slot("deck_ab_pass", DECK, "| Drafts passing the verifier | ", "**TBD** | **TBD**", " |",
-         (_k("ab_raw_verifier_pass_rate", RATE, "A/B raw drafts passing the audit"),
-          _k("ab_bound_verifier_pass_rate", RATE, "A/B Wapsi-bound drafts passing the verifier")),
+         (_k("ab_raw_verifier_pass_rate", RATE, "A/B raw STRs passing the audit"),
+          _k("ab_bound_str_verifier_pass_rate", RATE, "A/B Wapsi-bound STRs passing the verifier")),
          "**{k0}** | **{k1}**"),
     Slot("deck_gnn_hard", DECK, "The MI300X-trained GNN replaces that column: ", "**TBD**", ".",
          (_k("gnn_hard_disposition", RATE, "MI300X GNN dispositions on the hard world"),
@@ -160,7 +198,7 @@ SLOTS: tuple[Slot, ...] = (
          "**dispositions {k0}, mule ROC-AUC {k1}, innocent-holder recall {k2}**"),
     Slot("deck_unit_cost", DECK, "÷ cases per hour\n  (", "**TBD**", " from slide 7)",
          (_k("e2e_best_usd_per_case", USD, "cost per case at $1.99 per GPU-hour (best concurrency)"),), "**{k0}**"),
-    Slot("video_date", VIDEO, "Measured on this MI300X on ", "[date]", ":", (), "{date}"),
+    Slot("video_date", VIDEO, "Measured on this MI300X on ", "[date]", ":", (), "{date}", VIDEO_BENCH_KEYS),
     Slot("video_tps", VIDEO, "", "[TBD]", " tokens per second at concurrency 16",
          (_k("llm_tok_s_c16", TOK, "drafting model output tokens/s at concurrency 16"),), "{k0}"),
     Slot("video_ttft", VIDEO, "time to first token ", "[TBD]", " at p95",
@@ -175,11 +213,11 @@ SLOTS: tuple[Slot, ...] = (
          (_k("lora_base_prose_verifier_pass_rate", RATE, "verifier pass rate, base model"),
           _k("lora_tuned_prose_verifier_pass_rate", RATE, "verifier pass rate, tuned model")), "{k0} to {k1}"),
     Slot("video_ab_raw", VIDEO, "Raw Gemma writing free-form reports: ", "[TBD]", " drafts with a wrong amount",
-         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw drafts with a wrong amount"),
-          _k("ab_raw_docs", COUNT, "A/B raw drafts")), "{k0} of {k1}"),
+         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw STRs with a wrong amount"),
+          _k("ab_raw_docs", COUNT, "A/B raw STRs")), "{k0} of {k1}"),
     Slot("video_ab_bound", VIDEO, "Gemma inside Wapsi's slots and verifier: ", "[TBD]", ".",
-         (_k("ab_bound_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound drafts with a wrong amount"),
-          _k("ab_bound_docs", COUNT, "A/B Wapsi-bound drafts")), "{k0} of {k1}"),
+         (_k("ab_bound_str_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound STRs with a wrong amount"),
+          _k("ab_bound_str_docs", COUNT, "A/B Wapsi-bound STRs")), "{k0} of {k1}"),
 )
 
 
@@ -207,51 +245,130 @@ def render(slot: Slot, head: dict[str, Any], date: str) -> tuple[str | None, lis
 
 
 @dataclass
+class NumRow:
+    """One generated ``NUMBERS.md`` row: ``| amd_<key>[_<date>] | pitched | value | source | `json:headline.<key>` |``."""
+
+    rid: str
+    pitched: str
+    value: str
+    source: str
+    key: str
+
+    def line(self) -> str:
+        return f"| {self.rid} | {self.pitched} | {self.value} | {self.source} | `json:headline.{self.key}` |"
+
+
+def _date_of(source: str) -> str:
+    """The UTC date folder of an evidence bundle path (``.../2026-10-12/evidence.json`` -> ``2026-10-12``)."""
+    found = re.findall(r"\d{4}-\d{2}-\d{2}", source)
+    return found[-1] if found else "undated"
+
+
+def existing_rows(numbers_text: str) -> list[NumRow]:
+    """The rows of the generated section already in NUMBERS.md (empty when there is none)."""
+    start = numbers_text.find(BEGIN.split(" (")[0])
+    end = numbers_text.find(END)
+    if start < 0 or end < start:
+        return []
+    rows = []
+    for line in numbers_text[start:end].splitlines():
+        if not line.startswith("| amd_"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        locator = cells[4].strip("`") if len(cells) == 5 else ""
+        if locator.startswith("json:headline."):
+            rows.append(NumRow(cells[0], cells[1], cells[2], cells[3], locator.removeprefix("json:headline.")))
+    return rows
+
+
+def merge_rows(old: list[NumRow], new: dict[str, tuple[str, set[str], str]], source: str,
+               still_shown: set[str]) -> list[NumRow]:
+    """The new bundle's rows, plus every earlier row it does not replace.
+
+    An earlier row is replaced when the new bundle measured its key, unless that key is also in a slot the new
+    bundle could not refill (``still_shown``): the older value is then still on the page, so its row stays, renamed
+    ``amd_<key>_<date>`` to keep ids unique."""
+    out: dict[str, NumRow] = {}
+    for key in sorted(new):
+        what, shown, value = new[key]
+        pitched = f"{'; '.join(sorted(shown))} ({what})".replace("|", "/")
+        out[f"amd_{key}"] = NumRow(f"amd_{key}", pitched, value, source, key)
+    for row in old:
+        if row.key in new:
+            if row.source == source or row.key not in still_shown:
+                continue
+            row = replace(row, rid=f"amd_{row.key}_{_date_of(row.source).replace('-', '')}")
+        out.setdefault(row.rid, row)
+    return sorted(out.values(), key=lambda r: (r.key, r.rid))
+
+
+@dataclass
 class Plan:
     texts: dict[str, str]  # file -> new text
-    rows: dict[str, tuple[str, set[str], str]]  # key -> (what, formatted texts, value)
+    rows: dict[str, tuple[str, set[str], str]]  # key -> (what, formatted texts, value) from this bundle
     filled: list[str]
     missing_values: list[str]
     missing_anchors: list[str]
+    still_shown: set[str] = field(default_factory=set)  # keys of filled slots this bundle did not refill
+    merged: list[NumRow] = field(default_factory=list)  # the NUMBERS.md rows after the merge
 
 
-def plan(head: dict[str, Any], date: str, pitch_dir: Path) -> Plan:
+def _put(text: str, slot: Slot, value: str) -> str:
+    m = next(_anchor(slot).finditer(text))
+    return text[: m.start("v")] + f"<!-- slot:{slot.sid} -->{value}<!-- /slot -->" + text[m.end("v"):]
+
+
+def plan(head: dict[str, Any], date: str, pitch_dir: Path, source: str = "", numbers_text: str = "") -> Plan:
     texts: dict[str, str] = {}
     rows: dict[str, tuple[str, set[str], str]] = {}
     filled, missing_values, missing_anchors = [], [], []
+    still_shown: set[str] = set()
+    date_only: list[Slot] = []
     for slot in SLOTS:
         path = pitch_dir / slot.file
         if slot.file not in texts:
             texts[slot.file] = path.read_text(encoding="utf-8") if path.exists() else ""
-        text = texts[slot.file]
-        matches = list(_anchor(slot).finditer(text))
+        matches = list(_anchor(slot).finditer(texts[slot.file]))
         if len(matches) != 1:
             missing_anchors.append(f"{slot.sid} ({slot.file}: {len(matches)} matches)")
+            still_shown |= {k for k, _, _ in slot.keys}  # state unknown: keep the rows that may back it
+            continue
+        if not slot.keys:
+            date_only.append(slot)  # filled after the merge: they name the dates of the values they introduce
             continue
         value, slot_rows = render(slot, head, date)
         if value is None:
             missing_values.append(slot.sid)
+            if matches[0].group("v") != slot.placeholder:
+                still_shown |= {k for k, _, _ in slot.keys}  # an earlier bundle's value stays on the page
             continue
-        m = matches[0]
-        new = f"<!-- slot:{slot.sid} -->{value}<!-- /slot -->"
-        texts[slot.file] = text[: m.start("v")] + new + text[m.end("v"):]
+        texts[slot.file] = _put(texts[slot.file], slot, value)
         filled.append(slot.sid)
         for key, shown, val, what in slot_rows:
             prev = rows.get(key)
             rows[key] = (what, (prev[1] if prev else set()) | {shown}, val)
-    return Plan(texts, rows, filled, missing_values, missing_anchors)
+    merged = merge_rows(existing_rows(numbers_text), rows, source, still_shown) if rows else []
+    current = {r.key: _date_of(r.source) for r in merged if r.rid == f"amd_{r.key}"}
+    for slot in date_only:
+        dates = sorted({current[k] for k in slot.date_keys if k in current})
+        if not dates:
+            missing_values.append(slot.sid)
+            continue
+        when = dates[0] if len(dates) == 1 else f"{dates[0]} to {dates[-1]}"
+        texts[slot.file] = _put(texts[slot.file], slot, slot.template.format(date=when))
+        filled.append(slot.sid)
+    return Plan(texts, rows, filled, missing_values, missing_anchors, still_shown, merged)
 
 
-def numbers_section(rows: dict[str, tuple[str, set[str], str]], source: str, date: str, gpu: str | None) -> str:
-    lines = [BEGIN, f"## AMD edition: measured on {gpu or 'MI300X'} (`{source}`)", "",
-             f"Written by `editions/amd/kickoff/fill_pitch.py --write` from the evidence bundle of the MI300X run on "
-             f"{date} (UTC). Each row re-reads `headline` in that `evidence.json`, which `collect_evidence.py` built "
-             "from the run's result files.", "",
+def numbers_section(rows: list[NumRow], gpu: str | None) -> str:
+    dates = sorted({_date_of(r.source) for r in rows})
+    lines = [BEGIN, f"## AMD edition: measured on {gpu or 'MI300X'}", "",
+             "Written by `editions/amd/kickoff/fill_pitch.py --write` from the evidence bundles of the MI300X runs on "
+             f"{', '.join(dates)} (UTC). Each row re-reads `headline` in the `evidence.json` named in its Source, which "
+             "`collect_evidence.py` built from that run's result files. A later bundle replaces only the rows of the "
+             "values it measured.", "",
              "| ID | Pitched as | Value | Source | Locator |", "|---|---|---|---|---|"]
-    for key in sorted(rows):
-        what, shown, value = rows[key]
-        pitched = f"{'; '.join(sorted(shown))} ({what})".replace("|", "/")
-        lines.append(f"| amd_{key} | {pitched} | {value} | {source} | `json:headline.{key}` |")
+    lines += [r.line() for r in rows]
     lines.append(END)
     return "\n".join(lines)
 
@@ -304,16 +421,16 @@ def main(argv: list[str] | None = None) -> int:
 
     head = ev.get("headline") or {}
     date = str(head.get("measured_date") or ev.get("date"))
-    p = plan(head, date, pitch_dir)
     try:
         source = ev_path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         source = ev_path.resolve().as_posix()
     numbers_path = pitch_dir / "NUMBERS.md"
     old_numbers = numbers_path.read_text(encoding="utf-8") if numbers_path.exists() else ""
+    p = plan(head, date, pitch_dir, source, old_numbers)
     changes = dict(p.texts)
-    if p.rows:
-        changes["NUMBERS.md"] = with_numbers(old_numbers, numbers_section(p.rows, source, date, head.get("gpu_name")))
+    if p.merged:
+        changes["NUMBERS.md"] = with_numbers(old_numbers, numbers_section(p.merged, head.get("gpu_name")))
 
     changed = 0
     for rel, new in changes.items():
@@ -327,10 +444,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             sys.stdout.writelines(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
                                                        f"a/pitch/{rel}", f"b/pitch/{rel}"))
-    print(f"\nfill_pitch: {len(p.filled)} slot(s) filled from {source}; {len(p.rows)} NUMBERS.md row(s); "
+    kept = sum(1 for r in p.merged if r.source != source)
+    print(f"\nfill_pitch: {len(p.filled)} slot(s) filled from {source}; {len(p.rows)} NUMBERS.md row(s) from it, "
+          f"{kept} kept from earlier bundles; "
           f"{changed} file(s) {'written' if args.write else 'would change (dry run; --write applies)'}")
     if p.missing_values:
-        print(f"  not measured in this bundle (left as TBD): {', '.join(p.missing_values)}")
+        print(f"  not measured in this bundle (left as they are: TBD or an earlier bundle's value): "
+              f"{', '.join(p.missing_values)}")
+    for w in ev.get("warnings") or []:
+        print(f"  evidence warning: {w}")
     if p.missing_anchors:
         print(f"  anchor text not found (pitch edited?): {', '.join(p.missing_anchors)}")
     if args.write and changed:

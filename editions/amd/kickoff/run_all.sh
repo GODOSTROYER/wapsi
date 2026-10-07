@@ -28,7 +28,10 @@
 #          --evidence-root DIR / --work DIR             (defaults: editions/amd/evidence, $SCRATCH/wapsi-work)
 # Environment: SCRATCH (/mnt/scratch), HF_TOKEN (never printed), WAPSI_INR_PER_USD (the day's rate), WAPSI_GPU_HOUR_USD
 #   (1.99), WAPSI_BUDGET_USD (100), WAPSI_SPENT_USD (earlier droplets), WAPSI_DROPLET_STARTED_AT (ISO UTC),
-#   AMLWORLD_CSV, ROCM_PYTORCH_IMAGE, WAPSI_BASE_MODEL, WAPSI_VERIFIER_MODEL_ID, WAPSI_LORA_CONFIG, WAPSI_E2E_WORLD.
+#   AMLWORLD_CSV, ROCM_PYTORCH_IMAGE, WAPSI_BASE_MODEL, WAPSI_VERIFIER_MODEL_ID, WAPSI_LORA_CONFIG, WAPSI_E2E_WORLD,
+#   VLLM_API_KEY (optional bearer token between the clients and vLLM; never printed).
+# Windows (the rehearsal only): run it from Git Bash, `bash editions/amd/kickoff/run_all.sh --rehearsal`; in
+#   PowerShell, `bash` may be WSL's, which sees neither this checkout's uv venv nor Windows paths.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,7 +77,7 @@ rehearsal_title() {  # what each stage does in the CPU rehearsal (same code path
 }
 
 die() { echo "run_all.sh: $*" >&2; exit 2; }
-usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 MODE="gpu"; DRY_RUN=0; FORCE=0; KEEP_GOING=0; IGNORE_BUDGET=0; SKIP_PREFLIGHT=0; NO_BASELINE=0; ALLOW_AFTER=0
 NEW=0; ONLY=""; FROM=""; DATE="${WAPSI_EVIDENCE_DATE:-}"; LIST=0
@@ -222,6 +225,23 @@ run_soft() {  # like run, but a failure is reported and ignored
 }
 run_sh() { printf '  $ %s\n' "$1"; [[ "${DRY_RUN}" == "1" ]] && return 0; bash -c "$1"; }
 note() { if [[ "${DRY_RUN}" == "1" ]]; then echo "  # note $1=$2"; else echo "$1=$2" >> "${NOTES}"; fi; }
+MEASURE_FAILS=0
+MEASURE_FAILED=""
+measure() {  # measure NAME CMD...: one measurement (bench, A/B). GPU mode: a non-zero exit (a failed request or
+  # case; the result file is still written) is recorded in the stage notes (measure_failures, measure_failed) and the
+  # stage goes on, so one error cannot stop an unattended overnight run. The CPU rehearsal stays strict.
+  local name="$1"; shift
+  if [[ "${MODE}" != "gpu" ]]; then run "$@"; return; fi
+  show "$@"; [[ "${DRY_RUN}" == "1" ]] && return 0
+  local rc=0; "$@" || rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    MEASURE_FAILS=$((MEASURE_FAILS + 1)); MEASURE_FAILED="${MEASURE_FAILED:+${MEASURE_FAILED},}${name}"
+    echo "  (measurement ${name} exited ${rc}: recorded in the stage notes; the stage goes on)"
+    note measure_failures "${MEASURE_FAILS}"
+    note measure_failed "${MEASURE_FAILED}"
+  fi
+  return 0
+}
 say() { echo "  # $*"; }
 in_rocm() { run "${ROCM_RUN[@]}" "$@"; }
 wait_http() { run slog wait-http "$1" --timeout "${2:-1800}" --interval "${3:-10}"; }
@@ -273,6 +293,21 @@ synth_world() {  # synth_world NAME SIZE SEED
   else run py -m wapsi.synth --size "$2" --seed "$3" --name "$1" --out "data/generated/$1" --golden-dir ""; fi
 }
 hf_download() { run env "HF_HOME=${HF_CACHE_DIR}" uvx --from "huggingface_hub==${HF_HUB_VERSION}" hf download "$1"; }
+DOCS_INDEX="data/docs/index/chunks.jsonl"
+docs_index() {  # the legal-corpus index (docs search for e2e_bench and the app). data/docs/raw is not in git, so a
+  # fresh droplet fetches the public sources first; a failure is non-fatal (e2e_bench then runs without docs search,
+  # recorded as docs_index=missing). Faster and independent of the sites: scp -r data/docs/raw from a laptop first.
+  if [[ "${DRY_RUN}" == "0" && -f "${DOCS_INDEX}" ]]; then say "docs index exists (${DOCS_INDEX})"; note docs_index present; return 0; fi
+  if [[ "${DRY_RUN}" == "1" || ! -f data/docs/raw/_fetch.json ]]; then run_soft py -m wapsi.search.fetch; fi
+  run_soft py -m wapsi.search.build
+  run_soft git checkout -- data/docs/MANIFEST.md  # fetch/build refresh the committed manifest: keep the tree clean
+  if [[ "${DRY_RUN}" == "1" || -f "${DOCS_INDEX}" ]]; then note docs_index built
+  else
+    note docs_index "missing (e2e_bench runs without docs search)"
+    echo "  WARNING: no docs index: e2e_bench runs without docs search. Copy the corpus from a laptop:"
+    echo "           (laptop) scp -r data/docs/raw root@DROPLET_IP:${ROOT}/data/docs/   then (droplet) uv run python -m wapsi.search.build"
+  fi
+}
 inr_args() { [[ -n "${INR_PER_USD}" ]] && printf '%s\n' --inr-per-usd "${INR_PER_USD}"; return 0; }
 
 # ------------------------------------------------------------------ GPU stages (MI300X droplet)
@@ -296,7 +331,7 @@ gpu_env() {
   env_set HF_CACHE_DIR "${HF_CACHE_DIR}"
   env_set WAPSI_MODELS_DIR "${WAPSI_MODELS_DIR}"
   run mkdir -p "${WORK}/train-image" "${HF_CACHE_DIR}" "${WAPSI_MODELS_DIR}" "${EVID}/bench"
-  run uv sync --frozen --no-dev
+  run uv sync --frozen --no-dev --extra docs  # docs: pypdf, to build the legal-corpus index below
   synth_world demo demo 7
   synth_world full full 7
   synth_world hard hard 7
@@ -304,12 +339,14 @@ gpu_env() {
   for s in 101 202 303 404 505; do synth_world "heldout-${s}" demo "${s}"; done
   for s in $(seq 1001 1010) 2001 2002; do synth_world "gnn-${s}" demo "${s}"; done
   run_sh "seq 3001 $((3000 + GNN_EXTRA_WORLDS)) | xargs -P 32 -I{} sh -c 'test -f data/generated/gnn-{}/transactions.parquet || .venv/bin/python -m wapsi.synth --size demo --seed {} --name gnn-{} --out data/generated/gnn-{} --golden-dir \"\" >/dev/null'"
-  run_soft py -m wapsi.search.build
+  docs_index  # before the compose build: the app image copies data/docs
   run bash "${AMD}/serving/pull_and_pin.sh" "ROCM_PYTORCH_IMAGE=${ROCM_PYTORCH_IMAGE}"
   run_sh "grep -E '^[A-Z_]+_IMAGE(_TAG)?=' '${ENV_FILE}' > '${EVID}/images.txt'"
   run_sh "uv export --frozen --no-dev --extra amd --extra ml --extra amd-app --no-hashes --no-emit-project --no-header --no-annotate | grep -Ev '^(torch|triton|pytorch-triton|nvidia-|cuda-)' > '${WORK}/train-image/requirements-rocm.txt'"
   run docker build -f "${KICK}/Dockerfile.train" --build-arg "BASE_IMAGE=${ROCM_PYTORCH_IMAGE}" -t "${TRAIN_IMAGE}" "${WORK}/train-image"
-  in_rocm python3 -c "import torch; assert torch.cuda.is_available(), 'no GPU visible in the container'; print('torch', torch.__version__, 'hip', torch.version.hip, torch.cuda.get_device_name(0))"
+  # day-1 check of the uv.lock library set (resolved against a newer torch) on the image's ROCm torch: imports, a
+  # LoRA forward/backward step and the versions, into the evidence. A failure stops here, not hours later in lora-train.
+  in_rocm python3 -m editions.amd.kickoff.train_image_check --require-gpu --out "${EVID}/train_image_check.json"
   run "${COMPOSE[@]}" --profile gpu --profile gnn build
   run install -d -o 10001 -g 10001 "${AMD}/bench/results"
 }
@@ -350,8 +387,8 @@ gpu_lora_data() {
     "${COMPOSE[@]}" up -d llm
   wait_http "${LLM_URL}/models" 2700
   run_soft py -m editions.amd.serving.smoke_test --base-url "${LLM_URL}"
-  run py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --concurrency 1 4 16 64 --name llm_bench_base \
-    --out "${EVID}/bench"
+  measure llm_bench_base py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --concurrency 1 4 16 64 \
+    --name llm_bench_base --out "${EVID}/bench"
   run py -m editions.amd.lora.dataset --teacher "openai:${LLM_URL}|${SERVED_NAME}|VLLM_API_KEY" --samples 2 \
     --sample-temperature 0.7 --workers 32 --out "${WORK}/lora-data" --summary-out "${EVID}/lora_dataset.json"
   run "${COMPOSE[@]}" stop llm
@@ -391,9 +428,13 @@ gpu_lora_eval() {
   run cp "${WORK}/lora-eval/eval.md" "${EVID}/lora_eval.md"
   run docker rm -f wapsi-eval-base wapsi-eval-tuned
 }
+gpu_lora_eval_on_failure() {  # the runner calls <stage fn>_on_failure after a failed stage: free port 8000 for serve
+  run_soft docker rm -f wapsi-eval-base wapsi-eval-tuned
+}
 
 gpu_serve() {
   local profile="${MERGED_PROFILE}" model="/models/${MERGED_NAME}"
+  run_soft docker rm -f wapsi-eval-base wapsi-eval-tuned  # a failed or interrupted lora-eval may still hold port 8000
   if [[ "${DRY_RUN}" == "0" && ! -f "${WAPSI_MODELS_DIR}/${MERGED_NAME}/config.json" ]]; then
     echo "  WARNING: no merged checkpoint at ${WAPSI_MODELS_DIR}/${MERGED_NAME}: serving the BASE model (say so in results)"
     profile="${BASE_PROFILE}"; model="${BASE_MODEL}"
@@ -421,18 +462,21 @@ gpu_bench() {
   local out="${EVID}/bench" c
   wait_http "${LLM_URL}/models" 60 5  # fails fast when nothing is serving: run --stage serve first
   run mkdir -p "${out}"
-  run_sh "amd-smi metric --json > '${out}/amd_smi_metric_raw.json'; amd-smi process --json > '${out}/amd_smi_process_raw.json'"
+  run_sh "amd-smi metric --json > '${out}/amd_smi_metric_raw.json' || true; amd-smi process --json > '${out}/amd_smi_process_raw.json' || true"
   bg_start telemetry python3 "${AMD}/bench/gpu_telemetry.py" --interval 2 --out "${out}"
-  run py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --concurrency 1 4 16 64 --input-len 1024 \
-    --output-len 256 --out "${out}"
-  run py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --prompts wapsi --concurrency 1 8 32 \
-    --name llm_bench_wapsi_prompts --out "${out}"
-  run py -m editions.amd.bench.llm_bench --base-url "${VERIFIER_URL}" --concurrency 1 4 16 --name llm_bench_verifier \
-    --out "${out}"
+  # every measurement below is `measure`: a failed request or case is recorded (stage notes, the result file) and
+  # the rest still runs, so the telemetry is always stopped and the report always written
+  measure llm_bench py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --concurrency 1 4 16 64 \
+    --input-len 1024 --output-len 256 --out "${out}"
+  measure llm_bench_wapsi_prompts py -m editions.amd.bench.llm_bench --base-url "${LLM_URL}" --prompts wapsi \
+    --concurrency 1 8 32 --name llm_bench_wapsi_prompts --out "${out}"
+  measure llm_bench_verifier py -m editions.amd.bench.llm_bench --base-url "${VERIFIER_URL}" --concurrency 1 4 16 \
+    --name llm_bench_verifier --out "${out}"
   for c in 1 8 16; do
-    run py -m editions.amd.bench.e2e_bench --world "${E2E_WORLD}" --concurrency "${c}" --llm-url "${LLM_URL}" \
-      --verifier-url "${VERIFIER_URL}" --gnn-url "${GNN_URL}" --gpu-hour-usd "${GPU_HOUR_USD}" $(inr_args) \
-      --name "e2e_c${c}" --out "${out}"
+    # shellcheck disable=SC2046
+    measure "e2e_c${c}" py -m editions.amd.bench.e2e_bench --world "${E2E_WORLD}" --concurrency "${c}" \
+      --llm-url "${LLM_URL}" --verifier-url "${VERIFIER_URL}" --gnn-url "${GNN_URL}" --gpu-hour-usd "${GPU_HOUR_USD}" \
+      $(inr_args) --name "e2e_c${c}" --out "${out}"
   done
   bg_stop telemetry INT
   run py -m editions.amd.bench.report --results-dir "${out}" --out "${EVID}/AMD_RESULTS.md"
@@ -441,16 +485,30 @@ gpu_bench() {
 
 gpu_ab() {
   wait_http "${LLM_URL}/models" 60 5
-  run py -m editions.amd.kickoff.ab_hallucination --llm-url "${LLM_URL}" --llm-model "${SERVED_NAME}" \
-    --world "${E2E_WORLD}" --limit 20 --workers 8 --label "MI300X run (AMD Developer Cloud), ${DATE}" \
-    --out "${EVID}/ab_hallucination.json"
+  # a case error is recorded in the report (both arms are then compared on the cases both completed); the A/B exits
+  # non-zero only when no case could be compared, and even then the stage records it and goes on to evidence
+  measure ab_hallucination py -m editions.amd.kickoff.ab_hallucination --llm-url "${LLM_URL}" \
+    --llm-model "${SERVED_NAME}" --world "${E2E_WORLD}" --limit 20 --workers 8 \
+    --label "MI300X run (AMD Developer Cloud), ${DATE}" --out "${EVID}/ab_hallucination.json"
+}
+
+ensure_static() {  # the GPU identity for this evidence folder: a later-week --stage bench,ab,evidence run skips env
+  if [[ "${DRY_RUN}" == "1" ]] || ! grep -qs '"available": true' "${EVID}/amd_smi_static.json"; then
+    run slog static "${EVID}/amd_smi_static.json"
+  else
+    say "amd-smi static already captured (${EVID}/amd_smi_static.json)"
+  fi
 }
 
 gpu_evidence() {
+  ensure_static
+  note git_commit "$(git rev-parse HEAD)"
+  note amd_baseline "$(git rev-parse -q --verify 'refs/tags/amd-baseline^{commit}' || echo missing)"
   run py "${KICK}/collect_evidence.py" --evidence-dir "${EVID}" --mode gpu
   run_soft py "${KICK}/fill_pitch.py" --evidence "${EVID}/evidence.json"
-  say "review the diff above, then: py ${KICK}/fill_pitch.py --evidence ${EVID}/evidence.json --write"
-  say "commit: git add ${EVID} ${AMD}/AMD_RESULTS.md ${AMD}/gnn/results && git commit -m 'AMD: MI300X run ${DATE}'"
+  say "review the diff above, then: uv run python ${KICK}/fill_pitch.py --evidence ${EVID}/evidence.json --write"
+  say "then: uv run python pitch/check_numbers.py (must print PASS)"
+  say "commit: git add ${EVID} ${AMD}/AMD_RESULTS.md ${AMD}/gnn/results pitch && git commit -m 'AMD: MI300X run ${DATE}'"
 }
 
 # ------------------------------------------------------------------ CPU rehearsal stages (any laptop)
@@ -473,6 +531,8 @@ cpu_env() {
   note git_commit "$(git rev-parse HEAD)"
   run mkdir -p "${WORK}" "${EVID}/bench"
   run py -m editions.amd.kickoff.rehearsal worlds --out "${RW}"
+  # the day-1 training-image check, on this machine's torch (imports, torch ranges, one tiny LoRA step on CPU)
+  run py -m editions.amd.kickoff.train_image_check --device cpu --out "${EVID}/train_image_check.json"
 }
 
 cpu_models() {
@@ -587,6 +647,10 @@ cpu_evidence() {
 }
 
 # ------------------------------------------------------------------ the run
+# Sourced (tests: `source run_all.sh --rehearsal --dry-run`), stop here: the helpers and stage functions are defined
+# and nothing has run.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then return 0; fi
+
 selected() {
   local name="$1"
   if [[ -n "${ONLY}" ]]; then [[ ",${ONLY}," == *",${name},"* ]]; return; fi
@@ -674,6 +738,10 @@ for name in "${STAGES[@]}"; do
     touch "${marker}"; RESULTS+=("${num} ${name}: ok (${started} .. ${ended})")
     [[ "${name}" == "evidence" ]] && rm -f "${EVID_PARENT}/.active"
   else
+    if declare -F "${fn}_on_failure" >/dev/null; then  # e.g. lora-eval: remove its vLLM containers (port 8000)
+      echo "== ${name} failed: cleaning up (${fn}_on_failure)" | tee -a "${log}"
+      ( "${fn}_on_failure" ) 2>&1 | tee -a "${log}" || true
+    fi
     rm -f "${marker}"; RESULTS+=("${num} ${name}: FAILED (exit ${rc}; log ${log})"); FAILED=1
     if [[ "${KEEP_GOING}" == "0" ]]; then
       echo "stage ${name} failed (exit ${rc}). Fix it, then resume: ${KICK}/run_all.sh$([[ "${MODE}" == "rehearsal" ]] && echo " --rehearsal") (done stages are skipped)"

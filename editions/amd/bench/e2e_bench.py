@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     from wapsi.adapters.memory import RecordingActionSink
     from wapsi.verify.injection import RulesGuard
 
-    api_key = os.environ.get("WAPSI_LLM_API_KEY") or os.environ.get("VLLM_API_KEY")
+    api_key = os.environ.get("WAPSI_LLM_API_KEY") or os.environ.get("VLLM_API_KEY") or None
     if args.fake_llm:
         from wapsi.adapters.llm_fake import FakeLLM
 
@@ -341,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
-        inner = OpenAICompatLLM(base_url=args.llm_url, model=args.llm_model, timeout=args.llm_timeout,
+        # the bearer token reaches every request (vLLM started with VLLM_API_KEY answers 401 without it)
+        inner = OpenAICompatLLM(base_url=args.llm_url, model=args.llm_model, api_key=api_key, timeout=args.llm_timeout,
                                 name=f"vllm-rocm:{args.llm_model}")
         card = model_card(args.llm_url, api_key)
         info = {"llm": inner.name, "base_url": args.llm_url, "root": card.get("root"),
@@ -354,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
         guard = LLMJudgeGuard(OpenAICompatLLM(base_url=args.verifier_url, model=args.verifier_model,
+                                              api_key=os.environ.get("WAPSI_VERIFIER_API_KEY") or api_key,
                                               timeout=60, max_retries=1, name=f"vllm-rocm:{args.verifier_model}"))
     scorer = None
     if args.gnn_url:

@@ -9,7 +9,7 @@
 <date>/logs/              one log per stage, with timestamps
 <date>/amd_smi/           amd-smi snapshots before and after each stage; amd_smi_static.json at the top
 <date>/bench/             llm_bench*.json, e2e_c*.json, telemetry_summary.json, AMD_RESULTS.md inputs
-<date>/gnn_*.json, lora_*.json, ab_hallucination.json, preflight.json
+<date>/gnn_*.json, lora_*.json, ab_hallucination.json, preflight.json, train_image_check.json (env: library versions)
 ```
 
 Nothing here before kickoff (12 Oct 15:00 UTC) is a GPU result, and nothing from before kickoff may be added.

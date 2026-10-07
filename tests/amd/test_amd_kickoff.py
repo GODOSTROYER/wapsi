@@ -38,9 +38,23 @@ def _bash_env(**extra: str) -> dict[str, str]:
     return env
 
 
+def _bash(bash: str, *args: str, env: dict[str, str] | None = None, timeout: float = 120,
+          attempts: int = 1) -> subprocess.CompletedProcess:
+    """Run Git Bash / bash with stdin closed. An inherited stdin pipe can block an MSYS process at start-up while
+    another thread of the test process holds a read on it (seen as a stall of the full suite on Windows), so stdin
+    is always /dev/null; ``attempts`` > 1 retries a start-up that timed out under load."""
+    for attempt in range(attempts):
+        try:
+            return subprocess.run([bash, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=env, timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            if attempt == attempts - 1:
+                raise
+    raise AssertionError("unreachable")
+
+
 def _run(bash: str, *args: str, env: dict[str, str] | None = None, timeout: float = 120) -> subprocess.CompletedProcess:
-    return subprocess.run([bash, str(KICK / "run_all.sh"), *args], cwd=ROOT, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", env=env or _bash_env(), timeout=timeout)
+    return _bash(bash, str(KICK / "run_all.sh"), *args, env=env or _bash_env(), timeout=timeout)
 
 
 # --------------------------------------------------------------------------- shell scripts
@@ -48,8 +62,10 @@ def _run(bash: str, *args: str, env: dict[str, str] | None = None, timeout: floa
 
 @pytest.mark.parametrize("script", ["run_all.sh", "preflight.sh"])
 def test_shell_scripts_parse(bash, script):
-    res = subprocess.run([bash, "-n", str(KICK / script)], capture_output=True, text=True)
-    assert res.returncode == 0, res.stderr
+    # `bash -n` reads nothing but the script; the full-suite stall here was a Git Bash start-up blocked on the
+    # inherited stdin (passes alone). stdin is closed, the run is bounded, and a timed-out start-up is retried once.
+    res = _bash(bash, "-n", str(KICK / script), timeout=60, attempts=2)
+    assert res.returncode == 0, (res.returncode, res.stderr)
 
 
 def test_list_and_argument_errors(bash):
@@ -79,6 +95,10 @@ def test_gpu_dry_run_plan_is_deterministic_and_complete(bash):
         "preflight.sh --json",
         "stagelog.py static",
         "pull_and_pin.sh",
+        "uv sync --frozen --no-dev --extra docs",
+        "wapsi.search.fetch",
+        "wapsi.search.build",
+        "train_image_check --require-gpu",
         "hf download google/gemma-4-31B-it",
         "hf download google/gemma-4-E4B-it",
         "editions.amd.gnn.train",
@@ -116,7 +136,8 @@ def test_rehearsal_dry_run_is_deterministic_and_gpu_free(bash):
     for forbidden in ("docker ", "hf download", "--device cuda", "amd-smi metric", "vllm"):
         assert forbidden not in commands, forbidden
     for needle in ("editions.amd.kickoff.rehearsal worlds", "--config tiny-cpu", "editions.amd.lora.mock_endpoint",
-                   "editions.amd.gnn.service", "--mode rehearsal", "fill_pitch.py must refuse rehearsal evidence"):
+                   "editions.amd.gnn.service", "--mode rehearsal", "train_image_check --device cpu",
+                   "fill_pitch.py must refuse rehearsal evidence"):
         assert needle in out, needle
 
 
@@ -139,14 +160,16 @@ def test_gpu_run_refused_outside_the_event_window(bash, now, needle):
 
 def test_preflight_table_never_prints_the_token(bash, tmp_path):
     env = _bash_env()
-    res = subprocess.run([bash, str(KICK / "preflight.sh"), "--offline", "--json", (tmp_path / "pf.json").as_posix()],
-                         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-                         timeout=120)
+    env["SCRATCH"] = (tmp_path / "no-such-mount").as_posix()  # a missing SCRATCH is FAIL, never the root disk
+    res = _bash(bash, str(KICK / "preflight.sh"), "--offline", "--json", (tmp_path / "pf.json").as_posix(), env=env)
     assert "CHECK" in res.stdout and "HF_TOKEN" in res.stdout
     assert SECRET not in res.stdout and SECRET not in res.stderr
     assert "set in this shell (value not shown)" in res.stdout
     data = json.loads((tmp_path / "pf.json").read_text(encoding="utf-8"))
     assert data["mode"] == "gpu" and any(c["check"] == "HF_TOKEN" and c["status"] == "PASS" for c in data["checks"])
+    disk = next(c for c in data["checks"] if c["check"].startswith("disk (SCRATCH="))
+    assert disk["status"] == "FAIL" and "does not exist" in disk["detail"], disk
+    assert any(c["check"] == "docs corpus" for c in data["checks"])
     if not shutil.which("amd-smi") and not shutil.which("rocm-smi"):
         assert res.returncode == 1 and data["fails"] >= 1  # a laptop is not the droplet
     assert "network to huggingface.co" in res.stdout and "--offline" in res.stdout
@@ -251,10 +274,12 @@ def _levels(values: dict[int, float]) -> list[dict]:
             for c, v in values.items()]
 
 
-def make_evidence(root: Path, *, started: str = "2026-10-12T15:30:00Z", gpu: str = "AMD Instinct MI300X") -> Path:
-    evid = root / "2026-10-12"
-    _w(evid / "amd_smi_static.json", {"available": True, "gpus": [{"gpu": 0, "name": gpu, "sriov_vf": False}],
-                                      "rocm_version": "7.1.0"})
+def make_evidence(root: Path, *, started: str = "2026-10-12T15:30:00Z", gpu: str = "AMD Instinct MI300X",
+                  date: str = "2026-10-12", static: bool = True) -> Path:
+    evid = root / date
+    if static:
+        _w(evid / "amd_smi_static.json", {"available": True, "gpus": [{"gpu": 0, "name": gpu, "sriov_vf": False}],
+                                          "rocm_version": "7.1.0"})
     for i, name in enumerate(["env", "bench"], start=1):
         _w(evid / "stages" / f"0{i}-{name}.json",
            {"stage": name, "index": i, "status": "ok", "started_at": started, "ended_at": started, "duration_s": 1.0,
@@ -295,7 +320,9 @@ def make_evidence(root: Path, *, started: str = "2026-10-12T15:30:00Z", gpu: str
         "raw": {"docs": 20, "docs_with_wrong_amount": 7, "invented_accounts": 4, "unknown_citations": 9,
                 "verifier_pass_rate": 0.45, "clean_rate": 0.45},
         "bound": {"docs": 180, "docs_with_wrong_amount": 0, "invented_accounts": 0, "unknown_citations": 0,
-                  "verifier_pass_rate": 1.0, "clean_rate": 1.0, "prose_fallbacks": 6}}})
+                  "verifier_pass_rate": 1.0, "clean_rate": 1.0, "prose_fallbacks": 6,
+                  "str_only": {"docs": 20, "docs_with_wrong_amount": 0, "invented_accounts": 0, "unknown_citations": 0,
+                               "verifier_pass_rate": 1.0, "clean_rate": 1.0}}}})
     return evid
 
 
@@ -318,7 +345,10 @@ def test_collect_evidence_on_fixture(tmp_path, capsys):
     assert (h["gnn_hard_disposition"], h["gnn_hard_mule_auc"], h["gnn_hard_ih_recall"]) == (0.93, 0.985, 0.9)
     assert h["lora_base_prose_verifier_pass_rate"] == 0.8 and h["lora_tuned_fallback_rate"] == 0.02
     assert (h["ab_raw_docs_with_wrong_amount"], h["ab_bound_docs_with_wrong_amount"]) == (7, 0)
+    assert (h["ab_raw_docs"], h["ab_bound_str_docs"], h["ab_bound_docs"]) == (20, 20, 180)  # like with like
+    assert ev["sources"]["ab_bound_str_docs"] == "ab_hallucination.json: arms.bound.str_only.docs"
     assert ev["sources"]["llm_tok_s_c16"].startswith("bench/llm_bench.json")
+    assert ev["warnings"] == [] and ev["hardware"]["gpu_name_source"] == "amd_smi_static.json"
     md = (evid / "evidence.md").read_text(encoding="utf-8")
     assert md.startswith("# Wapsi on AMD Instinct MI300X: evidence, 2026-10-12")
     assert "AMD Instinct MI300X" in md and "| Drafts per GPU-hour (best concurrency) | 9,000 |" in md
@@ -376,9 +406,11 @@ def test_every_slot_anchor_is_in_the_real_pitch_and_still_honest():
         filled_any |= matches[0].group("v") != slot.placeholder
     if filled_any:  # after the event: the generated NUMBERS.md section must point at a valid GPU bundle
         assert fill_pitch.END in numbers
-        src = next(line.split("|")[4].strip() for line in numbers.splitlines() if line.startswith("| amd_"))
-        ev = json.loads((ROOT / src).read_text(encoding="utf-8"))
-        assert ev["mode"] == "gpu" and ev["gpu_results_valid"] is True and not ev.get("synthetic_fixture")
+        sources = {line.split("|")[4].strip() for line in numbers.splitlines() if line.startswith("| amd_")}
+        assert sources
+        for src in sources:  # every bundle a row re-reads (rows from several later-week runs are merged)
+            ev = json.loads((ROOT / src).read_text(encoding="utf-8"))
+            assert ev["mode"] == "gpu" and ev["gpu_results_valid"] is True and not ev.get("synthetic_fixture"), src
     else:
         assert fill_pitch.END not in numbers
 
@@ -398,7 +430,7 @@ def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
     assert "| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | <!-- slot:deck_llm_tps -->" \
            "**50 / 180 / 600 / 1,500**<!-- /slot --> |" in deck
     assert "**$0.0022 (₹0.19)**" in deck and "**102.5 GB / 28.3 GB / 2.0 GB**" in deck
-    assert "**7 of 20** | **0 of 180** (target 0)" in deck
+    assert "**7 of 20** STRs | **0 of 20** STRs (target 0; all 180 bound drafts: 0)" in deck  # like with like
     assert "## 7. Benchmarks on MI300X <!-- slot:deck_slide7_heading -->(measured 2026-10-12" in deck
     assert "Measured on this MI300X on <!-- slot:video_date -->2026-10-12<!-- /slot -->:" in video
     assert "<!-- slot:video_lora -->0.8 to 0.97<!-- /slot -->" in video
@@ -464,6 +496,13 @@ def test_inr_and_rate_formats():
     assert fill_pitch.INR.text(123456.499) == "₹1,23,456.50"
     assert fill_pitch.RATE.text(1.0) == "1.0" and fill_pitch.RATE.text(0.95) == "0.95"
     assert fill_pitch.USD.text(0.00221) == "$0.0022" and fill_pitch.USD.text(12.5) == "$12.50"
+    # below $1 two significant figures, never $0.0000; the Value column uses the same decimals
+    assert (fill_pitch.USD.text(0.0000123), fill_pitch.USD.value(0.0000123)) == ("$0.000012", "0.000012")
+    assert (fill_pitch.USD.text(0.000999), fill_pitch.USD.value(0.000999)) == ("$0.0010", "0.0010")
+    assert (fill_pitch.USD.text(0.5), fill_pitch.USD.value(0.5)) == ("$0.50", "0.50")
+    assert (fill_pitch.USD.text(0.0), fill_pitch.USD.value(12.5)) == ("$0.00", "12.50")
+    assert (fill_pitch.INR.text(0.00104), fill_pitch.INR.value(0.00104)) == ("\u20b90.0010", "0.0010")
+    assert fill_pitch.INR.value(0.1866) == "0.19"
 
 
 # --------------------------------------------------------------------------- nothing claims GPU numbers
@@ -539,6 +578,263 @@ def test_e2e_bench_honours_name(tmp_path):
                            "--name", "e2e_c3", "--out", str(tmp_path)]) == 0
     assert (tmp_path / "e2e_c3.json").exists() and (tmp_path / "e2e_c3.md").exists()
     assert not (tmp_path / "report.json").exists()  # a concurrency sweep no longer overwrites one file
+
+
+# --------------------------------------------------------------------------- review fixes: measurement failures, identity
+
+
+def _source(bash: str, snippet: str, *flags: str) -> subprocess.CompletedProcess:
+    """Source run_all.sh (it stops after defining its helpers and stages; nothing runs), then run ``snippet``."""
+    script = (KICK / "run_all.sh").as_posix()
+    return _bash(bash, "-c", f'source "{script}" {" ".join(flags)}; {snippet}', env=_bash_env())
+
+
+def test_measure_records_failures_in_gpu_mode_and_stays_strict_in_the_rehearsal(bash, tmp_path):
+    notes = (tmp_path / "bench.notes").as_posix()
+    gpu = _source(bash, f'NOTES="{notes}"; measure llm_bench false; measure llm_bench_verifier true; '
+                        f'measure e2e_c16 sh -c "exit 3"; echo "stage goes on: $?"', "--date", "2026-10-12")
+    assert gpu.returncode == 0, gpu.stdout + gpu.stderr
+    assert "stage goes on: 0" in gpu.stdout and "measurement llm_bench exited 1" in gpu.stdout
+    assert stagelog.read_notes(Path(notes)) == {"measure_failures": "2", "measure_failed": "llm_bench,e2e_c16"}
+    rehearsal = _source(bash, f'NOTES="{notes}"; measure llm_bench false; echo unreachable', "--rehearsal")
+    assert rehearsal.returncode != 0 and "unreachable" not in rehearsal.stdout  # the rehearsal stays strict
+
+
+def test_bench_and_ab_measure_every_request_and_free_the_eval_port(bash):
+    plan = _run(bash, "--dry-run", "--force", "--date", "2026-10-12", "--from", "lora-eval").stdout
+    serve = plan.split("] serve:")[1].split("== [")[0]
+    assert [line for line in serve.splitlines() if line.startswith("  $")][0].endswith(
+        "docker rm -f wapsi-eval-base wapsi-eval-tuned")  # a failed lora-eval may still hold port 8000
+    assert "amd_smi_metric_raw.json' || true" in plan
+    text = (KICK / "run_all.sh").read_text(encoding="utf-8")
+    for name in ("llm_bench_base", "llm_bench", "llm_bench_wapsi_prompts", "llm_bench_verifier", '"e2e_c${c}"',
+                 "ab_hallucination"):
+        assert f"measure {name} py -m" in text, name
+    cleanup = _source(bash, "DRY_RUN=1; gpu_lora_eval_on_failure", "--date", "2026-10-12")
+    assert "docker rm -f wapsi-eval-base wapsi-eval-tuned" in cleanup.stdout
+    assert '"${fn}_on_failure"' in text  # the runner calls a stage's cleanup after it fails
+
+
+def test_later_week_run_captures_gpu_identity_and_commit(bash):
+    out = _run(bash, "--dry-run", "--date", "2026-10-14", "--stage", "bench,ab,evidence").stdout
+    evidence = out.split("] evidence:")[1]
+    assert "stagelog.py static editions/amd/evidence/2026-10-14/amd_smi_static.json" in evidence
+    assert "# note git_commit=" in evidence and "# note amd_baseline=" in evidence
+    assert "then: uv run python editions/amd/kickoff/fill_pitch.py" in evidence and ": py " not in evidence
+
+
+def test_later_week_bundle_without_static_keeps_the_gpu_identity(tmp_path):
+    evid = make_evidence(tmp_path, date="2026-10-14", started="2026-10-14T09:00:00Z", static=False)
+    ev = collect_evidence.build(evid, "gpu")
+    assert ev["gpu_results_valid"] is True and ev["headline"]["gpu_name"] == "AMD Instinct MI300X"
+    assert ev["hardware"]["gpu_name_source"] == "bench/telemetry_summary.json (amd-smi)"
+    assert "GPU name from bench/telemetry_summary.json" in collect_evidence.to_markdown(ev)
+    (evid / "bench" / "telemetry_summary.json").unlink()
+    nothing = collect_evidence.build(evid, "gpu")
+    assert nothing["gpu_results_valid"] is False and any("MI300X" in r for r in nothing["invalid_reasons"])
+
+
+def _edit_json(path: Path, fn) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    fn(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_measurement_errors_are_warnings_never_headline_numbers(tmp_path):
+    evid = make_evidence(tmp_path)
+    _edit_json(evid / "bench" / "llm_bench.json",
+               lambda d: next(lv for lv in d["levels"] if lv["concurrency"] == 16).update(completed=6, errors=2))
+    _edit_json(evid / "bench" / "e2e_c16.json", lambda d: d["metrics"].update(cases_ok=36, cases_failed=3))
+    _edit_json(evid / "stages" / "02-bench.json",
+               lambda d: d.update(notes={"measure_failures": "2", "measure_failed": "llm_bench,e2e_c16"},
+                                  log="logs/09-bench.log"))
+    ev = collect_evidence.build(evid, "gpu")
+    h = ev["headline"]
+    assert h["llm_tok_s_c16"] is None and h["llm_ttft_p95_s_c16"] is None and h["llm_tok_s_c4"] == 180.0
+    assert h["llm_peak_tok_s"] == 1500.4  # the best level without errors
+    assert h["e2e_cases_per_hour_c16"] is None and h["e2e_best_concurrency"] == 8
+    text = " | ".join(ev["warnings"])
+    assert "concurrency 16: 2 of 8 requests failed" in text and "3 of 39 cases failed" in text
+    assert "stage bench: 2 measurement(s) exited non-zero (llm_bench,e2e_c16)" in text
+    assert "## Warnings" in collect_evidence.to_markdown(ev)
+    _edit_json(evid / "ab_hallucination.json", lambda d: (d.update(cases_compared=0),
+                                                          d["arms"]["raw"].update(case_errors=20)))
+    ev = collect_evidence.build(evid, "gpu")
+    assert ev["headline"]["ab_raw_docs"] is None and ev["headline"]["ab_bound_str_docs"] is None
+    assert any("no case was completed by both arms" in w for w in ev["warnings"])
+
+
+# --------------------------------------------------------------------------- fill_pitch: several bundles
+
+
+def _bundle(tmp_path: Path, name: str, *, date: str, started: str, drop: tuple[str, ...] = (),
+            set_values: dict | None = None) -> Path:
+    evid = make_evidence(tmp_path / name, date=date, started=started)
+    ev = collect_evidence.build(evid, "gpu")
+    ev["synthetic_fixture"] = True
+    for k in [k for k in ev["headline"] if drop and k.startswith(drop)]:
+        ev["headline"][k] = None
+    ev["headline"].update(set_values or {})
+    path = evid / "evidence.json"
+    path.write_text(json.dumps(ev), encoding="utf-8")
+    return path
+
+
+def test_fill_pitch_merges_a_later_bundle_instead_of_dropping_earlier_rows(tmp_path):
+    pitch = _pitch_copy(tmp_path)
+    common = ["--pitch-dir", str(pitch), "--allow-fixture", "--write", "--strict"]
+    first = _bundle(tmp_path, "a", date="2026-10-12", started="2026-10-12T15:30:00Z")
+    assert fill_pitch.main(["--evidence", str(first), *common]) == 0
+    # Wednesday: serving and e2e re-measured (new values); no GNN, LoRA, A/B or device-peak VRAM in this bundle
+    second = _bundle(tmp_path, "b", date="2026-10-14", started="2026-10-14T09:00:00Z",
+                     drop=("gnn_", "lora_", "ab_", "vram_peak"), set_values={"llm_tok_s_c1": 77.0, "vram_llm_gb": 99.9})
+    assert fill_pitch.main(["--evidence", str(second), *common]) == 0
+
+    deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
+    video = (pitch / "amd" / "VIDEO_SCRIPT.md").read_text(encoding="utf-8")
+    assert "**77 / 180 / 600 / 1,500**" in deck  # refilled from the later bundle
+    assert "**7 of 20** STRs" in deck and "AUC 0.97" in deck  # kept from the first bundle
+    assert "(measured 2026-10-12 to 2026-10-14, AMD Developer Cloud)" in deck
+    assert "(measured on MI300X, 2026-10-12)" in deck  # the A/B is still the first bundle's
+    assert "Measured on this MI300X on <!-- slot:video_date -->2026-10-14<!-- /slot -->:" in video
+    assert "**99.9 GB / 28.3 GB / 2.0 GB**" in deck  # slide 7 VRAM refilled
+    assert "**llm 102.5 GB, verifier 28.3 GB, gnn 2.0 GB; device peak 136.7 GB" in deck  # slide 5 kept
+
+    check = _checker()
+    rows = [r for r in check.parse_rows(pitch / "NUMBERS.md") if r.rid.startswith("amd_")]
+    errors, resolved = check.check_numbers(rows)
+    assert errors == []  # every row, old and new, re-reads its own bundle
+    by_id = {r.rid: r for r in rows}
+    assert by_id["amd_llm_tok_s_c1"].source.endswith("2026-10-14/evidence.json") and resolved["amd_llm_tok_s_c1"] == 77
+    assert by_id["amd_ab_raw_docs"].source.endswith("2026-10-12/evidence.json")
+    assert by_id["amd_lora_tuned_fallback_rate"].source.endswith("2026-10-12/evidence.json")
+    assert (by_id["amd_vram_llm_gb"].value, by_id["amd_vram_llm_gb_20261012"].value) == ("99.9", "102.5")
+    registered = {check._norm(t) for r in check.parse_rows(pitch / "NUMBERS.md") for t in check.TOKEN_RE.findall(r.pitched)}
+    for page in (deck, video):
+        for tok in check.TOKEN_RE.findall(page):
+            assert check._norm(tok) in registered, tok
+    numbers = (pitch / "NUMBERS.md").read_text(encoding="utf-8")
+    assert numbers.count(fill_pitch.END) == 1 and "MI300X runs on 2026-10-12, 2026-10-14 (UTC)" in numbers
+
+    # the first bundle again (e.g. a re-run of fill_pitch): its values come back, nothing is lost or duplicated
+    assert fill_pitch.main(["--evidence", str(first), *common]) == 0
+    rows = [r for r in check.parse_rows(pitch / "NUMBERS.md") if r.rid.startswith("amd_")]
+    assert check.check_numbers(rows)[0] == [] and len({r.rid for r in rows}) == len(rows)
+    assert "**50 / 180 / 600 / 1,500**" in (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- A/B: API key, like with like
+
+
+def test_ab_sends_the_vllm_api_key_and_records_a_401_as_a_case_error(monkeypatch, tmp_path):
+    from editions.amd.kickoff import ab_hallucination as ab
+
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        if request.headers.get("authorization") != f"Bearer {API_SECRET}":
+            return httpx.Response(401, json={"error": "unauthorized"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Grounds of suspicion: layered "
+                                                                              "transfers, see the case record."}}]})
+
+    args = ["--llm-url", "http://vllm.test/v1", "--world", "showcase-memory", "--limit", "1", "--workers", "1",
+            "--out", str(tmp_path / "ab.json")]
+    monkeypatch.delenv("WAPSI_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("VLLM_API_KEY", API_SECRET)  # the RUNBOOK's variable
+    assert ab.main(args, transport=httpx.MockTransport(handler)) == 0
+    rep_text = (tmp_path / "ab.json").read_text(encoding="utf-8")
+    rep = json.loads(rep_text)
+    assert seen and set(seen) == {f"Bearer {API_SECRET}"}
+    assert rep["errors"] == [] and rep["cases_compared"] == 1 and rep["arms"]["bound"]["str_only"]["docs"] == 1
+    assert API_SECRET not in rep_text and API_SECRET not in (tmp_path / "ab.md").read_text(encoding="utf-8")
+
+    monkeypatch.delenv("VLLM_API_KEY")  # no key: the raw arm's 401 is a recorded case error, nothing is compared
+    assert ab.main(args, transport=httpx.MockTransport(handler)) == 1
+    rep = json.loads((tmp_path / "ab.json").read_text(encoding="utf-8"))
+    assert rep["arms"]["raw"]["case_errors"] == 1 and rep["cases_compared"] == 0
+    assert "401" in rep["errors"][0]["error"]
+
+
+def test_ab_compares_the_same_cases_and_strs_alone():
+    from editions.amd.kickoff import ab_hallucination as ab
+
+    clean = {"wrong_amounts": [], "invented_accounts": [], "invented_utrs": [], "unknown_citations": []}
+    bad = {**clean, "wrong_amounts": ["₹9,737"]}
+    raw = [{"case_id": "x", "docs": 1, "audits": [bad], "clean": [False]}, {"case_id": "y", "error": "LLMError: 500"}]
+    bound = [{"case_id": "x", "docs": 2, "audits": [clean, bad], "clean": [True, False], "verifier_passed": [True, True],
+              "kinds": ["STR", "HOLD_INSTRUCTION"], "llm_drafts": 1, "prose_fallbacks": 0},
+             {"case_id": "y", "docs": 1, "audits": [bad], "clean": [False], "verifier_passed": [False],
+              "kinds": ["STR"], "llm_drafts": 1, "prose_fallbacks": 1}]
+    paired = ab.compared_cases(raw, bound)
+    assert paired == {"x"}  # y failed in the raw arm: left out of both arms
+    r, b = ab.summarize(raw, "raw", paired), ab.summarize(bound, "bound", paired)
+    assert (r["docs"], r["case_errors"], r["docs_with_wrong_amount"]) == (1, 1, 1)
+    assert (b["docs"], b["cases_compared"], b["docs_with_wrong_amount"]) == (2, 1, 1)
+    assert (b["str_only"]["docs"], b["str_only"]["docs_with_wrong_amount"], b["str_only"]["verifier_pass_rate"]) == (
+        1, 0, 1.0)
+    md = ab.to_markdown({"world": "w", "cases": 2, "cases_compared": 1, "label": "fixture", "llm": "x",
+                         "generated_at": "t", "arms": {"raw": r, "bound": b}})
+    assert "Like with like, one STR per case in each arm" in md and "| STRs | 1 | 1 |" in md
+
+
+def test_e2e_bench_sends_the_vllm_api_key_to_both_models(monkeypatch, tmp_path):
+    from editions.amd.bench import e2e_bench
+    from wapsi.adapters import llm_openai_compat
+    from wapsi.adapters.llm_fake import FakeLLM
+
+    seen: list[tuple[str, str | None]] = []
+
+    class Capture(FakeLLM):
+        def __init__(self, base_url: str, model: str, api_key: str | None = None, **kw) -> None:
+            seen.append((base_url, api_key))
+            super().__init__(name=kw.get("name") or model)
+
+    monkeypatch.setattr(llm_openai_compat, "OpenAICompatLLM", Capture)
+    monkeypatch.setattr(e2e_bench, "model_card", lambda url, key: {})
+    for k in ("WAPSI_LLM_API_KEY", "WAPSI_VERIFIER_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("VLLM_API_KEY", API_SECRET)
+    e2e_bench.main(["--world", "showcase-memory", "--no-search", "--limit", "1", "--llm-url", "http://vllm.test/v1",
+                    "--verifier-url", "http://verifier.test/v1", "--name", "e2e_c1", "--out", str(tmp_path)])
+    assert seen == [("http://vllm.test/v1", API_SECRET), ("http://verifier.test/v1", API_SECRET)]
+    assert API_SECRET not in (tmp_path / "e2e_c1.json").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- training image vs the ROCm torch
+
+
+def test_training_libraries_accept_the_rocm_image_torch():
+    import re
+
+    from editions.amd.kickoff import train_image_check as tic
+
+    pins = {f: set(re.findall(r"pytorch_release_(\d+\.\d+\.\d+)", (ROOT / f).read_text(encoding="utf-8")))
+            for f in ("editions/amd/kickoff/Dockerfile.train", "editions/amd/kickoff/run_all.sh",
+                      "editions/amd/gnn/Dockerfile")}
+    versions = set().union(*pins.values())
+    assert len(versions) == 1, pins  # one ROCm torch for the training image, the run and the GNN image
+    for dist in ("transformers", "peft", "accelerate"):
+        pytest.importorskip(dist)
+    rows = tic.check_torch_ranges(versions.pop())  # the uv.lock pins, as installed in this venv
+    assert all(r["ok"] for r in rows.values()), rows
+    assert rows["transformers"]["declares"]  # transformers declares a torch floor: the check is not vacuous
+    assert tic.check_torch_ranges("2.4.0")["transformers"]["ok"] is False
+
+
+def test_train_image_check_runs_one_lora_step_on_cpu(tmp_path):
+    for mod in ("torch", "transformers", "peft", "trl", "datasets"):
+        pytest.importorskip(mod)
+    import torch
+
+    from editions.amd.kickoff import train_image_check as tic
+
+    assert tic.main(["--device", "cpu", "--out", str(tmp_path / "check.json")]) == 0
+    rep = json.loads((tmp_path / "check.json").read_text(encoding="utf-8"))
+    assert rep["ok"] and rep["imports"]["trl"]["ok"] and rep["lora_step"]["tensors_changed"] > 0
+    assert rep["lora_step"]["loss_finite"] and rep["torch_ranges"]["transformers"]["ok"]
+    if not torch.cuda.is_available():  # the droplet passes --require-gpu: a container without the GPU fails here
+        assert tic.main(["--device", "cpu", "--require-gpu"]) == 1
 
 
 # --------------------------------------------------------------------------- CPU rehearsal smoke (marked)

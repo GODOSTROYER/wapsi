@@ -29,8 +29,8 @@ resumable command. The numbered steps stay as the manual fallback and explain wh
 | `kickoff/run_all.sh` | The pipeline, 11 stages: `env` → `models` → `gnn` → `lora-data` → `lora-train` → `merge` → `lora-eval` → `serve` → `bench` → `ab` → `evidence`. `--dry-run` prints every command; `--stage NAME[,NAME]` re-runs stages; `--from NAME` re-runs from there; `--list`. Each stage logs with UTC timestamps, takes an `amd-smi` snapshot before and after, and writes `stages/NN-<stage>.json` + a done marker into `editions/amd/evidence/<UTC date>/`; a re-run skips what is done. |
 | `kickoff/stagelog.py` | The guards and records behind it: the event-window check, the budget guard (prints spend before every stage, warns at 75 %, refuses new stages at 90 % of `WAPSI_BUDGET_USD`, reminds you to destroy the droplet on exit), amd-smi snapshots. |
 | `kickoff/collect_evidence.py` | One `evidence.json` + `evidence.md` (dated, with `amd-smi static`) from the stage outputs: tokens/s, TTFT, p95 latency at N concurrent, cases/hour, drafts per GPU-hour, $ and ₹ per case at $1.99 per GPU-hour, VRAM per container, GNN, LoRA, the A/B. `gpu_results_valid` is true only for an MI300X run inside the event window. |
-| `kickoff/fill_pitch.py` | Fills the TBD benchmark slots in `pitch/amd/DECK_OUTLINE.md` and `pitch/amd/VIDEO_SCRIPT.md` and adds the matching rows to `pitch/NUMBERS.md` (each re-reads `evidence.json`). Dry-run diff by default; `--write` applies. Refuses rehearsal or invalid evidence. |
-| `kickoff/ab_hallucination.py` | The A/B for deck slide 8: the same model writing a free-form STR vs writing inside Wapsi's slots and verifier, scored by one auditor (wrong amounts, invented accounts, unknown or repealed citations). |
+| `kickoff/fill_pitch.py` | Fills the TBD benchmark slots in `pitch/amd/DECK_OUTLINE.md` and `pitch/amd/VIDEO_SCRIPT.md` and adds the matching rows to `pitch/NUMBERS.md` (each re-reads its `evidence.json`; a later bundle replaces only the rows it re-measured). Dry-run diff by default; `--write` applies. Refuses rehearsal or invalid evidence. |
+| `kickoff/ab_hallucination.py` | The A/B for deck slide 8: the same model writing a free-form STR vs writing inside Wapsi's slots and verifier, scored by one auditor (wrong amounts, invented accounts, unknown or repealed citations) on the cases both arms completed; the deck compares like with like, raw STRs vs the bound arm's STRs, with all bound drafts alongside. |
 
 **Originality rule.** GPU runs, and every GPU number we report, happen only from **12 Oct 15:00 UTC** (20:30 IST) to
 18 Oct 14:00 UTC. `run_all.sh` refuses to start in GPU mode outside that window or without the `amd-baseline` tag, and
@@ -45,6 +45,9 @@ editions/amd/kickoff/run_all.sh --rehearsal          # whole pipeline on CPU: ti
 editions/amd/kickoff/run_all.sh --dry-run            # read the exact GPU-day commands once
 uv run pytest tests/amd -q
 ```
+On Windows, run the two `run_all.sh` lines from **Git Bash**: `bash editions/amd/kickoff/run_all.sh --rehearsal`. In
+PowerShell, `bash` can resolve to WSL's `bash.exe`, which sees neither this checkout's uv venv nor its Windows paths.
+The droplet itself is Linux, where the scripts run as they are.
 
 **Hour by hour on 12 Oct** (UTC, IST in brackets; stage times are estimates until measured):
 
@@ -52,8 +55,8 @@ uv run pytest tests/amd -q
 |---|---|---|
 | 15:00 (20:30) | `git tag -a amd-baseline -m "State of the repo at AMD ACT III kickoff (2026-10-12 15:00 UTC)" && git push origin amd-baseline`; add the tag's commit and time to `docs/originality.md` | Step 1. Not before 15:00 UTC. |
 | 15:05 (20:35) | Create the droplet and firewall (steps 2 and 3). `export WAPSI_DROPLET_STARTED_AT=<creation time, ISO UTC>`, and `export WAPSI_SPENT_USD=<earlier droplets>` if any | Billing starts at creation. |
-| 15:15 (20:45) | SSH in, `tmux new -s wapsi`, clone, `export SCRATCH=<5 TB mount>`, `read -rs HF_TOKEN && export HF_TOKEN`, `export WAPSI_INR_PER_USD=<the day's rate>`, optional `export AMLWORLD_CSV=<HI-Small_Trans.csv>`; then `editions/amd/kickoff/preflight.sh` | Fix every red row. Amber rows are allowed. |
-| 15:25 (20:55) | `editions/amd/kickoff/run_all.sh` | Starts `env` (~20 min: uv sync, ~120 synthetic worlds, pinned images, training image). |
+| 15:15 (20:45) | SSH in, `tmux new -s wapsi`, clone, `export SCRATCH=<5 TB mount>` (it must exist: preflight fails a missing path rather than report the boot disk), `read -rs HF_TOKEN && export HF_TOKEN`, `export WAPSI_INR_PER_USD=<the day's rate>`, optional `export AMLWORLD_CSV=<HI-Small_Trans.csv>`; from the laptop, `scp -r data/docs/raw root@DROPLET_IP:<clone>/data/docs/` (the legal corpus is not in git; otherwise `env` fetches it from the public sites); then `editions/amd/kickoff/preflight.sh` | Fix every red row. Amber rows are allowed. |
+| 15:25 (20:55) | `editions/amd/kickoff/run_all.sh` | Starts `env` (~20 min: uv sync, ~120 synthetic worlds, docs index, pinned images, training image and its check: imports, torch ranges and one LoRA step on the GPU, versions into `train_image_check.json`). |
 | 15:45 (21:15) | `models` | ~80 GB of weights into `$SCRATCH/hf` (~15–30 min). |
 | 16:15 (21:45) | `gnn` | GraphSAGE base + no-external-signals variants on ROCm, held-out and hard-world evaluation (~20–40 min). First GPU numbers: s/epoch, edges/s. |
 | 16:45 (22:15) | `lora-data` | Base Gemma 4 31B on vLLM-ROCm. **Go/no-go signal:** if it does not serve, see Troubleshooting (Qwen fallback: `WAPSI_BASE_PROFILE=qwen-fallback WAPSI_BASE_MODEL=Qwen/Qwen3.6-35B-A3B WAPSI_LORA_CONFIG=qwen36-35b-a3b-mi300x WAPSI_MERGED_NAME=wapsi-qwen36-str-merged`, then `--from models`). Base serving bench, then the verifier-filtered dataset (~1–2 h). |
@@ -63,8 +66,15 @@ uv run pytest tests/amd -q
 | Tue 03:30 (09:00) | Read `editions/amd/evidence/<date>/evidence.md`, review `fill_pitch.py` diff, `--write`, `uv run python pitch/check_numbers.py`, commit + push the evidence | Go/no-go on Gemma due 12:00 IST. Destroy the droplet if nothing needs re-running. |
 
 If a stage fails, `run_all.sh` stops and says which log to read; fix it and run `run_all.sh` again (done stages are
-skipped) or `run_all.sh --stage <name>`. `run_all.sh --stage bench,ab,evidence` repeats the measurements later in
-the week; each run writes into that day's evidence folder.
+skipped) or `run_all.sh --stage <name>`. A failed `lora-eval` removes its two vLLM containers, and `serve` removes them
+again before it starts, so port 8000 is free. Measurements do not stop the run: when a benchmark request, an
+end-to-end case or an A/B case fails, the result file still records it, the stage notes count it
+(`measure_failures`), the stage goes on, and `evidence.md` lists it under "Warnings". A concurrency level or e2e run
+with failures never becomes a headline number (re-run `--stage bench`), and the A/B compares both arms only on the
+cases both completed. `run_all.sh --stage bench,ab,evidence` repeats the measurements later in the week; each run
+writes into that day's evidence folder, and its `evidence` stage captures `amd-smi static` and the commit again, so
+the bundle is valid without `env`. `fill_pitch.py --write` merges a later bundle into `pitch/NUMBERS.md`: it replaces
+the rows of the values it re-measured and keeps the rest, each row naming its own bundle.
 
 ## 0. Before the event (no GPU, no cost)
 
@@ -331,3 +341,5 @@ start a stage at 90 % ($90 of $100) unless you pass `--ignore-budget`.
 | `amd-smi` JSON differs from the fixtures | Capture it (step 11), update the fixtures and tests, then fix `bench/gpu_telemetry.py`. The rocm-smi fallback keeps sampling in the meantime. |
 | A port answers from the internet | Docker bypasses UFW. Keep every `*_BIND=127.0.0.1` and rely on the Cloud Firewall; use the SSH tunnel. |
 | Disk full | Point `HF_CACHE_DIR` and `WAPSI_MODELS_DIR` at the scratch disk; `docker system prune` removes old images. |
+| Training image: the build's import line or `train_image_check.py` fails (env stage) | The image keeps its ROCm torch (2.9.1) and installs the uv.lock pins of transformers / peft / trl / accelerate / datasets with `--no-deps`; their declared torch floors accept 2.9.1 (tested offline), so a failure is an API break. Read `train_image_check.json` (which import or the LoRA step failed). Then either use a newer ROCm PyTorch image (`export ROCM_PYTORCH_IMAGE=rocm/pytorch:<newer tag>` and `run_all.sh --stage env`), or pin the failing library to an older release in `requirements-rocm.txt` under `$SCRATCH/wapsi-work/train-image/` and re-run the `docker build` line from the env log. |
+| `e2e_bench` runs without docs search (`docs_index=missing` in the env stage notes) | `data/docs/raw` is not in git and the public sites did not answer. From the laptop: `scp -r data/docs/raw root@DROPLET_IP:<clone>/data/docs/`, then on the droplet `uv run python -m wapsi.search.build` and `run_all.sh --stage bench`. |

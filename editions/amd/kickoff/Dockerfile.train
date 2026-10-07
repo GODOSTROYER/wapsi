@@ -1,7 +1,15 @@
 # syntax=docker/dockerfile:1.7
 # ROCm PyTorch + the Python packages Wapsi's GNN and LoRA training need, for one MI300X (run_all.sh, stage env).
 # The base image's torch is built for HIP and is NEVER replaced: requirements-rocm.txt is `uv export` of uv.lock with
-# torch, triton and nvidia-* removed, installed with --no-deps so pip cannot pull a CUDA wheel back in.
+# torch, triton, pytorch-triton, nvidia-* and cuda-* removed, installed with --no-deps so pip cannot pull a CUDA wheel
+# back in.
+# Library set vs the image's torch: uv.lock resolved transformers / peft / trl / accelerate / datasets against a newer
+# CUDA torch, and --no-deps means pip never checks them against the image's torch (2.9.1). Their declared torch floors
+# accept it (transformers >= 2.5, accelerate >= 2.0, peft >= 1.13; trl and datasets declare none; checked offline by
+# tests/amd/test_amd_kickoff.py). Two checks run on the droplet: the import line below fails the build, and
+# run_all.sh's env stage then runs editions/amd/kickoff/train_image_check.py in the image (imports, the declared
+# ranges against the installed torch, one LoRA step on the GPU) and writes the versions into the evidence. If either
+# fails, see RUNBOOK.md, Troubleshooting ("training image").
 #   run_all.sh writes the context:  <work>/train-image/requirements-rocm.txt
 #   docker build -f editions/amd/kickoff/Dockerfile.train --build-arg BASE_IMAGE=<rocm/pytorch pinned> \
 #       -t wapsi-amd-train:local <work>/train-image

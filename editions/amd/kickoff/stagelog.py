@@ -350,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[stage] {args.stage}: {args.status} -> {out.relative_to(evid)}")
         return 0
     if args.cmd == "wait-http":
-        key = os.environ.get("VLLM_API_KEY") or None
+        key = os.environ.get("VLLM_API_KEY") or os.environ.get("WAPSI_LLM_API_KEY") or None
         ok = wait_http(args.url, args.timeout, args.interval, api_key=key)
         print(f"{'up' if ok else 'TIMEOUT'}: {args.url}")
         return 0 if ok else 1

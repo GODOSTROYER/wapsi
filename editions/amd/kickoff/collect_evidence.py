@@ -80,10 +80,24 @@ def _mean(values: Iterable[Any]) -> float | None:
     return sum(vals) / len(vals) if vals else None
 
 
+def _failed_requests(lv: dict[str, Any]) -> int | None:
+    """Requests of one llm_bench level that failed (None: the level completed nothing, so it measured nothing)."""
+    done = lv.get("completed")
+    if isinstance(done, int) and done == 0:
+        return None
+    err = lv.get("errors")
+    if isinstance(err, int):
+        return err
+    req = lv.get("requests")
+    return req - done if isinstance(req, int) and isinstance(done, int) else 0
+
+
 # --------------------------------------------------------------------------- sections
 
 
-def serving(evid: Path, head: dict[str, Any], src: dict[str, str]) -> dict[str, Any]:
+def serving(evid: Path, head: dict[str, Any], src: dict[str, str], warn: list[str]) -> dict[str, Any]:
+    """llm_bench results. A concurrency level with failed requests (or nothing completed) is shown in the tables but
+    never becomes a headline number: its throughput and latency were measured under errors."""
     out: dict[str, Any] = {}
     for stem, key, levels in (("llm_bench", "llm", LLM_LEVELS), ("llm_bench_verifier", "verifier", VERIFIER_LEVELS),
                               ("llm_bench_base", "base", LLM_LEVELS),
@@ -100,27 +114,41 @@ def serving(evid: Path, head: dict[str, Any], src: dict[str, str]) -> dict[str, 
                                 "ttft_p50_s": _get(lv, "ttft_s", "p50"), "ttft_p95_s": _get(lv, "ttft_s", "p95"),
                                 "e2e_p95_s": _get(lv, "e2e_s", "p95"), "requests_per_s": lv.get("requests_per_s")}
                                for lv in bench.get("levels") or []]}
+        clean = []
+        for lv in bench.get("levels") or []:
+            failed = _failed_requests(lv)
+            if failed == 0:
+                clean.append(lv)
+            else:
+                what = "nothing completed" if failed is None else f"{failed} of {lv.get('requests')} requests failed"
+                warn.append(f"{rel} concurrency {lv.get('concurrency')}: {what}; not used as a headline number "
+                            "(re-run --stage bench)")
         for c in levels:
             lv = _level(bench, c)
             if lv is None:
                 continue
-            head[f"{key}_tok_s_c{c}"] = _r(lv.get("output_tokens_per_s"), 1)
+            ok = lv in clean
+            head[f"{key}_tok_s_c{c}"] = _r(lv.get("output_tokens_per_s"), 1) if ok else None
             src[f"{key}_tok_s_c{c}"] = f"{rel}: levels[concurrency={c}].output_tokens_per_s"
             if key == "llm":
                 for name, path_keys in (("ttft_p50_s", ("ttft_s", "p50")), ("ttft_p95_s", ("ttft_s", "p95")),
                                         ("e2e_p95_s", ("e2e_s", "p95"))):
-                    head[f"llm_{name}_c{c}"] = _r(_get(lv, *path_keys), 3)
+                    head[f"llm_{name}_c{c}"] = _r(_get(lv, *path_keys), 3) if ok else None
                     src[f"llm_{name}_c{c}"] = f"{rel}: levels[concurrency={c}].{'.'.join(path_keys)}"
-        if key == "llm" and bench.get("levels"):
-            best = max(bench["levels"], key=lambda lv: _num(lv.get("output_tokens_per_s")) or 0.0)
+        if key == "llm" and clean:
+            best = max(clean, key=lambda lv: _num(lv.get("output_tokens_per_s")) or 0.0)
             head["llm_peak_tok_s"] = _r(best.get("output_tokens_per_s"), 1)
             head["llm_peak_tok_s_concurrency"] = best.get("concurrency")
-            src["llm_peak_tok_s"] = f"{rel}: max over levels of output_tokens_per_s"
+            src["llm_peak_tok_s"] = f"{rel}: max over levels without errors of output_tokens_per_s"
+        if key == "llm":
             head["llm_model"] = bench.get("model")
     return out
 
 
-def end_to_end(evid: Path, head: dict[str, Any], src: dict[str, str], deriv: dict[str, str]) -> list[dict[str, Any]]:
+def end_to_end(evid: Path, head: dict[str, Any], src: dict[str, str], deriv: dict[str, str],
+               warn: list[str]) -> list[dict[str, Any]]:
+    """e2e_bench results. A run with failed cases is shown in the table but never becomes a headline number (its
+    cases/hour and cost per case were measured under errors)."""
     rows = []
     for path in sorted((evid / "bench").glob("e2e*.json")) + sorted((evid / "bench").glob("report.json")):
         rep = _load(path)
@@ -128,7 +156,16 @@ def end_to_end(evid: Path, head: dict[str, Any], src: dict[str, str], deriv: dic
             continue
         m, c, s = rep.get("metrics") or {}, rep.get("cost") or {}, rep.get("settings") or {}
         conc, wall, drafts = s.get("concurrency"), _num(m.get("wall_s")), _num(m.get("drafts"))
+        n, n_ok = m.get("cases"), m.get("cases_ok")
+        failed = m.get("cases_failed")
+        if not isinstance(failed, int):
+            failed = n - n_ok if isinstance(n, int) and isinstance(n_ok, int) else 0
+        clean = failed == 0 and n_ok != 0
+        if not clean:
+            warn.append(f"bench/{path.name} (concurrency {conc}): {failed} of {n} cases failed; not used as a "
+                        "headline number (re-run --stage bench)")
         rows.append({
+            "clean": clean,
             "file": f"bench/{path.name}",
             "world": rep.get("world"),
             "concurrency": conc,
@@ -154,9 +191,9 @@ def end_to_end(evid: Path, head: dict[str, Any], src: dict[str, str], deriv: dic
         rel = row["file"]
         for key, field in (("e2e_cases_per_hour", "cases_per_hour"), ("usd_per_case", "usd_per_case"),
                            ("inr_per_case", "inr_per_case"), ("drafts_per_gpu_hour", "drafts_per_gpu_hour")):
-            head[f"{key}_c{c}"] = _r(row[field], 6 if "per_case" in key else 1)
+            head[f"{key}_c{c}"] = _r(row[field], 6 if "per_case" in key else 1) if row["clean"] else None
             src[f"{key}_c{c}"] = f"{rel}: {field}"
-    measured = [r for r in rows if _num(r["cases_per_hour"])]
+    measured = [r for r in rows if r["clean"] and _num(r["cases_per_hour"])]
     if measured:
         best = max(measured, key=lambda r: r["cases_per_hour"])
         head["e2e_best_concurrency"] = best["concurrency"]
@@ -297,38 +334,64 @@ def lora(evid: Path, head: dict[str, Any], src: dict[str, str]) -> dict[str, Any
     return out
 
 
-def ab(evid: Path, head: dict[str, Any], src: dict[str, str]) -> dict[str, Any] | None:
+AB_KEYS = ("docs", "docs_with_wrong_amount", "invented_accounts", "unknown_citations", "verifier_pass_rate",
+           "clean_rate")
+
+
+def ab(evid: Path, head: dict[str, Any], src: dict[str, str], warn: list[str]) -> dict[str, Any] | None:
     rep = _load(evid / "ab_hallucination.json")
     if not rep:
         return None
-    for arm in ("raw", "bound"):
-        a = _get(rep, "arms", arm) or {}
-        for key in ("docs", "docs_with_wrong_amount", "invented_accounts", "unknown_citations", "verifier_pass_rate",
-                    "clean_rate"):
-            head[f"ab_{arm}_{key}"] = _num(a.get(key)) if key.endswith("rate") else a.get(key)
-            src[f"ab_{arm}_{key}"] = f"ab_hallucination.json: arms.{arm}.{key}"
+    # like with like: ab_bound_str_* are the bound arm's STRs alone (one per case, as in the raw arm)
+    for prefix, path in (("ab_raw", ("raw",)), ("ab_bound", ("bound",)), ("ab_bound_str", ("bound", "str_only"))):
+        a = _get(rep, "arms", *path) or {}
+        for key in AB_KEYS:
+            head[f"{prefix}_{key}"] = _num(a.get(key)) if key.endswith("rate") else a.get(key)
+            src[f"{prefix}_{key}"] = f"ab_hallucination.json: arms.{'.'.join(path)}.{key}"
     head["ab_bound_prose_fallbacks"] = _get(rep, "arms", "bound", "prose_fallbacks")
     src["ab_bound_prose_fallbacks"] = "ab_hallucination.json: arms.bound.prose_fallbacks"
     head["ab_cases"] = rep.get("cases")
+    head["ab_cases_compared"] = rep.get("cases_compared", rep.get("cases"))
+    errors = {arm: _get(rep, "arms", arm, "case_errors") or 0 for arm in ("raw", "bound")}
+    if not head["ab_cases_compared"]:  # nothing compared (e.g. every request failed): no A/B number at all
+        for k in [k for k in head if k.startswith(("ab_raw_", "ab_bound_"))]:
+            head[k] = None
+        warn.append(f"ab_hallucination.json: no case was completed by both arms (case errors raw {errors['raw']}, "
+                    f"bound {errors['bound']}); no A/B number is reported (re-run --stage ab)")
+    elif any(errors.values()):
+        warn.append(f"ab_hallucination.json: case errors raw {errors['raw']}, bound {errors['bound']}; both arms are "
+                    f"compared on the {head['ab_cases_compared']} of {rep.get('cases')} cases both completed")
     return {"label": rep.get("label"), "llm": rep.get("llm"), "world": rep.get("world"), "cases": rep.get("cases"),
-            "stub": rep.get("stub"), "arms": rep.get("arms")}
+            "cases_compared": head["ab_cases_compared"], "stub": rep.get("stub"), "arms": rep.get("arms")}
 
 
-def stages(evid: Path) -> list[dict[str, Any]]:
+def stages(evid: Path, warn: list[str] | None = None) -> list[dict[str, Any]]:
     out = []
     for path in sorted((evid / "stages").glob("*.json")):
         rec = _load(path)
         if rec:
             out.append({k: rec.get(k) for k in ("index", "stage", "status", "started_at", "ended_at", "duration_s",
                                                 "window", "notes")})
+            notes = rec.get("notes") or {}
+            if warn is not None and str(notes.get("measure_failures") or "0") != "0":
+                warn.append(f"stage {rec.get('stage')}: {notes['measure_failures']} measurement(s) exited non-zero "
+                            f"({notes.get('measure_failed') or '?'}); the stage went on, see {rec.get('log')}")
     return out
 
 
 def hardware(evid: Path) -> dict[str, Any]:
+    """The GPU identity: ``amd-smi static`` (env or evidence stage), else the bench telemetry, whose GPU names come
+    from the same ``amd-smi static`` call on the same droplet (a later-week ``--stage bench,ab,evidence`` run)."""
     st = _load(evid / "amd_smi_static.json") or {}
     gpus = st.get("gpus") or []
-    return {"available": bool(st.get("available")), "gpus": gpus,
-            "gpu_name": gpus[0]["name"] if gpus else None,
+    name = gpus[0].get("name") if gpus else None
+    source = "amd_smi_static.json" if name else None
+    if not name:
+        tel = _load(evid / "bench" / "telemetry_summary.json") or {}
+        tel_name = _get(tel, "gpus", 0, "name")
+        if tel_name and tel.get("source") in ("amd-smi", "rocm-smi"):
+            name, source = str(tel_name), f"bench/telemetry_summary.json ({tel.get('source')})"
+    return {"available": bool(st.get("available")), "gpus": gpus, "gpu_name": name, "gpu_name_source": source,
             "sriov_vf": any(g.get("sriov_vf") for g in gpus), "rocm_version": st.get("rocm_version"),
             "captured_at": st.get("captured_at"), "reason": st.get("reason")}
 
@@ -338,7 +401,7 @@ def validity(mode: str, hw: dict[str, Any], stage_rows: list[dict[str, Any]]) ->
     if mode != "gpu":
         reasons.append("CPU rehearsal: not a GPU run")
     if not (hw.get("gpu_name") and "MI300" in str(hw["gpu_name"])):
-        reasons.append("amd-smi static does not name an AMD Instinct MI300X")
+        reasons.append("neither amd-smi static nor the bench telemetry names an AMD Instinct MI300X")
     if not stage_rows:
         reasons.append("no stage records")
     start, end = parse_ts(EVENT_START), parse_ts(EVENT_END)
@@ -353,15 +416,16 @@ def build(evid: Path, mode: str) -> dict[str, Any]:
     head: dict[str, Any] = {}
     src: dict[str, str] = {}
     deriv: dict[str, str] = {}
-    stage_rows = stages(evid)
+    warn: list[str] = []
+    stage_rows = stages(evid, warn)
     hw = hardware(evid)
     results = {
-        "serving": serving(evid, head, src),
-        "e2e": end_to_end(evid, head, src, deriv),
+        "serving": serving(evid, head, src, warn),
+        "e2e": end_to_end(evid, head, src, deriv, warn),
         "memory": memory(evid, head, src),
         "gnn": gnn(evid, head, src),
         "lora": lora(evid, head, src),
-        "ab": ab(evid, head, src),
+        "ab": ab(evid, head, src, warn),
     }
     valid, reasons = validity(mode, hw, stage_rows)
     budget = next((s.get("budget") for s in reversed([_load(p) or {} for p in sorted((evid / "stages").glob("*.json"))])
@@ -394,6 +458,7 @@ def build(evid: Path, mode: str) -> dict[str, Any]:
         "sources": src,
         "derivations": deriv,
         "missing": sorted(k for k, v in head.items() if v is None),
+        "warnings": warn,
         "results": results,
     }
 
@@ -438,7 +503,11 @@ HEADLINE_ROWS = [
     ("LoRA: verifier pass rate base -> tuned", ("lora_base_prose_verifier_pass_rate", "lora_tuned_prose_verifier_pass_rate")),
     ("LoRA: prose fallback rate base -> tuned", ("lora_base_fallback_rate", "lora_tuned_fallback_rate")),
     ("LoRA training: tokens/s / peak memory (GB)", ("lora_tokens_per_s", "lora_peak_mem_gb")),
-    ("A/B documents with a wrong amount: raw / bound", ("ab_raw_docs_with_wrong_amount", "ab_bound_docs_with_wrong_amount")),
+    ("A/B like with like, STRs with a wrong amount: raw / bound", ("ab_raw_docs_with_wrong_amount",
+                                                                   "ab_bound_str_docs_with_wrong_amount")),
+    ("A/B STRs compared: raw / bound", ("ab_raw_docs", "ab_bound_str_docs")),
+    ("A/B all bound drafts with a wrong amount / all bound drafts", ("ab_bound_docs_with_wrong_amount",
+                                                                     "ab_bound_docs")),
     ("A/B invented account numbers: raw / bound", ("ab_raw_invented_accounts", "ab_bound_invented_accounts")),
     ("A/B unknown or repealed citations: raw / bound", ("ab_raw_unknown_citations", "ab_bound_unknown_citations")),
     ("A/B clean documents rate: raw / bound", ("ab_raw_clean_rate", "ab_bound_clean_rate")),
@@ -462,10 +531,15 @@ def to_markdown(ev: dict[str, Any]) -> str:
               f"- Event window: {ev['event_window']['start']} .. {ev['event_window']['end']}",
               f"- Generated {ev['generated_at']} by `editions/amd/kickoff/collect_evidence.py` from the files in this "
               "folder. Every value is read from a result file (see `sources` in evidence.json).", ""]
+    if ev.get("warnings"):
+        lines += ["## Warnings", ""] + [f"- {w}" for w in ev["warnings"]] + [""]
     lines += ["## Hardware (`amd-smi static`)", ""]
     if hw.get("available"):
         lines += _table(["GPU", "Name", "SR-IOV VF", "ROCm"],
                         [[g.get("gpu"), g.get("name"), g.get("sriov_vf"), hw.get("rocm_version")] for g in hw["gpus"]])
+    elif hw.get("gpu_name"):
+        lines += [f"`amd-smi static` not captured in this folder; GPU name from {hw.get('gpu_name_source')}: "
+                  f"{hw['gpu_name']}."]
     else:
         lines += [f"Not captured: {hw.get('reason') or 'amd-smi static missing'}."]
     lines += ["", "## Headline", ""]
