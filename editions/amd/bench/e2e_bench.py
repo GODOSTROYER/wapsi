@@ -390,10 +390,10 @@ def main(argv: list[str] | None = None) -> int:
                        gpu_hour_usd=args.gpu_hour_usd, inr_per_usd=args.inr_per_usd,
                        telemetry=_load_json(args.telemetry), llm_bench=_load_json(args.llm_bench), extras=extras)
     out = results_dir(args.out)
-    write_json(out / "report.json", rep)
-    (out / "report.md").write_text(to_markdown(rep), encoding="utf-8", newline="\n")
+    write_json(out / f"{args.name}.json", rep)  # --name e2e_c16 etc. keeps a concurrency sweep's files apart
+    (out / f"{args.name}.md").write_text(to_markdown(rep), encoding="utf-8", newline="\n")
     print(to_markdown(rep))
-    print(f"wrote {out / 'report.json'}")
+    print(f"wrote {out / (args.name + '.json')}")
     return 0 if rep["metrics"]["cases_failed"] == 0 else 1
 
 

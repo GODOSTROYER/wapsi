@@ -13,10 +13,58 @@ $1.99 per GPU-hour and the budget is ≤ $100. All GPU work, and every number we
 |---|---|
 | by **Oct 8** | Join the AMD AI Developer Program and request the **$100 credit**. It expires 30 days after deposit, so requesting around Oct 8 covers event week and the start of judging. |
 | before **Oct 12 15:00 UTC** (20:30 IST) | **Register on lablab.ai and create the team.** Registration closes at kickoff; pods and credits are per team. |
-| Oct 12 15:00 UTC | Kickoff. Tag `amd-baseline` (step 1). The GPU clock starts after this point. |
+| Oct 12 15:00 UTC | Kickoff. Tag `amd-baseline` (step 1). The GPU clock starts after this point. Then one command: `editions/amd/kickoff/run_all.sh` (see "Kickoff day" below). |
 | **Oct 13 12:00 IST** | Go/no-go on Gemma 4 on vLLM-ROCm. If it will not serve by then, switch to Qwen3.6-35B-A3B (Troubleshooting). |
 | Oct 17 | Freeze: final numbers, video footage, `AMD_RESULTS.md`. **Destroy the droplet.** |
 | **Oct 18 14:00 UTC** (19:30 IST) | Submission deadline. The dashboard may say 15:00 UTC; use the earlier time. Aim to submit by 17:00 IST. |
+
+## Kickoff day (Mon 12 Oct): one push-button run
+
+Every MI300X hour should produce results, not setup. `editions/amd/kickoff/` turns steps 4 to 11 below into one
+resumable command. The numbered steps stay as the manual fallback and explain what each stage does.
+
+| Script | What it does |
+|---|---|
+| `kickoff/preflight.sh` | Green/amber/red table: amd-smi / rocm-smi and the GPU name, ROCm version, VRAM total and in use, docker + compose ≥ 2.20.2, free disk on the scratch and Docker volumes, `HF_TOKEN` present (value never printed, never on a command line), network to Hugging Face, access to each gated model, uv, the `amd-baseline` tag, the event window, pinned digests, optional inputs (AMLworld CSV, the day's INR rate, droplet start time). Exit 1 if anything is red. |
+| `kickoff/run_all.sh` | The pipeline, 11 stages: `env` → `models` → `gnn` → `lora-data` → `lora-train` → `merge` → `lora-eval` → `serve` → `bench` → `ab` → `evidence`. `--dry-run` prints every command; `--stage NAME[,NAME]` re-runs stages; `--from NAME` re-runs from there; `--list`. Each stage logs with UTC timestamps, takes an `amd-smi` snapshot before and after, and writes `stages/NN-<stage>.json` + a done marker into `editions/amd/evidence/<UTC date>/`; a re-run skips what is done. |
+| `kickoff/stagelog.py` | The guards and records behind it: the event-window check, the budget guard (prints spend before every stage, warns at 75 %, refuses new stages at 90 % of `WAPSI_BUDGET_USD`, reminds you to destroy the droplet on exit), amd-smi snapshots. |
+| `kickoff/collect_evidence.py` | One `evidence.json` + `evidence.md` (dated, with `amd-smi static`) from the stage outputs: tokens/s, TTFT, p95 latency at N concurrent, cases/hour, drafts per GPU-hour, $ and ₹ per case at $1.99 per GPU-hour, VRAM per container, GNN, LoRA, the A/B. `gpu_results_valid` is true only for an MI300X run inside the event window. |
+| `kickoff/fill_pitch.py` | Fills the TBD benchmark slots in `pitch/amd/DECK_OUTLINE.md` and `pitch/amd/VIDEO_SCRIPT.md` and adds the matching rows to `pitch/NUMBERS.md` (each re-reads `evidence.json`). Dry-run diff by default; `--write` applies. Refuses rehearsal or invalid evidence. |
+| `kickoff/ab_hallucination.py` | The A/B for deck slide 8: the same model writing a free-form STR vs writing inside Wapsi's slots and verifier, scored by one auditor (wrong amounts, invented accounts, unknown or repealed citations). |
+
+**Originality rule.** GPU runs, and every GPU number we report, happen only from **12 Oct 15:00 UTC** (20:30 IST) to
+18 Oct 14:00 UTC. `run_all.sh` refuses to start in GPU mode outside that window or without the `amd-baseline` tag, and
+`collect_evidence.py` marks a bundle valid only if every stage started inside it. The tag is created **at kickoff, not
+before** (step 1 has the command). The CPU rehearsal below is labelled "CPU rehearsal" everywhere, lives in a
+gitignored folder, and `fill_pitch.py` refuses it, so no laptop number can reach the pitch.
+
+**Before kickoff (laptop, no GPU, no cost):**
+```bash
+uv sync --extra amd --extra amd-app --extra ml
+editions/amd/kickoff/run_all.sh --rehearsal          # whole pipeline on CPU: tiny worlds, tiny model, stub LLMs
+editions/amd/kickoff/run_all.sh --dry-run            # read the exact GPU-day commands once
+uv run pytest tests/amd -q
+```
+
+**Hour by hour on 12 Oct** (UTC, IST in brackets; stage times are estimates until measured):
+
+| UTC (IST) | Do this | Notes |
+|---|---|---|
+| 15:00 (20:30) | `git tag -a amd-baseline -m "State of the repo at AMD ACT III kickoff (2026-10-12 15:00 UTC)" && git push origin amd-baseline`; add the tag's commit and time to `docs/originality.md` | Step 1. Not before 15:00 UTC. |
+| 15:05 (20:35) | Create the droplet and firewall (steps 2 and 3). `export WAPSI_DROPLET_STARTED_AT=<creation time, ISO UTC>`, and `export WAPSI_SPENT_USD=<earlier droplets>` if any | Billing starts at creation. |
+| 15:15 (20:45) | SSH in, `tmux new -s wapsi`, clone, `export SCRATCH=<5 TB mount>`, `read -rs HF_TOKEN && export HF_TOKEN`, `export WAPSI_INR_PER_USD=<the day's rate>`, optional `export AMLWORLD_CSV=<HI-Small_Trans.csv>`; then `editions/amd/kickoff/preflight.sh` | Fix every red row. Amber rows are allowed. |
+| 15:25 (20:55) | `editions/amd/kickoff/run_all.sh` | Starts `env` (~20 min: uv sync, ~120 synthetic worlds, pinned images, training image). |
+| 15:45 (21:15) | `models` | ~80 GB of weights into `$SCRATCH/hf` (~15–30 min). |
+| 16:15 (21:45) | `gnn` | GraphSAGE base + no-external-signals variants on ROCm, held-out and hard-world evaluation (~20–40 min). First GPU numbers: s/epoch, edges/s. |
+| 16:45 (22:15) | `lora-data` | Base Gemma 4 31B on vLLM-ROCm. **Go/no-go signal:** if it does not serve, see Troubleshooting (Qwen fallback: `WAPSI_BASE_PROFILE=qwen-fallback WAPSI_BASE_MODEL=Qwen/Qwen3.6-35B-A3B WAPSI_LORA_CONFIG=qwen36-35b-a3b-mi300x WAPSI_MERGED_NAME=wapsi-qwen36-str-merged`, then `--from models`). Base serving bench, then the verifier-filtered dataset (~1–2 h). |
+| ~18:30 (00:00) | `lora-train` | 2 epochs, ~1.5–4 h. Unattended overnight is fine; the budget line is printed before every stage. Back up the adapter when it ends. |
+| ~22:00 (03:30) | `merge`, `lora-eval` | fp32 merge, bf16 save; base vs tuned on held-out cases (~1–1.5 h). |
+| ~23:30 (05:00) | `serve`, `bench`, `ab`, `evidence` | Merged model + verifier + GNN + app via compose; telemetry, serving and end-to-end benchmarks, A/B; `evidence.json` + `evidence.md` (~2 h). |
+| Tue 03:30 (09:00) | Read `editions/amd/evidence/<date>/evidence.md`, review `fill_pitch.py` diff, `--write`, `uv run python pitch/check_numbers.py`, commit + push the evidence | Go/no-go on Gemma due 12:00 IST. Destroy the droplet if nothing needs re-running. |
+
+If a stage fails, `run_all.sh` stops and says which log to read; fix it and run `run_all.sh` again (done stages are
+skipped) or `run_all.sh --stage <name>`. `run_all.sh --stage bench,ab,evidence` repeats the measurements later in
+the week; each run writes into that day's evidence folder.
 
 ## 0. Before the event (no GPU, no cost)
 
@@ -36,6 +84,7 @@ $1.99 per GPU-hour and the budget is ≤ $100. All GPU work, and every number we
 
 ## 1. Kickoff: record the originality baseline
 
+Run this at 15:00 UTC on 12 Oct, **not before** (the tag marks the state of the repository at kickoff):
 ```bash
 git tag -a amd-baseline -m "State of the repo at AMD ACT III kickoff (2026-10-12 15:00 UTC)"
 git push origin amd-baseline
@@ -245,16 +294,20 @@ bundles from step 13.2. Say plainly in the submission that the live URL is demo 
 
 | Day (IST) | GPU work | Planned hours | Cost |
 |---|---|---|---|
-| Mon Oct 12, 20:30–23:30 | Droplet, firewall, pull/pin, base Gemma 4 smoke test, base `llm_bench`, destroy | 3 | $5.97 |
-| Tue Oct 13 | Gemma/Qwen go/no-go by 12:00; GNN training; LoRA fine-tune; merge; adapter backup | 10 | $19.90 |
-| Wed Oct 14 | Merged model + verifier + GNN via compose; e2e on the demo world; fixes; LoRA eval | 8 | $15.92 |
-| Thu Oct 15 | Benchmarks (step 11), `AMD_RESULTS.md`, video footage (step 12) | 8 | $15.92 |
-| Fri Oct 16 | Re-runs and fixes, extra footage; destroy by evening | 5 | $9.95 |
-| Sat Oct 17 (freeze) | Final capture only if needed; **destroy** | 3 | $5.97 |
+| Mon Oct 12 20:30 to Tue 09:00 | `kickoff/run_all.sh` end to end (env → evidence), unattended overnight | 12.5 | $24.88 |
+| Tue Oct 13 | Review `evidence.md`; Gemma/Qwen go/no-go by 12:00; re-run failed stages (`--stage`); destroy by evening | 6 | $11.94 |
+| Wed Oct 14 | Fixes and a second `--stage serve,bench,ab,evidence` run (new droplet only if needed) | 6 | $11.94 |
+| Thu Oct 15 | Video footage (step 12), final benchmarks; destroy | 5 | $9.95 |
+| Fri Oct 16 | Buffer re-runs and extra footage; destroy by evening | 4 | $7.96 |
+| Sat Oct 17 (freeze) | Final capture only if needed; **destroy** | 2 | $3.98 |
 | Sun Oct 18 | No GPU; submit by 17:00 IST | 0 | $0.00 |
-| **Total planned** | | **37** | **$73.63** |
-| Buffer | re-downloads, reruns, mistakes | 13 | $25.87 |
+| **Total planned** | | **35.5** | **$70.65** |
+| Buffer | re-downloads, reruns, mistakes | 14.5 | $28.86 |
 | **Cap** | | **50** | **$99.50** |
+
+`run_all.sh` prints this arithmetic before every stage (`stagelog.py budget`: hours since `WAPSI_DROPLET_STARTED_AT`
+× `WAPSI_GPU_HOUR_USD` + `WAPSI_SPENT_USD` from earlier droplets), warns at 75 % of `WAPSI_BUDGET_USD` and refuses to
+start a stage at 90 % ($90 of $100) unless you pass `--ignore-budget`.
 
 - Each re-creation of the droplet costs about 30–45 min of billed setup (pull images, download ~62 GB). Destroy it
   when it will sit idle for more than about 3 h; keep it up for long unattended runs, such as LoRA overnight.

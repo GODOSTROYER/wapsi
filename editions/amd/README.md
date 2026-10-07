@@ -62,6 +62,8 @@ flowchart LR
 | `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at vLLM, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
 | `bench/` | `llm_bench.py` (streaming TTFT, ITL, tokens/s, concurrency sweep), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case), `report.py` (writes `AMD_RESULTS.md`). |
 | `RUNBOOK.md` | Event-week steps: credits, droplet, firewall, serving, training, benchmarks, video capture, teardown, budget. |
+| `kickoff/` | Kickoff day as one command: `preflight.sh` (green/red readiness table), `run_all.sh` (11 resumable stages from environment to evidence bundle, with event-window and budget guards, `--dry-run`, `--stage`, and a CPU `--rehearsal`), `collect_evidence.py`, `fill_pitch.py`, `ab_hallucination.py`. See [kickoff/README.md](kickoff/README.md). |
+| `evidence/` | Dated evidence bundles written by `run_all.sh` during the event (`<UTC date>/evidence.json`, `evidence.md`, stage records, logs, amd-smi snapshots). Empty before 12 Oct. CPU rehearsals go to the gitignored `evidence/cpu-rehearsal/`. |
 | `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. These are separate work streams with their own READMEs. |
 
 ## Run the demo locally (no GPU, no model downloads)
@@ -133,8 +135,10 @@ This is disclosed in full; see also `docs/originality.md`.
   classifier, drafter, verifier, synthetic data, UI and evals (`src/wapsi/`, `ui/`, `evals/`). So did the Snowflake
   and Google Cloud editions. All of it is under the git tag **`amd-baseline`**, created at kickoff.
 - **Prepared before the event, run only during it.** The code in this folder (`docker-compose.yml`, `serving/`,
-  `app/`, `bench/`, `RUNBOOK.md`) was written before the event so that event week goes to GPU work. Its tests run
-  offline on a laptop with fakes. None of it had touched an AMD GPU before the event.
+  `app/`, `bench/`, `kickoff/`, `RUNBOOK.md`) was written before the event so that event week goes to GPU work. Its
+  tests run offline on a laptop with fakes, and `kickoff/run_all.sh --rehearsal` runs the whole pipeline on a CPU with
+  tiny inputs and stub models (labelled "CPU rehearsal", never reported). None of it had touched an AMD GPU before
+  the event.
 - **Done during 12–18 Oct 2026 on the MI300X, and nowhere else:**
   - GNN training on ROCm (`gnn/`)
   - Gemma 4 LoRA fine-tuning and the merged checkpoint (`lora/`)

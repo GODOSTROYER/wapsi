@@ -372,10 +372,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"benchmarking {cfg.base_url} at concurrency {list(cfg.levels)}", flush=True)
     result = asyncio.run(run_bench(cfg, progress=True))
     out = results_dir(args.out)
-    write_json(out / "llm_bench.json", result)
-    (out / "llm_bench.md").write_text(to_markdown(result), encoding="utf-8", newline="\n")
+    write_json(out / f"{args.name}.json", result)  # --name keeps a sweep's files apart (llm_bench_verifier, ...)
+    (out / f"{args.name}.md").write_text(to_markdown(result), encoding="utf-8", newline="\n")
     print(to_markdown(result))
-    print(f"wrote {out / 'llm_bench.json'}")
+    print(f"wrote {out / (args.name + '.json')}")
     return 0 if all(lv["errors"] == 0 for lv in result["levels"]) else 1
 
 
