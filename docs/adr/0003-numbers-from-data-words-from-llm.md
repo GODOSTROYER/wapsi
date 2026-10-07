@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-16
-- **Related:** [0005](0005-one-core-three-editions.md) (any LLM can be plugged in),
+- **Related:** [0005](0005-one-core-two-editions.md) (any LLM can be plugged in),
   [0008](0008-verifier-independent-of-planner.md) (the verifier recomputes every value)
 
 ## Context

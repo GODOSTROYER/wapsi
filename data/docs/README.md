@@ -21,7 +21,7 @@ HTML bot-challenge page where a PDF or known text was expected. Files already in
 pypdf nor the network. If `index/` is missing, it warns and searches a small fallback corpus made from the
 quotes in `citations.json`.
 
-Set `WAPSI_DOCS_DIR` to use a copy of this folder somewhere else (for example Snowflake or Cloud Run).
+Set `WAPSI_DOCS_DIR` to use a copy of this folder somewhere else (for example in a Cloud Run container).
 
 ## Sources
 

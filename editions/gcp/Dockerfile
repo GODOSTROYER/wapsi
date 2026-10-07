@@ -30,6 +30,7 @@ COPY src ./src
 COPY ui ./ui
 COPY .streamlit ./.streamlit
 COPY data/docs ./data/docs
+COPY data/samples ./data/samples
 COPY evals ./evals
 COPY editions/gcp ./editions/gcp
 RUN --mount=type=cache,target=/root/.cache/uv \

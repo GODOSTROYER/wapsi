@@ -1,0 +1,26 @@
+{
+  "transcript": "Namaste, main Arjun Nair bol raha hoon. Gyarah September ko dopahar teen baje KYC update ke naam pe call aaya. Maine IMPS se ek lakh rupaye bheje, UTR 4253 2000 0101. Phir usne das hazaar aur maange, woh bhi bhej diya, UTR 4253 2000 0199. Total ek lakh das hazaar gaya. Account Konkan Commercial Bank mein hai, last four 0002. Jaldi kijiye please.",
+  "translation_en": "Hello, this is Arjun Nair speaking. On 11 September at three in the afternoon I got a call about a KYC update. I sent one lakh rupees by IMPS, UTR 4253 2000 0101. Then he asked for ten thousand more and I sent that too, UTR 4253 2000 0199. In total one lakh ten thousand is gone. My account is with Konkan Commercial Bank, last four 0002. Please act quickly.",
+  "languages": ["hi-en"],
+  "fields": {
+    "victim_name": {"value": "Arjun Nair", "confidence": 0.96},
+    "phone": {"value": "", "confidence": 0.0},
+    "bank": {"value": "Konkan Commercial Bank", "confidence": 0.92},
+    "account_last4": {"value": "0002", "confidence": 0.88},
+    "date_time": {"value": "2026-09-11T15:00:00+05:30", "confidence": 0.84},
+    "payment_mode": {"value": "IMPS", "confidence": 0.93},
+    "fraud_type": {"value": "KYC_FRAUD", "confidence": 0.91},
+    "beneficiary": {"value": "", "confidence": 0.0},
+    "narrative": {"value": "A caller claiming to do a KYC update got him to send money by IMPS, then asked for a second, smaller payment.", "confidence": 0.88}
+  },
+  "amounts": [
+    {"value": 100000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "ek lakh rupaye", "confidence": 0.94},
+    {"value": 10000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "das hazaar", "confidence": 0.9},
+    {"value": 110000, "currency": "INR", "kind": "TOTAL_LOSS", "spoken_as": "ek lakh das hazaar", "confidence": 0.9}
+  ],
+  "txn_refs": [
+    {"ref": "425320000101", "kind": "UTR", "confidence": 0.9},
+    {"ref": "425320000199", "kind": "UTR", "confidence": 0.86}
+  ],
+  "instruction_like": []
+}

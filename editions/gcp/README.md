@@ -145,9 +145,14 @@ editions/gcp/
     tools.py       ADK tools: open_case, list_cases, trace_money, explain_account, hold_plan,
                    verification_report, draft_documents, approve_draft, search_sop, case_clocks
     intake.py      extract_complaint (Gemini multimodal, untrusted output, ledger cross-check)
+    tools.py       ... + intake_voice_note (Hinglish voice note -> schema-bound fields, ledger reconciliation;
+                   see docs/voice-intake.md)
     agent.py       App "wapsi_officer": LlmAgent + wapsi_intake sub-agent + plugins; Gemini API key or Vertex
     workflow.py    App "case_pipeline": ADK 2.x Workflow for Pub/Sub notices, uploads and clock sweeps
     plugins.py     guard (Model Armor -> RulesGuard), structured audit log, memory saving, 429 notice
+    tracing.py     ToolTracePlugin (first plugin): every model turn and tool call as an AgentTrace, sealed into
+                   the case's audit chain; /wapsi/traces on the API
+    trace_demo.py  offline agent-trace demo (real app + tools + guards, scripted model) and its recording
     identity.py    HMAC-signed role grants in session state
     memory.py      in-memory (default), Firestore (WAPSI_ADK_STORE=firestore) or Memory Bank (paid)
     demo_model.py  offline scripted BaseLlm so the agents run with zero cloud access
@@ -157,7 +162,7 @@ editions/gcp/
   ui_app.py        Streamlit entry point (shared ui/app.py on the case store)
   Dockerfile       python:3.11-slim + uv, non-root, optional baked demo world; one image for API and UI
   deploy/          cloudrun.sh (PROFILE=free|paid), gemma_vllm_service.sh (paid add-on), cloudbuild.yaml,
-                   bigquery_setup.sql, model_armor_template.json, iam.md
+                   bigquery_setup.sql, model_armor_template.json, iam.md, firestore.rules (+ firebase.json)
 src/wapsi/adapters/
   bigquery_ledger.py  firestore_store.py  model_armor_guard.py  gemini_llm.py
 tests/gcp/         offline tests (SQLite-backed BigQuery fake, in-memory Firestore, fake Model Armor/Gemini,
@@ -207,6 +212,46 @@ curl -s localhost:8080/run -H 'Content-Type: application/json' -d '{"app_name":"
 # a CFCFRMS notice through the Pub/Sub trigger route
 curl -s localhost:8080/apps/case_pipeline/trigger/pubsub -H 'Content-Type: application/json' -d \
   "{\"message\":{\"data\":\"$(printf '{"ncrp_ids":["31109260000102","31109260000103"]}' | base64 -w0)\"}}"
+```
+
+## Agent trace: what the agent did, step by step
+
+The Case Room has an **Agent trace** tab. It shows every tool call the ADK agent made on the case, in order:
+
+- the tool name, its arguments (account numbers, phones and names redacted) and a one-line result summary built
+  from the tool's own result (numbers come from data);
+- latency (a bar per call) and status (OK, blocked by guard, refused by maker-checker, error);
+- the safety verdicts around each call: the input screen (Model Armor or RulesGuard), argument screening,
+  the maker-checker role check, untrusted complaint text found in a result, the verifier's verdict (plan
+  policy check, draft verification, re-verification before an approval), the output screen, and a reply
+  grounding check (every rupee amount and account number in the agent's reply must appear in a tool result);
+- each model turn (model, latency, tokens when the model reports them, the tools it asked for);
+- a summary row: tool calls, time in tools, tokens, blocked calls, guard checks, verifier verdicts;
+- the raw JSON of every step.
+
+How it works: `ToolTracePlugin` is the app's **first** plugin, so it sees each callback before the guard can
+answer it (a blocked call still gets its step). The guard plugin reports its verdicts into the same
+`wapsi.agenttrace.ToolTraceRecorder` (pure Python, edition-neutral). When a run ends, its trace is appended to the
+audit log of every case it touched as an `agent_trace` event, so the case's hash chain covers it (editing a
+recorded step breaks the chain), and it is logged as one JSON line for Cloud Logging. `GET /wapsi/traces?case_id=`
+on the API service returns the runs that instance recorded (behind IAP an analyst sees only their own runs;
+supervisors and auditors see all). A stored trace is size-bounded (512 KiB: raw results are dropped first, then
+middle steps, with a note saying how many), so a runaway agent loop still yields an audit event Firestore can
+write; the event's totals always count every call.
+
+No API key needed: the showcase case shows a recorded offline run (`src/wapsi/agenttrace/showcase_recording.json`):
+the real app, tools and guards, driven by the scripted model through a fixed officer script (open a case, explain
+an account, an analyst's approval refused by maker-checker, an injected instruction rewritten by the input guard
+and the search that follows blocked). In demo mode the GCP UI also runs that script once at start-up (first
+session only; a spinner shows while it runs, about 10-30 s on a laptop, mostly ADK's one-time start-up), so its
+traces sit in the showcase cases' audit chains. `WAPSI_SEED_AGENT_TRACE=0` skips it. With a Gemini key, live runs
+replace both.
+
+```bash
+uv run python -m editions.gcp.app.trace_demo            # run the script, print each run's tool sequence
+uv run python -m editions.gcp.app.trace_demo --write    # refresh the recording (one warm-up run first)
+uv run streamlit run ui/app.py                          # Case Room -> Agent trace
+curl -s 'localhost:8080/wapsi/traces?case_id=CASE-31009260000101&limit=5'
 ```
 
 ## Configuration
@@ -277,6 +322,56 @@ The deployer's IAM roles are in [deploy/iam.md](deploy/iam.md).
   gcloud scheduler jobs delete wapsi-clocks --location asia-south1     # only if you ran `wire`
   ```
   Then delete the Pub/Sub topics, the buckets and the dataset, or delete the project.
+
+## Audit log on Firestore
+
+`FirestoreCaseStore` keeps each case's audit log hash-chained and append-only, exactly like the in-memory store
+(`wapsi.audit`), so the Audit page's chip reads **chain intact · N events** in production:
+
+```
+cases/{case_id}/audit/{seq:010d}   one sealed event per document (seq, prev_hash, hash), created once
+audit_anchors/{case_id}            the anchor: event count + head hash, outside the log
+```
+
+- **Appends are transactions.** `append_audit` reads the head from the anchor, seals the event as the next link,
+  creates `audit/{seq}` and advances the anchor in one commit. Two Cloud Run instances appending at once conflict
+  on the anchor; Firestore aborts one and `google.cloud.firestore.transactional` re-runs it on the new head, so the
+  chain stays gap-free. Re-sending an event that already committed (a lost response) does not record it twice.
+- **`put_bundle` never rewrites history.** Recorded events are kept; only the bundle's new events are sealed onto
+  the head, in the same transaction that switches the case to its new chunks.
+- **`verify_audit(case_id)`** reads the log in seq order and checks it against the anchor. It reports an edited,
+  deleted, inserted or swapped event, a document edited so that it no longer parses (reported at its position; the
+  case still loads), events removed from the end, a re-hashed log, a deleted anchor and events written straight
+  into the log without advancing the anchor. New events always go to the anchor's head, so a truncation stays
+  visible after later writes; with the anchor gone, or a document already sitting at the head, the store refuses to
+  write (`AuditChainError`) and the clock sweep carries on with the other cases. The UI's chip and **Verify chain**
+  button use the store's verification, not the session's copy.
+
+What enforces append-only, and what only detects tampering:
+
+- **Security rules** ([deploy/firestore.rules](deploy/firestore.rules)) deny every web or mobile client by default,
+  make `audit/{seq}` create-only (never updated or deleted) and let the anchor only move forward. `cloudrun.sh`
+  does not deploy them. Deploy them with the Firebase CLI (once per project: `firebase projects:addfirebase
+  "$PROJECT_ID"`), from the folder whose `firebase.json` points at the file:
+  `cd editions/gcp/deploy && firebase deploy --only firestore:rules --project "$PROJECT_ID"`, or paste the file into
+  the Firebase console (Firestore Database > Rules) **[verify]**. They do not bind the Cloud Run services: server
+  client libraries authenticate with IAM and bypass rules.
+- **IAM** has no per-collection permissions: `roles/datastore.user` on `wapsi-api@` and `wapsi-ui@` can update and
+  delete any document. The store's code only ever creates audit documents, and the chain plus the anchor make any
+  other change visible. Give people `roles/datastore.viewer` at most, and remove `roles/datastore.owner` from the
+  deployer after setup.
+- **A separate trust domain** is needed against someone who holds the service accounts' role and rewrites both
+  the log and its anchor (`test_full_insider_rewrite_needs_an_external_anchor` shows this). For production:
+  export `audit_anchors` daily to a Cloud Storage bucket with a locked retention policy (WORM), turn on Data Access
+  audit logs (`DATA_WRITE`) for Firestore so every write is attributed in Cloud Logging, and enable point-in-time
+  recovery to restore the original documents after a detected tamper **[verify]**. These are billed beyond the
+  free tier and are not part of `PROFILE=free`.
+
+Offline proof: `uv run pytest tests/gcp/test_gcp_firestore_audit_chain.py -v` runs the store under the real
+`transactional` decorator against an in-memory Firestore with serializable transactions: sealing and parity with
+`InMemoryCaseStore`, the six tampers of `python -m wapsi.audit drill` applied to the stored documents, a deleted
+anchor and a forged append (and the refusal to write on top of it), documents that no longer parse, contended
+and threaded appends, a lost commit response, the clock sweep, and the Audit page's chip.
 
 ## What was verified and what was assumed
 

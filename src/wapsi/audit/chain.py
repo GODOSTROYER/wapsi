@@ -14,8 +14,9 @@ What ``verify_chain`` detects on its own: an edited event (its hash no longer ma
 inserted or moved event (sequence gap or broken ``prev_hash`` link) and an event that was never sealed. What it
 cannot detect on its own: events removed from the *end* of the log, or a log whose every hash was recomputed
 after an edit. Both are caught against a ``ChainAnchor`` (event count + head hash) kept outside the log: stores
-keep one per case (``InMemoryCaseStore.audit_anchor``); in production the anchor goes to a separate trust
-domain (WORM storage, a signed receipt to the supervisor, a daily digest to the CISO).
+keep one per case (``InMemoryCaseStore.audit_anchor``, ``FirestoreCaseStore.audit_anchor`` in
+``audit_anchors/{case_id}``); in production the anchor goes to a separate trust domain (WORM storage, a signed
+receipt to the supervisor, a daily digest to the CISO).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ CONTENT = "CONTENT"  # the event's content no longer matches its hash: it was ed
 CASE = "CASE"  # the event was sealed into another case's log
 TRUNCATED = "TRUNCATED"  # fewer events than the anchor recorded: events were removed from the end
 HEAD = "HEAD"  # the chain does not reach the anchored head hash: the log was rewritten and re-hashed
+ANCHOR = "ANCHOR"  # a store's own anchor is missing, or events were written without advancing it (store-level check)
 
 
 @dataclass(frozen=True)

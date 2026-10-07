@@ -1,0 +1,23 @@
+{
+  "transcript": "Hello sir, main Swati More bol rahi hoon. Part time job ke naam pe task scam hua. Paanch August ko raat teen baj kar chaalis minute par maine IMPS se do lakh chhiyasath hazaar rupaye bheje, account HB01 2494 695 604 mein. UTR 6217 0399 4792. Mera account Konkan Commercial Bank mein hai, last four 5947.",
+  "translation_en": "Hello sir, this is Swati More speaking. I was cheated in a task scam in the name of a part-time job. On 5 August at 3:40 at night I sent two lakh sixty-six thousand rupees by IMPS to account HB01 2494 695 604. UTR 6217 0399 4792. My account is with Konkan Commercial Bank, last four 5947.",
+  "languages": ["hi-en"],
+  "fields": {
+    "victim_name": {"value": "Swati More", "confidence": 0.95},
+    "phone": {"value": "", "confidence": 0.0},
+    "bank": {"value": "Konkan Commercial Bank", "confidence": 0.92},
+    "account_last4": {"value": "5947", "confidence": 0.88},
+    "date_time": {"value": "2026-08-05T03:40:00+05:30", "confidence": 0.84},
+    "payment_mode": {"value": "IMPS", "confidence": 0.94},
+    "fraud_type": {"value": "TASK_SCAM", "confidence": 0.9},
+    "beneficiary": {"value": "HB01-2494695604", "confidence": 0.86},
+    "narrative": {"value": "A part-time job offer turned into a task scam; she paid for a prepaid task by IMPS to the account the scammers gave her.", "confidence": 0.88}
+  },
+  "amounts": [
+    {"value": 266000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "do lakh chhiyasath hazaar rupaye", "confidence": 0.93}
+  ],
+  "txn_refs": [
+    {"ref": "621703994792", "kind": "UTR", "confidence": 0.9}
+  ],
+  "instruction_like": []
+}

@@ -414,7 +414,7 @@ keeps running for its other customers.
 | freeze or debit-freeze a whole account on its own | it holds `min(victim money, balance)` by default [SOP-5-IX] [CASE-KARTIK-CHATUR]; account-level action happens only as a recorded exception an officer requests and a different supervisor approves |
 | suspend, seize or forward-hold a nodal, pool or escrow account | it holds the disputed amount only [SOP-9-1-III] [SOP-9-1-I] |
 | decide on s.106 BNSS escalation | it raises a flag that needs an FIR and at least 2 prior NCRP reports, and a person decides. `Disposition.ESCALATE_S106_CANDIDATE` is reserved and never emitted |
-| act without a supervisor | nothing leaves the case until a supervisor approves the exact draft. The core ships `RecordingActionSink`, which only records actions; editions can replace it with Jira, Slack or table sinks |
+| act without a supervisor | nothing leaves the case until a supervisor approves the exact draft. The core ships `RecordingActionSink`, which only records actions and is what both editions use; a deployment can plug in a Jira, Slack or ticketing sink through the `ActionSink` port |
 | file the STR with FIU-IND | it drafts the STR for the bank's Principal Officer, in a layout modelled on FINnet 2.0; filing stays with the bank |
 | connect to the live NCRP or CFCFRMS | it is a simulated CFCFRMS interface: other-bank responses come from `Ledger.consortium_transactions`, and every CFCFRMS action it prepares is labelled as simulated |
 | let the LLM write numbers | every value is a slot, and the verifier recomputes it |
@@ -452,10 +452,9 @@ keeps running for its other customers.
   notice lets the bank remove a contested hold 90 days after the amount was put on hold
   (`data/docs/facts.json`). Wapsi's `HOLD_LAPSE` clock counts 90 calendar days from the hold, with a warning at
   day 75. The [Legal spine](legal-spine.md) discusses this.
-- **The editions are at different stages.** On 29-09-2026 the Snowflake edition was complete in the repository
-  and tested offline, with CoCo sessions deploying it from 29 Sep to 3 Oct; the Google Cloud edition was tested
-  offline with fakes and is deployed in October; the AMD edition's GPU work runs only during the event (12 to
-  18 Oct 2026). See [Editions](editions.md).
+- **The editions are at different stages.** On 29-09-2026 the Google Cloud edition was tested offline with fakes
+  and is deployed in October; the AMD edition's GPU work runs only during the event (12 to 18 Oct 2026). See
+  [Editions](editions.md).
 - **The hard world shows where labels break.** On its 64 cases the heuristic's dispositions are 0.9198 and
   innocent-holder recall 0.6875; victims on another victim's trail are sometimes called mules, and innocent-only
   trails can get an STR ground. Holds stay exact ([Evaluation](evaluation.md#hard-world)).
@@ -466,7 +465,7 @@ keeps running for its other customers.
 
 | You are... | Start with |
 |---|---|
-| A Snowflake, Google Cloud or AMD judge | [Editions](editions.md), [Architecture](architecture.md), [Evaluation](evaluation.md), [FAQ](faq.md) |
+| A Google Cloud or AMD judge | [Editions](editions.md), [Architecture](architecture.md), [Evaluation](evaluation.md), [FAQ](faq.md) |
 | A bank fraud or compliance expert | [Legal spine](legal-spine.md), [Hold plan](algorithms/hold-plan.md), [Trust and safety](trust-and-safety.md), [User guide](user-guide.md) |
 | A developer | [Developer guide](developer-guide.md), [API reference](api-reference.md), [Data contract](data-contract.md), [Draft contract](draft-contract.md) |
 | Curious how the money is followed | [Money trail](algorithms/money-trail.md), [Classification](algorithms/classification.md), [Synthetic data](synthetic-data.md) |

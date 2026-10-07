@@ -128,10 +128,9 @@ reviewable before use.
   the error is `MULE` rather than `UNKNOWN`, nothing in the pipeline flags it, and the proposed STR names the
   account; the supervisor who approves the STR is the only check. [architecture.md](../architecture.md#limitations)
   lists this as a known limitation.
-- The Snowflake playbook's optional step S18 (a Snowflake ML XGBoost score, deferred to the finale in
-  `COCO_SPRINT.md`) says not to change the default scorer unless the metrics beat the heuristic. This ADR adds a condition: metrics on synthetic worlds alone are not enough;
-  the model must also not depend on generator artifacts, which in practice means evidence from data the generator
-  did not produce.
+- A learned scorer (the XGBoost baseline, or a GNN) does not become the core's default unless its metrics beat
+  the heuristic, and metrics on synthetic worlds alone are not enough: the model must also not depend on generator
+  artifacts, which in practice means evidence from data the generator did not produce.
 - Revisit this decision when labelled data from outside the generator is available (a bank pilot, or public data
   with comparable labels).
 

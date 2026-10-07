@@ -187,7 +187,7 @@ def _configure_logging() -> None:
 
 
 def create_app(settings: GcpSettings | None = None, *, services: Any | None = None) -> Any:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Header
     from google.adk.cli.fast_api import get_fast_api_app
 
     settings = settings or load_settings()
@@ -224,6 +224,25 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
             "guard_fallbacks": len(getattr(guard, "fallback_events", []) or []),
             "docs_index": svc.search is not None,
         }
+
+    @adk_app.get("/wapsi/traces", include_in_schema=False)
+    async def agent_traces(case_id: str | None = None, limit: int = 20,
+                           x_goog_authenticated_user_email: str | None = Header(default=None)) -> dict[str, Any]:
+        """Agent runs this instance recorded (redacted ``AgentTrace``s, oldest first); ``case_id`` filters.
+        The same traces are sealed into each case's audit log, which the UI reads. Behind IAP an analyst sees
+        only their own runs (as with ADK sessions); supervisors and auditors see every run."""
+        from .tracing import get_recorder
+
+        items = get_recorder().traces(case_id=case_id)
+        email = x_goog_authenticated_user_email  # set by IAP (it strips any client-sent copy)
+        if email:
+            email = email.split(":", 1)[-1].strip().lower()
+            if role_for_email(email, settings.supervisors, settings.auditors) == "analyst":
+                items = [t for t in items if t.user_id.strip().lower() == email]
+        items = items[-max(1, min(int(limit), 100)):]
+        return {"traces": [t.model_dump(mode="json") for t in items],
+                "summaries": [{"trace_id": t.trace_id, "cases": t.case_ids, **t.summary().model_dump(mode="json")}
+                              for t in items]}
 
     adk_app.add_middleware(RoleStateMiddleware, settings=settings)
     return adk_app

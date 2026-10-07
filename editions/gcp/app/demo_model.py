@@ -23,6 +23,9 @@ NCRP = re.compile(r"(?<![\w-])\d{14}(?![\w-])")  # not the digits inside CASE-/D
 ACCOUNT = re.compile(r"\b[A-Z]{2}\d{2}-\d{10}\b")
 CASE = re.compile(r"\bCASE-\d{14}\b")
 URI = re.compile(r"\b(?:gs|demo)://\S+")
+VOICE_UPLOAD = re.compile(r'\[Uploaded voice note: "([^"]+)"\]')
+VOICE_URI = re.compile(r"\b(?:demo://voice/[a-z0-9][a-z0-9\-]*|gs://\S+?\.(?:wav|mp3|m4a|ogg|oga|opus|webm))(?![\w.])",
+                       re.IGNORECASE)
 APPROVE = re.compile(r"\bapprove\s+(?:draft\s+)?(DRF-[A-Za-z0-9_\-]+)", re.IGNORECASE)
 REASONS = ("CHECKS_PASSED", "VERIFIED_ON_LEDGER", "APPROVED_WITH_NOTE")
 STOP = {"error", "refused", "blocked"}
@@ -35,8 +38,9 @@ Step = tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]
 HELP = (
     "I can open a case from NCRP acknowledgement numbers (e.g. 'Open case 31009260000101'), show the money "
     "trail, the hold plan, the verification report and drafts, explain an account, show the clocks, search "
-    "the SOP, extract a complaint from an upload (gs://... or demo://complaint/<ncrp_id>) and record a "
-    "supervisor's approval ('approve <draft_id>')."
+    "the SOP, extract a complaint from an upload (gs://... or demo://complaint/<ncrp_id>), read a victim's "
+    "voice note (upload one, or try demo://voice/fatima-courier-injection) and record a supervisor's approval "
+    "('approve <draft_id>')."
 )
 
 
@@ -171,6 +175,25 @@ def _summ_extract(r: dict[str, Any]) -> str:
             f"{match}.{flag} Say 'open case {f.get('ncrp_id')}' to process it.")
 
 
+def _summ_voice(r: dict[str, Any]) -> str:
+    c = r["counts"]
+    langs = ", ".join(r["languages"]) or "unknown language"
+    out = [f"Voice note ({langs}) read by {r['extracted_by']}. English translation (untrusted): "
+           f"{r['translation_en']['text']}"]
+    rows = [f"{x['claim']}: claimed {x['claimed']} | ledger {x['ledger']} [{x['status']}]"
+            + (f" ({x['note']})" if x["note"] and x["status"] != "MATCHED" else "") for x in r["reconciliation"]]
+    out.append(f"Reconciliation: {c['MATCHED']} matched, {c['MISMATCH']} mismatched, {c['NOT_FOUND']} not in "
+               "the ledger.\n" + _lines(rows))
+    inj = r["instruction_like"]
+    if inj["flagged"]:
+        quoted = "; ".join(f"“{s}”" for s in inj["quoted_spans"][:2])
+        out.append(f"The recording contains instruction-like text. It is quoted here and was not followed: {quoted}")
+    ids = r["matched_ncrp_ids"]
+    out.append(f"Matched NCRP {', '.join(ids)}. Say 'open case {' '.join(ids)}' to process it; amounts come from "
+               "the ledger." if ids else "No NCRP complaint matches this voice note; nothing can be held on it.")
+    return "\n".join(out)
+
+
 SUMMARIES: dict[str, Callable[[dict[str, Any]], str]] = {
     "open_case": _summ_open_case,
     "trace_money": _summ_trace,
@@ -183,6 +206,7 @@ SUMMARIES: dict[str, Callable[[dict[str, Any]], str]] = {
     "search_sop": _summ_search,
     "list_cases": _summ_list,
     "extract_complaint": _summ_extract,
+    "intake_voice_note": _summ_voice,
 }
 
 
@@ -271,18 +295,23 @@ class DemoScriptedLlm(BaseLlm):
         text = _text(contents[idx]) if idx >= 0 else ""
         done = [(n, r) for n, r in _responses(contents[idx + 1:]) if n != "transfer_to_agent"]
         uri = URI.search(text)
+        voice = VOICE_UPLOAD.search(text) or VOICE_URI.search(text)
 
-        if "extract_complaint" in tools:  # intake agent
+        if "extract_complaint" in tools or "intake_voice_note" in tools:  # intake agent
             if done:
                 name, r = done[-1]
                 return _say(_failure(name, r) if r.get("status") in STOP else SUMMARIES[name](r))
+            if voice and "intake_voice_note" in tools:
+                ref = voice.group(1) if voice.re is VOICE_UPLOAD else voice.group(0)
+                return _call("intake_voice_note", {"audio": ref.rstrip(".,;)")})
             if uri:
                 return _call("extract_complaint", {"file_uri": uri.group(0).rstrip(".,;)")})
             if "transfer_to_agent" in tools:
                 return _call("transfer_to_agent", {"agent_name": OFFICER})
-            return _say("Share the upload as gs://bucket/file.pdf (or demo://complaint/<ncrp_id>).")
+            return _say("Share the upload as gs://bucket/file.pdf (or demo://complaint/<ncrp_id>), or upload a "
+                        "voice note (or demo://voice/<sample_id>).")
 
-        if uri and not done and "transfer_to_agent" in tools:
+        if (uri or voice) and not done and "transfer_to_agent" in tools:
             return _call("transfer_to_agent", {"agent_name": INTAKE})
         plan = _officer_plan(text, _known_case(contents, text))
         if isinstance(plan, str):

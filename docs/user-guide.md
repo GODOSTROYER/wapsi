@@ -132,8 +132,8 @@ public legal texts (network access needed) and parses the PDFs (needs the `docs`
 IST.
 
 The app follows the viewer's light or dark setting. The theme accents are in `.streamlit/config.toml`, with an
-identical copy in `ui/.streamlit/config.toml` for hosts that treat `ui/` as the app root, such as Streamlit in
-Snowflake. The screenshots in this guide use light mode.
+identical copy in `ui/.streamlit/config.toml` that Streamlit reads when `ui/app.py` is started from another
+directory. The screenshots in this guide use light mode.
 
 ---
 
@@ -946,10 +946,10 @@ These describe the app as it is in this repository.
 
 - **State lives in the browser session.** `ShowcaseDataSource` keeps the bundles, approvals and audit events in
   memory for one Streamlit session, so a reload or a new tab starts again from the showcase data.
-  `ui/data_source.py` defines a `DataSource` protocol so that a Snowflake-, BigQuery- or Postgres-backed store can
+  `ui/data_source.py` defines a `DataSource` protocol so that a Firestore-, BigQuery- or Postgres-backed store can
   take its place.
-  What each platform provides is described in [editions/snowflake](../editions/snowflake/README.md),
-  [editions/gcp](../editions/gcp/README.md) and [editions/amd](../editions/amd/README.md).
+  What each platform provides is described in [editions/gcp](../editions/gcp/README.md) and
+  [editions/amd](../editions/amd/README.md).
 - **Actions are recorded, not sent.** `RecordingActionSink` marks every action Done ("recorded"). No bank, CFCFRMS,
   FIU-IND or ticketing system is called: the app is a simulated CFCFRMS interface and says so.
 - **The role switcher is not authentication.** Anyone at the screen can pick any role. The approval rule is
@@ -997,14 +997,14 @@ These describe the app as it is in this repository.
 | `ui/components/totals_waterfall.py`, `clock_timeline.py`, `baseline_strip.py` | Waterfall, clock timeline and freeze-versus-Wapsi banner |
 | `ui/components/formatting.py` | Indian rupee formats (`inr_short`: ₹43,200 · ₹2.88 L · ₹5.04 Cr), IST times, plain-English labels, roles and masking |
 | `ui/components/html.py`, `theme.py` | Small HTML builders (chips, tiles, tables, empty states) with escaping; colour tokens and the CSS block for light and dark mode |
-| `ui/components/compat.py` | Shims so one codebase runs on Streamlit 1.38 (Streamlit in Snowflake) and current releases (this guide used 1.64.0) |
+| `ui/components/compat.py` | Shims so one codebase runs on Streamlit 1.38 (the oldest the `ui` extra allows) and current releases (this guide used 1.64.0) |
 | `.streamlit/config.toml`, `ui/.streamlit/config.toml` | Identical copies: theme accents for light and dark mode, minimal toolbar, usage statistics off |
 | `tests/ui/` | AppTest smoke tests for every screen × both cases × all three roles, plus component, formatting, audit-chain, radar and legal-wording tests: 152 tests on 29-09-2026, all passing in that day's full-suite run |
 | `scripts/capture_screenshots.py` | The screenshot script in [section 9](#9-regenerating-the-screenshots) |
 
 Related documents: [overview.md](overview.md) (what Wapsi does, with the showcase numbers),
 [legal-spine.md](legal-spine.md) (every SOP rule, clock and citation behind the screens),
-[editions.md](editions.md) (the Snowflake, Google Cloud and AMD editions),
+[editions.md](editions.md) (the Google Cloud and AMD editions),
 [glossary.md](glossary.md) (terms and abbreviations), [data-contract.md](data-contract.md) (the generated world),
 [draft-contract.md](draft-contract.md) (draft templates, slots and checks), [eval-report.md](eval-report.md)
 (the KPI report format) and [originality.md](originality.md) (build timeline).

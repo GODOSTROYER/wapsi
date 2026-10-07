@@ -132,8 +132,10 @@ classification records which scorer produced it.
 This is disclosed in full; see also `docs/originality.md`.
 
 - **Before the event.** The portable Wapsi core already existed: tracing, taint apportionment, hold plans,
-  classifier, drafter, verifier, synthetic data, UI and evals (`src/wapsi/`, `ui/`, `evals/`). So did the Snowflake
-  and Google Cloud editions. All of it is under the git tag **`amd-baseline`**, created at kickoff.
+  classifier, drafter, verifier, synthetic data, UI and evals (`src/wapsi/`, `ui/`, `evals/`). So did the Google
+  Cloud edition. All of it is under the git tag **`amd-baseline`**, created at kickoff. An edition for a separate,
+  earlier event was also built on this core before the event; it was removed from the tree on 2026-10-07 and stays
+  in the git history before the tag (see `docs/originality.md`).
 - **Prepared before the event, run only during it.** The code in this folder (`docker-compose.yml`, `serving/`,
   `app/`, `bench/`, `kickoff/`, `RUNBOOK.md`) was written before the event so that event week goes to GPU work. Its
   tests run offline on a laptop with fakes, and `kickoff/run_all.sh --rehearsal` runs the whole pipeline on a CPU with

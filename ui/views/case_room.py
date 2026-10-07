@@ -1,10 +1,12 @@
-"""Case Room: trail graph on the left; totals, waterfall and the account inspector on the right."""
+"""Case Room: trail graph on the left; totals, waterfall and the account inspector on the right. A second tab shows
+the agent trace: every tool call the ADK agent made on the case, with its guard and verifier verdicts."""
 
 from __future__ import annotations
 
 import streamlit as st
 
 from ui.components import html as h
+from ui.components import tool_trace
 from ui.components.compat import stretch
 from ui.components.formatting import (
     ACCOUNT_TYPE_LABELS,
@@ -63,6 +65,14 @@ def render(ctx: Ctx) -> None:
         return
     bundle = ctx.bundle
     case_bar(ctx, bundle)
+    trail_tab, agent_tab = st.tabs(["Money trail", tool_trace.tab_label(bundle)])
+    with trail_tab:
+        _trail(ctx, bundle)
+    with agent_tab:
+        tool_trace.render_agent_trace(ctx)
+
+
+def _trail(ctx: Ctx, bundle: CaseBundle) -> None:
     trace = bundle.trace
     if trace is None:
         md(h.empty_state("Trail not traced yet",

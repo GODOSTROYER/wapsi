@@ -1,16 +1,17 @@
 ---
 name: lien-calculator
-description: Build and explain the amount-specific hold (lien) plan for an NCRP cyber-fraud case — one disposition per account (hold tainted amount, innocent-holder hold without escalation, merchant no-hold, amount hold in nodal/pool/escrow accounts, outbound CFCFRMS request, first-layer forward hold), each with SOP/BNSS citations, totals, per-victim recoverable, restoration process and the whole-account-freeze baseline comparison. Local (wapsi.graph.holdplan) or Snowflake (WAPSI.CASEMGMT.BUILD_HOLD_PLAN). Use for "hold plan", "lien", "how much to hold", "dispositions", "recoverable".
+description: Build and explain the amount-specific hold (lien) plan for an NCRP cyber-fraud case — one disposition per account (hold tainted amount, innocent-holder hold without escalation, merchant no-hold, amount hold in nodal/pool/escrow accounts, outbound CFCFRMS request, first-layer forward hold), each with SOP/BNSS citations, totals, per-victim recoverable, restoration process and the whole-account-freeze baseline comparison. Runs the portable Python core (wapsi.graph.holdplan.build_hold_plan) with an independent re-check of the hard rules and wapsi.verify.verify_plan. Use for "hold plan", "lien", "how much to hold", "dispositions", "recoverable".
 ---
 
 # lien-calculator
 
 Turns a trace into amount-specific holds. The plan is a **recommendation pending supervisor approval**; nothing is
-held until `APPROVE` runs under `WAPSI_SUPERVISOR`.
+held until a supervisor approves it (`wapsi.pipeline.run.approve`, role `supervisor`, maker-checker).
 
 ## Inputs
-- NCRP id(s) (use `--group` to take the whole case) or, in Snowflake, a `case_id` that `TRACE_CASE` produced.
-- World / database as in `$money-trail-tracer`. Apportionment rule defaults to pro-rata.
+- NCRP id(s) (use `--group` to take the whole case).
+- World as in `$money-trail-tracer` (`--world showcase-memory | demo | <dir>`). Apportionment rule defaults to
+  pro-rata.
 
 ## Outputs
 - Dispositions table: account, layer, role, disposition, tainted, balance, hold, forward hold, citation ids, flags.
@@ -39,42 +40,13 @@ held until `APPROVE` runs under `WAPSI_SUPERVISOR`.
 Restoration process = P2 when more than one victim has recoverable money [SOP-11-P2], else P1 [SOP-11-P1].
 Layer-0 (victim) accounts never get a decision.
 
-## Steps — local
+## Steps
 ```
 uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101 --world showcase-memory
 uv run python .claude/skills/lien-calculator/scripts/hold_plan.py <ncrp_id> --world demo --group
 uv run python .claude/skills/lien-calculator/scripts/hold_plan.py <ncrp_id> --world demo --group --all-checks
 ```
 Exit 1 = a policy check failed. Report the FAIL lines verbatim and stop; do not present the plan as ready.
-
-## Steps — Snowflake
-```sql
-CALL WAPSI.CASEMGMT.TRACE_CASE('31009260000101');          -- if not traced yet
-CALL WAPSI.CASEMGMT.BUILD_HOLD_PLAN('CASE-31009260000101'); -- writes CASEMGMT.HOLD_PLAN, updates CASES
-SELECT account_id, layer, role, disposition, tainted_amount, balance_now, hold_amount,
-       forward_hold_amount, citation_ids, reason_codes, requires_human
-FROM WAPSI.CASEMGMT.HOLD_PLAN WHERE case_id = 'CASE-31009260000101' ORDER BY layer, account_id;
-
--- baseline strip and totals (numbers for the officer come from here)
-SELECT total_hold, total_forward_hold, total_recoverable, over_hold_amount,
-       baseline_freeze_amount, baseline_freeze_accounts, restoration_process, str_ground
-FROM WAPSI.CASEMGMT.CASES WHERE case_id = 'CASE-31009260000101';
-
--- independent SQL re-check: every row must return 0
-SELECT
-  COUNT_IF(hold_amount > tainted_amount + 0.005 AND disposition <> 'OUTBOUND_CFCFRMS_REQUEST') AS over_tainted,
-  COUNT_IF(disposition IN ('HOLD_AMOUNT','HOLD_AMOUNT_NO_ESCALATION','HOLD_AMOUNT_INTERMEDIARY')
-           AND hold_amount > balance_now + 0.005)                                        AS over_balance,
-  COUNT_IF(forward_hold_amount > 0 AND layer <> 1)                                        AS fwd_not_layer1,
-  COUNT_IF(account_type IN ('NODAL','POOL','ESCROW') AND disposition <> 'HOLD_AMOUNT_INTERMEDIARY') AS intermediary_wrong_disposition,
-  COUNT_IF(account_type IN ('NODAL','POOL','ESCROW') AND (forward_hold_amount > 0
-           OR ARRAY_CONTAINS('ESCALATE_S106_CANDIDATE'::VARIANT, reason_codes)))       AS intermediary_forward_or_s106,
-  COUNT_IF(disposition = 'BLOCK_NODAL_POOL_ESCROW')                                       AS legacy_block_disposition,
-  COUNT_IF(disposition = 'OUTBOUND_CFCFRMS_REQUEST' AND hold_amount <> 0)                 AS outbound_with_hold,
-  COUNT_IF(disposition = 'ESCALATE_S106_CANDIDATE')                                        AS escalate_as_disposition,
-  COUNT_IF(ARRAY_CONTAINS('ESCALATE_S106_CANDIDATE'::VARIANT, reason_codes) AND NOT requires_human) AS escalate_unreviewed
-FROM WAPSI.CASEMGMT.HOLD_PLAN WHERE case_id = 'CASE-31009260000101';
-```
 
 ## How to explain the plan
 1. Lead with the baseline strip (the court-mandated difference: lien on the disputed amount, not a freeze —
@@ -94,7 +66,7 @@ Use `$sop-citer` if the officer wants the text behind a citation id.
   an s.106 flag. The legacy disposition `BLOCK_NODAL_POOL_ESCROW` ("never hold") is wrong and must not appear.
 - Never turn the s.106 flag into an action; it needs a human, an FIR and prior reports.
 - Only cite ids that appear in the output (all come from `wapsi.citations`). Never invent a clause.
-- Amounts are copied from the script / SQL output, never recomputed in prose.
+- Amounts are copied from the script output, never recomputed in prose.
 
 ## How to verify
 - Numbers must equal `SHOWCASE_1` / `SHOWCASE_2` in `src/wapsi/fixtures/showcase.py` (the fixture is the source of
@@ -104,4 +76,4 @@ Use `$sop-citer` if the officer wants the text behind a citation id.
   recoverable ₹3,34,848.00; baseline ₹5,03,50,000.00 across 6 accounts; P1.
 - Showcase 2 (`31109260000102 --group`): hold ₹1,20,000.00 on `HB01-1000000004` (₹75,000 / ₹45,000 per victim),
   forward hold ₹40,000.00, `ESCALATE_S106_CANDIDATE` flag with HUMAN REVIEW, P2.
-- Script ends with `N/N checks passed` and `verify_plan: PASS`; the SQL re-check returns all zeros.
+- Script ends with `N/N checks passed` and `verify_plan: PASS`.

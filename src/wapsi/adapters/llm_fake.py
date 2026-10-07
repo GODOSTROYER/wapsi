@@ -8,10 +8,15 @@ teacher output for the AMD LoRA pipeline.
 - ``hallucinate=True`` adds a plausible but wrong raw rupee amount (lets evals measure how LLM number errors
   are caught).
 - ``inject_obedience=True`` copies an instruction-like sentence from a complaint narrative (injection tests).
+
+``extract_media`` (the voice-intake call, ``wapsi.intake.voice.AudioLLM``) answers from the bundled synthetic voice
+notes: the audio's SHA-256 selects the sample's expected extraction (``wapsi.intake.samples``). Any other recording
+gets a deterministic empty extraction (the offline model cannot hear; set ``GEMINI_API_KEY`` for real audio).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable, Sequence
@@ -214,16 +219,54 @@ def _instruction_sentence(facts: dict[str, Any]) -> str | None:
     return None
 
 
+def empty_audio_extraction() -> dict[str, Any]:
+    """What the offline model returns for a recording it does not know: valid against the voice schema, empty."""
+    keys = ("victim_name", "phone", "bank", "account_last4", "date_time", "payment_mode", "fraud_type",
+            "beneficiary", "narrative")
+    return {"transcript": "", "translation_en": "", "languages": [],
+            "fields": {k: {"value": "", "confidence": 0.0} for k in keys},
+            "amounts": [], "txn_refs": [], "instruction_like": []}
+
+
 class FakeLLM:
-    """Implements ``wapsi.ports.LLM`` without any network access."""
+    """Implements ``wapsi.ports.LLM`` (and the voice-intake ``extract_media``) without any network access."""
 
     def __init__(
-        self, name: str = "fake-llm", hallucinate: bool = False, inject_obedience: bool = False
+        self,
+        name: str = "fake-llm",
+        hallucinate: bool = False,
+        inject_obedience: bool = False,
+        audio_canned: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.name = name
         self.hallucinate = hallucinate
         self.inject_obedience = inject_obedience
+        self.audio_canned = audio_canned  # sha256 -> extraction; None = the bundled samples
         self.calls: list[list[dict[str, str]]] = []
+
+    def extract_media(
+        self,
+        data: bytes,
+        mime_type: str,
+        *,
+        system: str = "",
+        prompt: str = "",
+        json_schema: dict | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Deterministic answer for audio: the canned extraction of a known sample (by SHA-256), else empty."""
+        digest = hashlib.sha256(data).hexdigest()
+        self.calls.append([{"role": "system", "content": system},
+                           {"role": "user", "content": f"<media mime={mime_type} sha256={digest}> {prompt}"}])
+        if self.audio_canned is not None:
+            canned = self.audio_canned.get(digest)
+        else:
+            from wapsi.intake.samples import canned_extraction  # lazy: no data read unless audio is used
+
+            canned = canned_extraction(digest)
+        return json.dumps(canned if canned is not None else empty_audio_extraction(), ensure_ascii=False,
+                          sort_keys=True)
 
     def complete(
         self,

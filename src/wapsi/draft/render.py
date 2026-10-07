@@ -87,7 +87,7 @@ def plural(n: int, word: str, suffix: str = "s") -> str:
 
 
 def _loader() -> BaseLoader:
-    """Templates from the source tree, or from the package when imported from a zip (Snowpark IMPORTS)."""
+    """Templates from the package directory, or via PackageLoader when the package is imported from a zip archive."""
     if TEMPLATE_DIR.is_dir():
         return FileSystemLoader(str(TEMPLATE_DIR))
     return PackageLoader("wapsi.draft", "templates")

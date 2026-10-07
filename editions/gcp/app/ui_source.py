@@ -1,15 +1,20 @@
 """Streamlit data source for the GCP edition: the shared UI reads and writes cases through the ``CaseStore``
 (Firestore on Cloud Run) and the ``Ledger`` (BigQuery), so it shows the same cases the agents and the Pub/Sub
 pipeline create. Launched by ``editions/gcp/ui_app.py``.
+
+In demo mode an empty store is seeded with the showcase cases and, with ``seed_agent_trace=True`` (the UI service),
+one offline run of the real ADK agent (scripted model, ``trace_demo.DEMO_SCRIPT``) whose traces land in the
+showcase cases' hash-chained audit logs, so the Case Room's Agent trace tab shows a run recorded on this instance.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from ui.data_source import Outcome, ShowcaseDataSource, build_showcase_bundles, doc_search
-from wapsi.audit.chain import append_event, chain_extend
+from wapsi.audit.chain import ChainReport, append_event, chain_extend
 from wapsi.models import ApprovalDecision, AuditEvent, CaseBundle
 from wapsi.timeutil import utcnow
 
@@ -20,7 +25,7 @@ SOURCE_CASE_STORE = "case_store"
 
 
 class CaseStoreDataSource(ShowcaseDataSource):
-    def __init__(self, services: Services, *, seed_demo: bool = True) -> None:
+    def __init__(self, services: Services, *, seed_demo: bool = True, seed_agent_trace: bool = False) -> None:
         self.services = services
         store = services.store
         bundles = [b for b in (store.get_bundle(c.case_id) for c in store.list_cases()) if b is not None]
@@ -29,7 +34,22 @@ class CaseStoreDataSource(ShowcaseDataSource):
             bundles, source = build_showcase_bundles(services.ledger, live=True)
             for b in bundles:
                 store.put_bundle(b)
+            if seed_agent_trace and os.environ.get("WAPSI_SEED_AGENT_TRACE", "1").strip() != "0":
+                bundles = self._seed_agent_trace(bundles)
         super().__init__(bundles=bundles, ledger=services.ledger, source=source)
+
+    def _seed_agent_trace(self, bundles: list[CaseBundle]) -> list[CaseBundle]:
+        """One offline run of the ADK agent on the showcase cases (demo mode); the store keeps its traces."""
+        try:
+            from .trace_demo import seed_case_traces
+
+            traces = seed_case_traces(self.services)
+        except Exception:  # noqa: BLE001 - the panel falls back to the recorded run
+            log.exception("could not seed the agent trace demo")
+            return bundles
+        log.info("seeded %d offline agent runs", len(traces))
+        store = self.services.store
+        return [store.get_bundle(b.case.case_id) or b for b in bundles]
 
     def refresh(self) -> None:
         """Pick up cases created elsewhere (agents, Pub/Sub pipeline)."""
@@ -61,14 +81,42 @@ class CaseStoreDataSource(ShowcaseDataSource):
     def append_audit(self, case_id: str | None, event: AuditEvent) -> None:
         super().append_audit(case_id, event)
         if case_id and case_id in self._bundles:
-            # store the link just sealed into the session's chain, not the unsealed original: a store that keeps
-            # events as given (Firestore) would otherwise hold an unsealed event (the chain reads as broken) and,
-            # on the next put_bundle, a second, sealed copy of it
-            sealed = self._bundles[case_id].audit[-1].model_copy(deep=True)
+            # hand the store the link just sealed into the session's chain; the store seals it onto its own head
+            # (Firestore and the in-memory store both do) and stamps it with the seal it recorded (the receipt)
+            local = self._bundles[case_id].audit[-1]
+            sealed = local.model_copy(deep=True)
             try:
                 self.services.store.append_audit(case_id, sealed)
             except Exception:  # noqa: BLE001
                 log.exception("could not append audit for %s", case_id)
+                return
+            if (sealed.seq, sealed.hash) != (local.seq, local.hash):
+                # the store holds events this session has not seen (agents, the Pub/Sub pipeline): catch up, so
+                # the page shows the store's chain
+                self._catch_up(case_id)
+
+    def _catch_up(self, case_id: str) -> None:
+        try:
+            fresh = self.services.store.get_bundle(case_id)
+        except Exception:  # noqa: BLE001
+            log.exception("could not re-read case %s", case_id)
+            return
+        if fresh is not None:
+            self._bundles[case_id] = fresh
+
+    def verify_audit(self, case_id: str | None) -> ChainReport:
+        """A case's chain as the case store holds it, checked against the store's anchor (Firestore:
+        ``audit_anchors/{case_id}``), so the audit page's badge reports what is in production, not the session's
+        copy. Session-level events (``None``) and cases the store does not hold are verified in the session."""
+        verify = getattr(self.services.store, "verify_audit", None)
+        if case_id is not None and callable(verify):
+            try:
+                return verify(case_id)
+            except KeyError:
+                pass  # not in the store (yet)
+            except Exception:  # noqa: BLE001 - the page falls back to the session's copy; log for the operator
+                log.exception("could not verify the stored audit chain of %s", case_id)
+        return super().verify_audit(case_id)
 
     def run_pipeline(self, case_id: str, *, actor: str, role: str) -> Outcome:
         """Re-run the pipeline with the edition's LLM (Gemini / Gemma) and guard, then persist."""
@@ -104,3 +152,11 @@ class CaseStoreDataSource(ShowcaseDataSource):
         msg += " — all passed their checks." if failed == 0 else f" — {failed} need attention."
         return Outcome(True, msg, bundle=fresh)
 
+
+    def open_case_for_ncrp(self, ncrp_ids: list[str], *, actor: str, role: str,
+                           details: dict[str, Any] | None = None) -> Outcome:
+        """Voice intake's "Open case": link or open the case, then persist it (and its audit link) to the store."""
+        out = super().open_case_for_ncrp(ncrp_ids, actor=actor, role=role, details=details)
+        if out.ok:
+            self._persist(out.bundle)
+        return out
