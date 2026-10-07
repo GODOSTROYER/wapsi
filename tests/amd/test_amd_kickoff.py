@@ -40,17 +40,27 @@ def _bash_env(**extra: str) -> dict[str, str]:
 
 def _bash(bash: str, *args: str, env: dict[str, str] | None = None, timeout: float = 120,
           attempts: int = 1) -> subprocess.CompletedProcess:
-    """Run Git Bash / bash with stdin closed. An inherited stdin pipe can block an MSYS process at start-up while
-    another thread of the test process holds a read on it (seen as a stall of the full suite on Windows), so stdin
-    is always /dev/null; ``attempts`` > 1 retries a start-up that timed out under load."""
+    """Run Git Bash / bash with stdin closed and a bound on the time.
+
+    Git Bash (MSYS2) start-up is the fragile part on a loaded Windows machine: it inherits the test process's stdin
+    handle (a pipe under some runners, which MSYS probes at start-up) and emulates fork, which can fail transiently
+    (DLL init, address-space clashes) while the full suite runs other processes. So stdin is /dev/null, and with
+    ``attempts`` > 1 a start-up that timed out or died without bash's own diagnostics is retried. A real error (bash
+    printed a "syntax error", or the script's own messages) is returned at once."""
+    res = None
     for attempt in range(attempts):
         try:
-            return subprocess.run([bash, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", env=env, timeout=timeout, stdin=subprocess.DEVNULL)
+            res = subprocess.run([bash, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                                 errors="replace", env=env, timeout=timeout, stdin=subprocess.DEVNULL)
         except subprocess.TimeoutExpired:
             if attempt == attempts - 1:
                 raise
-    raise AssertionError("unreachable")
+            continue
+        startup_failure = res.returncode not in (0, 1, 2) and not res.stdout and "syntax error" not in res.stderr
+        if not startup_failure:
+            return res
+    assert res is not None
+    return res
 
 
 def _run(bash: str, *args: str, env: dict[str, str] | None = None, timeout: float = 120) -> subprocess.CompletedProcess:
@@ -62,8 +72,9 @@ def _run(bash: str, *args: str, env: dict[str, str] | None = None, timeout: floa
 
 @pytest.mark.parametrize("script", ["run_all.sh", "preflight.sh"])
 def test_shell_scripts_parse(bash, script):
-    # `bash -n` reads nothing but the script; the full-suite stall here was a Git Bash start-up blocked on the
-    # inherited stdin (passes alone). stdin is closed, the run is bounded, and a timed-out start-up is retried once.
+    # `bash -n` reads nothing but the script. This test once stopped a full-suite run and passed alone: a Git Bash
+    # start-up problem under load, not a parse error (a parse error prints "syntax error" and exits 2). stdin is
+    # closed, the run is bounded, and a start-up that timed out or died silently is retried once.
     res = _bash(bash, "-n", str(KICK / script), timeout=60, attempts=2)
     assert res.returncode == 0, (res.returncode, res.stderr)
 

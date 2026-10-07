@@ -7,10 +7,14 @@
 Writes ``evidence.json`` (machine-readable, read by ``fill_pitch.py``) and ``evidence.md`` (dated tables for the
 README and the deck) into the folder. Every number is read from the result files the stages wrote (benchmarks,
 telemetry, GNN, LoRA, A/B) or derived from them by the arithmetic shown in ``derivations``; nothing is typed in.
-A missing input leaves its headline value ``null`` and is listed under ``missing``.
+A missing input leaves its headline value ``null`` and is listed under ``missing``. A measurement taken under errors
+(an llm_bench level with failed requests, an e2e run with failed cases, an A/B with no case both arms completed)
+stays in the tables but is never a headline value; it is listed under ``warnings`` with the stages' recorded
+measurement failures (``measure_failures`` in the stage notes).
 
-GPU results are flagged valid (``gpu_results_valid``) only when the run is labelled ``gpu``, ``amd-smi static``
-names an MI300X, and every stage started inside the event window (2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC).
+GPU results are flagged valid (``gpu_results_valid``) only when the run is labelled ``gpu``, ``amd-smi static`` (or,
+for a later-week ``--stage bench,ab,evidence`` folder without it, the bench telemetry's amd-smi GPU name) names an
+MI300X, and every stage started inside the event window (2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC).
 A ``rehearsal`` bundle is always labelled "CPU rehearsal" and is never valid as GPU results.
 """
 
