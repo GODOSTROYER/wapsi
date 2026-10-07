@@ -177,9 +177,9 @@ step_preflight() {
 step_project() {
   run gcloud config set project "${PROJECT_ID}"
   local billing
-  capture billing gcloud billing projects describe "${PROJECT_ID}" "--format=value(billingEnabled)"
+  capture billing gcloud billing projects describe "${PROJECT_ID}" "--format=value(billingEnabled)" --quiet
   if ! dry; then
-    case "${billing,,}" in
+    case "$(tr '[:upper:]' '[:lower:]' <<<"${billing}")" in  # bash 3.2 (macOS) has no case-changing expansion
       true) say "  billing is enabled" ;;
       false) die "billing is not enabled on ${PROJECT_ID}: gcloud billing accounts list ; gcloud billing projects link ${PROJECT_ID} --billing-account=<ACCOUNT_ID>" ;;
       *) say "  WARNING: could not check billing; Cloud Run needs a linked (free-trial) billing account" ;;
@@ -198,14 +198,14 @@ step_apis() {
 step_budget() {
   if [[ "${BUDGET_USD}" == "0" ]]; then say "  no budget alert (--budget-usd 0)"; return 0; fi
   local acct names
-  capture acct gcloud billing projects describe "${PROJECT_ID}" "--format=value(billingAccountName)"
+  capture acct gcloud billing projects describe "${PROJECT_ID}" "--format=value(billingAccountName)" --quiet
   acct="${acct#billingAccounts/}"
   dry && acct="<billing-account>"
   if [[ -z "${acct}" ]]; then
     say "  WARNING: no billing account found; create the budget in the console (Billing > Budgets & alerts)"
     return 0
   fi
-  capture names gcloud billing budgets list "--billing-account=${acct}" "--format=value(displayName)" "--billing-project=${PROJECT_ID}"
+  capture names gcloud billing budgets list "--billing-account=${acct}" "--format=value(displayName)" "--billing-project=${PROJECT_ID}" --quiet
   if grep -qx "wapsi-${PROJECT_ID}" <<<"${names}"; then say "  budget wapsi-${PROJECT_ID} exists"; return 0; fi
   # a budget alerts by e-mail; it never stops spending (the free trial itself never charges your card)
   try gcloud billing budgets create "--billing-account=${acct}" "--display-name=wapsi-${PROJECT_ID}" \
@@ -378,7 +378,7 @@ step_deploy() {
 
 step_smoke() {
   [[ -n "${API_URL}" ]] || service_urls
-  local h c u n
+  local h c u n fb all
   say "+ GET ${API_URL}/healthz"
   if ! dry; then
     h="$(curl -fsS --max-time 60 "${API_URL}/healthz")" || \
@@ -389,9 +389,9 @@ step_smoke() {
     fi
     say "  healthy"
   fi
-  say "+ POST ${API_URL}/demo/seed?wait_s=240"
+  say "+ POST ${API_URL}/demo/seed?wait_s=240&redo_fallback=1"
   if ! dry; then
-    curl -fsS -X POST --max-time "${SMOKE_TIMEOUT}" "${API_URL}/demo/seed?wait_s=240" >/dev/null || \
+    curl -fsS -X POST --max-time "${SMOKE_TIMEOUT}" "${API_URL}/demo/seed?wait_s=240&redo_fallback=1" >/dev/null || \
       say "  WARNING: seeding did not answer in time; it continues in the background"
   fi
   say "+ GET ${API_URL}/demo/cases/${CASE}"
@@ -401,6 +401,11 @@ step_smoke() {
     n="$(grep -Eo '"drafts_verified": *[0-9]+' <<<"${c}" | grep -Eo '[0-9]+$' || true)"
     [[ "${n:-0}" -gt 0 ]] || die "the showcase case has no verified drafts"
     say "  ${CASE}: ${n} verified drafts"
+    fb="$( { grep -Eo '"prose_fallback": *true' <<<"${c}" || true; } | wc -l | tr -d ' ')"
+    all="$( { grep -Eo '"prose_fallback": *(true|false)' <<<"${c}" || true; } | wc -l | tr -d ' ')"
+    if [[ "${fb}" -gt 0 ]]; then
+      say "  WARNING: ${fb} of ${all} drafts use the deterministic fallback paragraph (Gemini was not reached): check /healthz and the API logs, fix the key or the model, redeploy, then run the smoke step again (it re-processes such cases)"
+    fi
   fi
   say "+ GET ${UI_URL}/_stcore/health"
   if ! dry; then
@@ -455,7 +460,7 @@ step smoke "smoke test" && step_smoke
 
 say ""
 if dry; then say "Dry run complete: nothing was executed."; else say "Deployed."; fi
-say "  Judged URL (case room, no login): ${UI_URL:-<wapsi-ui-url>}"
+say "  Judged URL (case room, no login): ${UI_URL:-<wapsi-ui-url>}/?page=case-room&case=${CASE}"
 if [[ "${PRIVATE_API}" != "1" ]]; then say "  Agent (ADK dev UI):               ${API_URL:-<wapsi-api-url>}/dev-ui/"; fi
 say "  Health:                           ${API_URL:-<wapsi-api-url>}/healthz"
 say "  Showcase case (JSON):             ${API_URL:-<wapsi-api-url>}/demo/cases/${CASE}"

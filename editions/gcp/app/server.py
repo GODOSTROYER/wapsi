@@ -270,7 +270,8 @@ def case_summary(bundle: Any) -> dict[str, Any]:
 
 def _add_demo_routes(app: Any, seeding: SeedState, seed: str) -> None:
     """Judging-deployment routes (synthetic data): ``GET /demo/status``, ``GET /demo/cases/{case_id}`` (read-only)
-    and ``POST /demo/seed`` (idempotent: processes only showcase cases missing from the store).
+    and ``POST /demo/seed`` (idempotent: processes only showcase cases missing from the store; with
+    ``redo_fallback=1`` also those whose stored prose fell back to the deterministic paragraphs).
 
     ``POST /demo/seed`` waits inside the request on purpose: Cloud Run allocates CPU to an instance only while a
     request is in flight, so the deploy's smoke test drives the seeding to completion this way."""
@@ -282,9 +283,9 @@ def _add_demo_routes(app: Any, seeding: SeedState, seed: str) -> None:
         return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}
 
     @app.post("/demo/seed", include_in_schema=False)
-    def demo_seed(wait_s: float = 240.0) -> dict[str, Any]:
+    def demo_seed(wait_s: float = 240.0, redo_fallback: bool = False) -> dict[str, Any]:
         if seeding.state != "running":
-            seeding.start(get_services(), seed or "showcase", background=True)
+            seeding.start(get_services(), seed or "showcase", background=True, redo_fallback=redo_fallback)
         seeding.join(max(0.0, min(float(wait_s), 280.0)))
         cases = get_services().store.list_cases()
         return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}

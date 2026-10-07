@@ -157,3 +157,24 @@ def test_daily_quota_mid_run_falls_back_and_is_reported(monkeypatch, tmp_path, s
     offline = harness.evaluate("showcase", "fake", world_dir=showcase_world)
     assert rep["metrics"]["llm_prose_fallback_rate"] > offline["metrics"]["llm_prose_fallback_rate"] == 0.0
     assert rep["metrics"]["draft_verification_pass_rate"] == 1.0
+
+
+def test_self_hosted_model_report_has_no_gemini_token_price(monkeypatch, showcase_world):
+    """``--llm openai:<vLLM url>|<model>`` (the AMD MI300X path): Gemini list prices would be meaningless there, so
+    the cost block says n/a instead of printing an invented dollar figure."""
+    from wapsi.adapters.llm_resilience import ResilientLLM
+
+    for name in ("WAPSI_LLM_PRICE_IN", "WAPSI_LLM_PRICE_OUT"):
+        monkeypatch.delenv(name, raising=False)
+    made = harness.make_llm("openai:http://127.0.0.1:9/v1|google/gemma-4-E4B-it", cache_dir=None)
+    assert made.backend == "openai-compatible" and made.cache is None
+    assert made.report()["cost_estimate_usd"]["this_run"] is None
+
+    llm = ResilientLLM(FakeLLM(), model_id="google/gemma-4-E4B-it", backend="openai-compatible", rpm=0, rpd=0)
+    rep = harness.evaluate("showcase", "openai:x|google/gemma-4-E4B-it", world_dir=showcase_world, llm=llm)
+    c = rep["llm"]["cost_estimate_usd"]
+    assert c["this_run"] is None and c["paid_tier_equivalent"] is None and "self-hosted" in c["basis"]
+    assert "Cost this run: n/a" in harness.to_markdown(rep)
+    monkeypatch.setenv("WAPSI_LLM_PRICE_IN", "0.1")
+    monkeypatch.setenv("WAPSI_LLM_PRICE_OUT", "0.2")
+    assert llm.report()["cost_estimate_usd"]["price_per_1m_tokens"] == {"input": 0.1, "output": 0.2}

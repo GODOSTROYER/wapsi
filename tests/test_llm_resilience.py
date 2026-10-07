@@ -217,3 +217,72 @@ def test_env_limits(monkeypatch):
     monkeypatch.setenv("WAPSI_LLM_RPD", "nonsense")
     llm = ResilientLLM(Inner())
     assert llm.limiter.rpm == 7 and llm.limiter.rpd == 250
+
+
+def _real_shape_429(daily: bool = False):
+    """A Gemini API free-tier 429 in the shape the service returns it: a long message, then QuotaFailure, Help and
+    RetryInfo last, so a message truncated to a few hundred characters no longer carries the delay."""
+    from google.genai import errors as genai_errors
+
+    quota = "GenerateRequestsPerDayPerProjectPerModel-FreeTier" if daily else \
+        "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+    details = [
+        {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{
+            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+            "quotaId": quota, "quotaDimensions": {"location": "global", "model": "test-flash"}, "quotaValue": "10"}]},
+        {"@type": "type.googleapis.com/google.rpc.Help", "links": [
+            {"description": "Learn more about Gemini API quotas", "url": "https://ai.google.dev/gemini-api/docs/rate-limits"}]},
+    ]
+    if not daily:
+        details.append({"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "37s"})
+    return genai_errors.ClientError(429, {"error": {
+        "code": 429, "status": "RESOURCE_EXHAUSTED", "details": details,
+        "message": "You exceeded your current quota, please check your plan and billing details. For more information "
+                   "on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current "
+                   "usage, head to: https://ai.dev/usage?tab=rate-limit. \n* Quota exceeded for metric: "
+                   "generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 10, model: "
+                   "test-flash\nPlease retry in 37.170264s."}})
+
+
+def test_real_gemini_adapter_429_keeps_the_server_retry_delay():
+    """Through ``GeminiLLM(max_retries=0)`` (how the eval runs it): the wrapped error must still carry RetryInfo,
+    so the wait is the server's 37 s and not a blind 2 s / 4 s backoff that burns requests into the same window."""
+    from wapsi.adapters.gemini_llm import GeminiLLM
+
+    class Models:
+        calls = 0
+
+        def generate_content(self, **kw):
+            Models.calls += 1
+            if Models.calls == 1:
+                raise _real_shape_429()
+            return {"candidates": [{"content": {"parts": [{"text": '{"text":"ok"}'}]}}],
+                    "usage_metadata": {"prompt_token_count": 10, "candidates_token_count": 2, "total_token_count": 12}}
+
+    client = type("C", (), {"models": Models()})()
+    llm, clock = make(GeminiLLM("test-flash", client=client, max_retries=0))
+    assert llm.complete(MSG, json_schema={"type": "object"}) == '{"text":"ok"}'
+    assert clock.slept == [37.0] and Models.calls == 2
+    r = llm.report()
+    assert r["rate_limited_429"] == 1 and r["retries"] == 1 and r["errors"] == 0 and not r["quota_exhausted"]
+
+
+def test_real_gemini_adapter_daily_429_fails_fast():
+    from wapsi.adapters.gemini_llm import GeminiLLM
+
+    class Models:
+        calls = 0
+
+        def generate_content(self, **kw):
+            Models.calls += 1
+            raise _real_shape_429(daily=True)
+
+    llm, clock = make(GeminiLLM("test-flash", client=type("C", (), {"models": Models()})(), max_retries=0))
+    for _ in range(3):
+        with pytest.raises(QuotaExhausted):
+            llm.complete(MSG)
+    assert Models.calls == 1 and clock.slept == [] and llm.report()["quota_exhausted"] is True
+
+
+def test_retry_delay_from_the_plain_message():
+    assert server_retry_delay(LLMError("429 ... Please retry in 12.5s.", status_code=429)) == 12.5

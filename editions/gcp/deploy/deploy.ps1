@@ -42,6 +42,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 on older .NET defaults may not offer TLS 1.2, which Cloud Run requires (smoke test)
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
 $Steps = @('preflight', 'project', 'apis', 'budget', 'registry', 'iam', 'secrets', 'firestore', 'bigquery', 'build',
     'deploy', 'smoke')
 
@@ -206,7 +208,7 @@ function Step-Preflight {
 
 function Step-Project {
     Run gcloud config set project $ProjectId
-    $billing = Capture gcloud billing projects describe $ProjectId '--format=value(billingEnabled)'
+    $billing = Capture gcloud billing projects describe $ProjectId '--format=value(billingEnabled)' --quiet
     if (-not (IsDry)) {
         switch (([string]$billing).ToLowerInvariant()) {
             'true' { Say '  billing is enabled' }
@@ -227,14 +229,14 @@ function Step-Apis {
 
 function Step-Budget {
     if ($BudgetUsd -eq 0) { Say '  no budget alert (--budget-usd 0)'; return }
-    $acct = Capture gcloud billing projects describe $ProjectId '--format=value(billingAccountName)'
+    $acct = Capture gcloud billing projects describe $ProjectId '--format=value(billingAccountName)' --quiet
     $acct = ([string]$acct) -replace '^billingAccounts/', ''
     if (IsDry) { $acct = '<billing-account>' }
     if (-not $acct) {
         Say '  WARNING: no billing account found; create the budget in the console (Billing > Budgets & alerts)'
         return
     }
-    $names = Capture gcloud billing budgets list "--billing-account=$acct" '--format=value(displayName)' "--billing-project=$ProjectId"
+    $names = Capture gcloud billing budgets list "--billing-account=$acct" '--format=value(displayName)' "--billing-project=$ProjectId" --quiet
     if ((([string]$names) -split "`n") -contains "wapsi-$ProjectId") { Say "  budget wapsi-$ProjectId exists"; return }
     # a budget alerts by e-mail; it never stops spending (the free trial itself never charges your card)
     Try-Run gcloud billing budgets create "--billing-account=$acct" "--display-name=wapsi-$ProjectId" `
@@ -439,9 +441,9 @@ function Step-Smoke {
         }
         Say '  healthy'
     }
-    Say "+ POST $api/demo/seed?wait_s=240"
+    Say "+ POST $api/demo/seed?wait_s=240&redo_fallback=1"
     if (-not (IsDry)) {
-        try { $null = Invoke-RestMethod -Method Post -Uri "$api/demo/seed?wait_s=240" -TimeoutSec $SmokeTimeoutSec }
+        try { $null = Invoke-RestMethod -Method Post -Uri "$api/demo/seed?wait_s=240&redo_fallback=1" -TimeoutSec $SmokeTimeoutSec }
         catch { Say '  WARNING: seeding did not answer in time; it continues in the background' }
     }
     Say "+ GET $api/demo/cases/$Case"
@@ -451,6 +453,11 @@ function Step-Smoke {
         $n = [int]$c.drafts_verified
         if ($n -le 0) { Die 'the showcase case has no verified drafts' }
         Say "  ${Case}: $n verified drafts"
+        $all = @($c.drafts | Where-Object { $null -ne $_ })
+        $fb = @($all | Where-Object { $_.prose_fallback -eq $true }).Count
+        if ($fb -gt 0) {
+            Say "  WARNING: $fb of $($all.Count) drafts use the deterministic fallback paragraph (Gemini was not reached): check /healthz and the API logs, fix the key or the model, redeploy, then run the smoke step again (it re-processes such cases)"
+        }
     }
     Say "+ GET $ui/_stcore/health"
     if (-not (IsDry)) {
@@ -511,7 +518,7 @@ try {
     if (IsDry) { Say 'Dry run complete: nothing was executed.' } else { Say 'Deployed.' }
     $apiShown = $script:ApiUrl; if (-not $apiShown) { $apiShown = '<wapsi-api-url>' }
     $uiShown = $script:UiUrl; if (-not $uiShown) { $uiShown = '<wapsi-ui-url>' }
-    Say "  Judged URL (case room, no login): $uiShown"
+    Say "  Judged URL (case room, no login): $uiShown/?page=case-room&case=$Case"
     if (-not $PrivateApi) { Say "  Agent (ADK dev UI):               $apiShown/dev-ui/" }
     Say "  Health:                           $apiShown/healthz"
     Say "  Showcase case (JSON):             $apiShown/demo/cases/$Case"

@@ -11,7 +11,11 @@ deploy loads it into BigQuery (``wapsi.adapters.bigquery_ledger load``) and the 
 **Seeded cases.** With ``WAPSI_SEED_CASES=showcase`` the API service processes the showcase cases once, in the
 background, with the deployment's own ledger and LLM (Gemini writes the prose; numbers still come from data and the
 verifier re-checks them), and stores them, so the judged URL opens on a ready case without anyone logging in.
-Cases already in the store are never overwritten (approvals and audit history survive restarts).
+Cases already in the store are never overwritten (approvals and audit history survive restarts), with one
+exception the deploy's smoke test asks for (``redo_fallback``): a stored case whose prose fell back to the
+deterministic paragraphs (Gemini was not reachable, e.g. a missing key or a wrong model id on the first deploy) is
+processed again onto its history (one audit hash chain, earlier approvals kept), so fixing the key and re-running
+the smoke test puts Gemini prose in front of the judges instead of the fallback forever.
 
 All data is synthetic.
 """
@@ -98,17 +102,27 @@ def showcase_groups() -> list[tuple[str, list[str], str, Any]]:
             for b in all_showcase_bundles()]
 
 
-def seed_cases(services: Any, which: str = "showcase") -> dict[str, str]:
+def prose_fell_back(bundle: Any) -> bool:
+    """True when any draft's LLM prose was replaced by the deterministic paragraph (``llm_fallback``)."""
+    return any(bool((d.structured or {}).get("llm_fallback")) for d in bundle.drafts)
+
+
+def seed_cases(services: Any, which: str = "showcase", *, redo_fallback: bool = False) -> dict[str, str]:
     """Process and store the ``which`` cases that are not in the store yet. Returns ``{case_id: outcome}``
-    (``seeded`` | ``exists`` | ``missing_in_ledger`` | ``error: ...``). Never overwrites a stored case."""
+    (``seeded`` | ``reseeded`` | ``exists`` | ``missing_in_ledger`` | ``error: ...``). Never overwrites a stored
+    case, except with ``redo_fallback`` one whose prose fell back (re-run onto its history: ``reseeded``)."""
+    from wapsi.audit.chain import chain_extend
     from wapsi.pipeline.run import process_case
+
+    def keep(stored: Any) -> bool:
+        return stored is not None and not (redo_fallback and prose_fell_back(stored))
 
     if which not in ("showcase",):
         raise ValueError(f"{SEED_ENV} must be one of {', '.join(c for c in SEED_CHOICES if c)} (got {which!r})")
     out: dict[str, str] = {}
     for case_id, ncrp_ids, assigned, opened_at in showcase_groups():
         try:
-            if services.store.get_bundle(case_id) is not None:
+            if keep(services.store.get_bundle(case_id)):
                 out[case_id] = "exists"
                 continue
             try:
@@ -120,15 +134,19 @@ def seed_cases(services: Any, which: str = "showcase") -> dict[str, str]:
                             case_id)
                 continue
             with services.lock:
-                if services.store.get_bundle(case_id) is not None:
+                stored = services.store.get_bundle(case_id)
+                if keep(stored):
                     out[case_id] = "exists"
                     continue
                 bundle = process_case(services.ledger, ncrp_ids, llm=services.llm, cfg=services.cfg,
                                       search=services.search, guard=services.guard, case_id=case_id,
                                       assigned_to=assigned)
                 bundle.case.opened_at = opened_at  # the notice time of the showcase story (see WAPSI_NOW)
+                if stored is not None:  # a re-run over fallback prose: history first, earlier approvals kept
+                    bundle.approvals = list(stored.approvals) + list(bundle.approvals)
+                    bundle.audit = chain_extend(stored.audit, bundle.audit, case_id=case_id)
                 services.store.put_bundle(bundle)
-            out[case_id] = "seeded"
+            out[case_id] = "seeded" if stored is None else "reseeded"
         except Exception as exc:  # noqa: BLE001 - seeding must never take the service down
             log.exception("seed: %s failed", case_id)
             out[case_id] = f"error: {type(exc).__name__}"
@@ -148,7 +166,7 @@ class SeedState:
     def as_dict(self) -> dict[str, Any]:
         return {"state": self.state, "results": dict(self.results), "seconds": self.seconds}
 
-    def start(self, services: Any, which: str, *, background: bool = True) -> None:
+    def start(self, services: Any, which: str, *, background: bool = True, redo_fallback: bool = False) -> None:
         if not which or self.state == "running":
             return
 
@@ -156,7 +174,7 @@ class SeedState:
 
         def run() -> None:
             try:
-                self.results = seed_cases(services, which)
+                self.results = seed_cases(services, which, redo_fallback=redo_fallback)
                 failed = any(v.startswith("error") for v in self.results.values())
                 self.state = "failed" if failed else "done"
             except Exception:  # noqa: BLE001

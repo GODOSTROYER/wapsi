@@ -64,7 +64,8 @@ _TRANSIENT_NAMES = frozenset({
     "RemoteProtocolError", "TimeoutException", "ReadError",
 })
 _DAILY = re.compile(r"per[ _-]?day|daily quota|requests ?per ?day", re.IGNORECASE)
-_RETRY_DELAY = re.compile(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)s", re.IGNORECASE)
+# ``retryDelay: "37s"`` (RetryInfo rendered in a message) or the Gemini API's "Please retry in 37.17s."
+_RETRY_DELAY = re.compile(r"(?:retryDelay['\"]?\s*[:=]\s*['\"]?|retry in\s+)(\d+(?:\.\d+)?)s", re.IGNORECASE)
 
 
 class QuotaExhausted(LLMError):
@@ -516,6 +517,22 @@ class ResilientLLM:
         free_tier = self.backend == "aistudio"
         paid_equiv = cost(self.usage)
         s = self.stats
+        priced = (self.backend in ("aistudio", "vertex") or "gemini" in str(self.model_id).lower()
+                  or bool(os.environ.get("WAPSI_LLM_PRICE_IN") and os.environ.get("WAPSI_LLM_PRICE_OUT")))
+        if priced:
+            cost_block: dict[str, Any] = {
+                "this_run": 0.0 if free_tier else paid_equiv,
+                "paid_tier_equivalent": paid_equiv,
+                "saved_by_cache_paid_equivalent": cost(self.cached_usage),
+                "price_per_1m_tokens": {"input": p_in, "output": p_out},
+                "basis": ("Gemini API free tier: no charge (429 when over the limit). " if free_tier else "")
+                + PRICE_BASIS,
+            }
+        else:  # a self-served model (vLLM on a GPU, a LoRA): Gemini token prices would be meaningless here
+            cost_block = {"this_run": None, "paid_tier_equivalent": None, "saved_by_cache_paid_equivalent": None,
+                          "price_per_1m_tokens": None,
+                          "basis": "no per-token price: self-hosted / OpenAI-compatible endpoint (the cost is the "
+                                   "serving hardware's time; set WAPSI_LLM_PRICE_IN / _OUT to price tokens)"}
         return {
             "model_id": str(self.model_id),
             "backend": self.backend,
@@ -535,12 +552,5 @@ class ResilientLLM:
                        "remaining_today": self.limiter.remaining_today()},
             "tokens": asdict(self.usage),
             "tokens_served_from_cache": asdict(self.cached_usage),
-            "cost_estimate_usd": {
-                "this_run": 0.0 if free_tier else paid_equiv,
-                "paid_tier_equivalent": paid_equiv,
-                "saved_by_cache_paid_equivalent": cost(self.cached_usage),
-                "price_per_1m_tokens": {"input": p_in, "output": p_out},
-                "basis": ("Gemini API free tier: no charge (429 when over the limit). " if free_tier else "")
-                + PRICE_BASIS,
-            },
+            "cost_estimate_usd": cost_block,
         }

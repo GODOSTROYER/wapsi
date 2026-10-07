@@ -512,8 +512,8 @@ def to_markdown(rep: dict) -> str:
                   + (", daily quota reached" if x["quota_exhausted"] else ""),
                   f"- Tokens: {t['prompt_tokens']} in, {t['output_tokens']} out, {t['thinking_tokens']} thinking "
                   f"(total {t['total_tokens']}); waited {x['rate_limit_wait_s']} s for the rate limit",
-                  f"- Cost this run: ${c['this_run']:.4f} (paid-tier equivalent ${c['paid_tier_equivalent']:.4f}; "
-                  f"{c['basis']})",
+                  (f"- Cost this run: ${c['this_run']:.4f} (paid-tier equivalent ${c['paid_tier_equivalent']:.4f}; "
+                   f"{c['basis']})" if c.get("this_run") is not None else f"- Cost this run: n/a ({c['basis']})"),
                   f"- Prose fallback rate {rep['metrics']['llm_prose_fallback_rate']}, draft verification pass rate "
                   f"{rep['metrics']['draft_verification_pass_rate']}"]
     if rep.get("ab_test"):

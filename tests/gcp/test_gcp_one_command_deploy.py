@@ -117,7 +117,7 @@ curl() {
   case "$*" in
     *healthz*) echo '{"status":"ok","settings":{"gemini_api_key_set":true}}' ;;
     *demo/seed*) echo '{"seed":{"state":"done"}}' ;;
-    *demo/cases*) echo "{\"case_id\":\"CASE-31009260000101\",\"drafts_verified\":${VERIFIED:-7}}" ;;
+    *demo/cases*) echo "{\"case_id\":\"CASE-31009260000101\",\"drafts_verified\":${VERIFIED:-7},\"drafts\":[{\"prose_fallback\":${FALLBACK:-false}},{\"prose_fallback\":false}]}" ;;
     *_stcore*) echo ok ;;
   esac
 }
@@ -156,7 +156,7 @@ function global:Invoke-RestMethod {
     Log "CALL irm $Method $Uri"
     if ($Uri -like '*healthz') { return [pscustomobject]@{ status = 'ok'; settings = [pscustomobject]@{ gemini_api_key_set = $true } } }
     if ($Uri -like '*demo/seed*') { return [pscustomobject]@{ seed = [pscustomobject]@{ state = 'done' } } }
-    if ($Uri -like '*demo/cases*') { return [pscustomobject]@{ case_id = 'CASE-31009260000101'; drafts_verified = [int]$env:VERIFIED } }
+    if ($Uri -like '*demo/cases*') { return [pscustomobject]@{ case_id = 'CASE-31009260000101'; drafts_verified = [int]$env:VERIFIED; drafts = @([pscustomobject]@{ prose_fallback = ($env:FALLBACK -eq 'true') }, [pscustomobject]@{ prose_fallback = $false }) } }
 }
 function global:Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing, $TimeoutSec) Log "CALL iwr $Uri"; return [pscustomobject]@{ Content = 'ok' } }
 function global:Start-Sleep { param($Seconds) }
@@ -380,3 +380,66 @@ def test_deploy_guide_covers_the_checklist_options_and_teardown():
             assert f"`-{name}`" in guide, name
     readme = (ROOT / "editions" / "gcp" / "README.md").read_text(encoding="utf-8")
     assert "DEPLOY.md" in readme.split("## ", 1)[0]
+
+
+# --------------------------------------------------------------------------- review fixes
+
+
+def test_gcloudignore_uploads_everything_the_image_copies():
+    """``gcloud builds submit .`` filters the upload with .gcloudignore (gitignore semantics): an unanchored
+    ``docs/`` also drops ``data/docs`` (the citation corpus) and ``COPY data/docs`` fails in Cloud Build. Emulated
+    with the ignore matcher of git itself over the tracked files."""
+    git = shutil.which("git")
+    if git is None or not _works([git, "-C", str(ROOT), "rev-parse", "--is-inside-work-tree"]):
+        pytest.skip("not a git work tree")
+
+    def ls(*args: str) -> list[str]:
+        return subprocess.run([git, "-C", str(ROOT), "ls-files", "-c", *args], capture_output=True, text=True,
+                              check=True, timeout=60).stdout.splitlines()
+
+    excluded = set(ls("-i", f"--exclude-from={ROOT / '.gcloudignore'}"))
+    sources: list[str] = []
+    for line in (ROOT / "editions" / "gcp" / "Dockerfile").read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if parts[:1] == ["COPY"] and not any(p.startswith("--from") for p in parts):
+            sources += parts[1:-1]
+    assert {"src", "ui", "data/docs", "evals", "editions/gcp", "uv.lock", "pyproject.toml"} <= set(sources)
+    for src in sources:
+        files = [f for f in ls("--", src) if not f.endswith(".gitignore")]
+        assert files, src
+        assert not [f for f in files if f in excluded], (src, [f for f in files if f in excluded][:5])
+    assert "data/docs/citations.json" not in excluded and "src/wapsi/citations.py" not in excluded
+    assert any(f.startswith("tests/") for f in excluded) and any(f.startswith("docs/") for f in excluded)
+
+
+@needs_bash
+def test_bash_smoke_reseeds_fallback_prose_and_warns(tmp_path):
+    rc, out, err, calls = run_sh(["--project-id", "wapsi-test", "--tag", "t1", "--only", "smoke"], tmp_path,
+                                 FALLBACK="true")
+    assert rc == 0, err
+    assert "demo/seed?wait_s=240&redo_fallback=1" in calls
+    assert "WARNING: 1 of 2 drafts use the deterministic fallback paragraph (Gemini was not reached)" in out
+    assert ("Judged URL (case room, no login): https://wapsi-ui-test.a.run.app/?page=case-room&case="
+            "CASE-31009260000101") in out
+    rc, out, err, _ = run_sh(["--project-id", "wapsi-test", "--tag", "t1", "--only", "smoke"], tmp_path)
+    assert rc == 0 and "fallback paragraph" not in out and "CASE-31009260000101: 7 verified drafts" in out
+
+
+@needs_ps
+def test_powershell_smoke_reseeds_fallback_prose_and_warns(tmp_path):
+    rc, out, err, calls = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path,
+                                 FALLBACK="true")
+    assert rc == 0, out + err
+    assert "demo/seed?wait_s=240&redo_fallback=1" in calls
+    assert "WARNING: 1 of 2 drafts use the deterministic fallback paragraph (Gemini was not reached)" in out
+    assert "https://wapsi-ui-test.a.run.app/?page=case-room&case=CASE-31009260000101" in out
+    rc, out, err, _ = run_ps(LIVE_SHELL, ["-ProjectId", "wapsi-test", "-Tag", "t1", "-Only", "smoke"], tmp_path)
+    assert rc == 0 and "fallback paragraph" not in out
+
+
+def test_sh_avoids_bash4_only_syntax():
+    """DEPLOY.md offers deploy.sh on macOS, whose /bin/bash is 3.2: no case-changing expansions, mapfile,
+    associative arrays or namerefs."""
+    text = SH.read_text(encoding="utf-8")
+    for bad in (r"\$\{[A-Za-z_][A-Za-z_0-9]*(,,|\^\^)", r"\bmapfile\b", r"\breadarray\b", r"declare -A", r"local -n"):
+        assert not re.search(bad, text), bad

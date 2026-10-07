@@ -2,19 +2,21 @@
 # Everything in .gitignore stays local (generated worlds, .venv, caches, models); so do the parts of the
 # repository the image does not use. The Dockerfile reads: pyproject.toml uv.lock README.md LICENSE src ui
 # .streamlit data/docs evals editions/gcp.
+# gitignore syntax: a pattern without a leading "/" matches at ANY depth ("docs/" would also drop data/docs), so
+# every top-level directory below is anchored with "/". tests/gcp/test_gcp_one_command_deploy.py checks the upload.
 .gcloudignore
 .git
 .gitignore
 #!include:.gitignore
-.claude/
-.agents/
-.cache/
-.github/
-tests/
-pitch/
-scripts/
-docs/
-editions/snowflake/
-editions/amd/
-data/golden/
-data/docs/raw/
+/.claude/
+/.agents/
+/.cache/
+/.github/
+/tests/
+/pitch/
+/scripts/
+/docs/
+/editions/snowflake/
+/editions/amd/
+/data/golden/
+/data/docs/raw/

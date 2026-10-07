@@ -85,6 +85,8 @@ def test_demo_routes_seed_and_serve_the_showcase_case(monkeypatch):
             assert c.get("/demo/cases/CASE-1").status_code == 400
             assert c.get("/demo/cases/CASE-99999999999999").status_code == 404
             assert set(c.get("/demo/status").json()["cases"]) == {CASE1, CASE2}
+            again = c.post("/demo/seed?wait_s=60&redo_fallback=1").json()  # FakeLLM prose: nothing to redo
+            assert again["seed"]["results"] == {CASE1: "exists", CASE2: "exists"}
             assert "role_signing_key" not in json.dumps(health)
     finally:
         set_services(None)
@@ -149,3 +151,34 @@ def test_loader_grants_dataset_level_readers(tmp_path):
     load_world(tmp_path / "w", "wapsi-test", "wapsi", client=c2,
                readers=["serviceAccount:wapsi-ui@wapsi-test.iam.gserviceaccount.com"])
     assert c2.updates == 1 and "wapsi-test.wapsi.transactions" in c2.loads
+
+
+def test_redo_fallback_reprocesses_only_cases_whose_prose_fell_back(demo_services):
+    """A first deploy without a working Gemini key stores fallback prose. Plain seeding never overwrites it; the
+    smoke test's ``redo_fallback`` re-runs exactly those cases onto their history (audit chain intact)."""
+    from wapsi.adapters.llm_fake import FakeLLM
+    from wapsi.adapters.llm_openai_compat import LLMError
+    from wapsi.audit import verify_chain
+
+    class Down:
+        name = "gemini-down"
+
+        def complete(self, messages, **kw):
+            raise LLMError("Gemini is unreachable", status_code=503)
+
+    demo_services.llm = Down()
+    assert seed_mod.seed_cases(demo_services) == {CASE1: "seeded", CASE2: "seeded"}
+    before = demo_services.store.get_bundle(CASE1)
+    assert seed_mod.prose_fell_back(before) and all(r.passed for r in before.verifications.values())
+    history = [e.action for e in before.audit]
+
+    demo_services.llm = FakeLLM()
+    assert seed_mod.seed_cases(demo_services) == {CASE1: "exists", CASE2: "exists"}
+    assert seed_mod.seed_cases(demo_services, redo_fallback=True) == {CASE1: "reseeded", CASE2: "reseeded"}
+    after = demo_services.store.get_bundle(CASE1)
+    assert not seed_mod.prose_fell_back(after) and all(r.passed for r in after.verifications.values())
+    assert [e.action for e in after.audit[:len(history)]] == history and len(after.audit) > len(history)
+    assert verify_chain(after.audit, case_id=CASE1).ok
+    assert after.case.opened_at == before.case.opened_at
+    # nothing left to redo: a second request changes nothing
+    assert seed_mod.seed_cases(demo_services, redo_fallback=True) == {CASE1: "exists", CASE2: "exists"}
