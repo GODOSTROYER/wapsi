@@ -157,7 +157,7 @@ editions/gcp/
   ui_app.py        Streamlit entry point (shared ui/app.py on the case store)
   Dockerfile       python:3.11-slim + uv, non-root, optional baked demo world; one image for API and UI
   deploy/          cloudrun.sh (PROFILE=free|paid), gemma_vllm_service.sh (paid add-on), cloudbuild.yaml,
-                   bigquery_setup.sql, model_armor_template.json, iam.md
+                   bigquery_setup.sql, model_armor_template.json, iam.md, firestore.rules (+ firebase.json)
 src/wapsi/adapters/
   bigquery_ledger.py  firestore_store.py  model_armor_guard.py  gemini_llm.py
 tests/gcp/         offline tests (SQLite-backed BigQuery fake, in-memory Firestore, fake Model Armor/Gemini,
@@ -277,6 +277,56 @@ The deployer's IAM roles are in [deploy/iam.md](deploy/iam.md).
   gcloud scheduler jobs delete wapsi-clocks --location asia-south1     # only if you ran `wire`
   ```
   Then delete the Pub/Sub topics, the buckets and the dataset, or delete the project.
+
+## Audit log on Firestore
+
+`FirestoreCaseStore` keeps each case's audit log hash-chained and append-only, exactly like the in-memory store
+(`wapsi.audit`), so the Audit page's chip reads **chain intact · N events** in production:
+
+```
+cases/{case_id}/audit/{seq:010d}   one sealed event per document (seq, prev_hash, hash), created once
+audit_anchors/{case_id}            the anchor: event count + head hash, outside the log
+```
+
+- **Appends are transactions.** `append_audit` reads the head from the anchor, seals the event as the next link,
+  creates `audit/{seq}` and advances the anchor in one commit. Two Cloud Run instances appending at once conflict
+  on the anchor; Firestore aborts one and `google.cloud.firestore.transactional` re-runs it on the new head, so the
+  chain stays gap-free. Re-sending an event that already committed (a lost response) does not record it twice.
+- **`put_bundle` never rewrites history.** Recorded events are kept; only the bundle's new events are sealed onto
+  the head, in the same transaction that switches the case to its new chunks.
+- **`verify_audit(case_id)`** reads the log in seq order and checks it against the anchor. It reports an edited,
+  deleted, inserted or swapped event, a document edited so that it no longer parses (reported at its position; the
+  case still loads), events removed from the end, a re-hashed log, a deleted anchor and events written straight
+  into the log without advancing the anchor. New events always go to the anchor's head, so a truncation stays
+  visible after later writes; with the anchor gone, or a document already sitting at the head, the store refuses to
+  write (`AuditChainError`) and the clock sweep carries on with the other cases. The UI's chip and **Verify chain**
+  button use the store's verification, not the session's copy.
+
+What enforces append-only, and what only detects tampering:
+
+- **Security rules** ([deploy/firestore.rules](deploy/firestore.rules)) deny every web or mobile client by default,
+  make `audit/{seq}` create-only (never updated or deleted) and let the anchor only move forward. `cloudrun.sh`
+  does not deploy them. Deploy them with the Firebase CLI (once per project: `firebase projects:addfirebase
+  "$PROJECT_ID"`), from the folder whose `firebase.json` points at the file:
+  `cd editions/gcp/deploy && firebase deploy --only firestore:rules --project "$PROJECT_ID"`, or paste the file into
+  the Firebase console (Firestore Database > Rules) **[verify]**. They do not bind the Cloud Run services: server
+  client libraries authenticate with IAM and bypass rules.
+- **IAM** has no per-collection permissions: `roles/datastore.user` on `wapsi-api@` and `wapsi-ui@` can update and
+  delete any document. The store's code only ever creates audit documents, and the chain plus the anchor make any
+  other change visible. Give people `roles/datastore.viewer` at most, and remove `roles/datastore.owner` from the
+  deployer after setup.
+- **A separate trust domain** is needed against someone who holds the service accounts' role and rewrites both
+  the log and its anchor (`test_full_insider_rewrite_needs_an_external_anchor` shows this). For production:
+  export `audit_anchors` daily to a Cloud Storage bucket with a locked retention policy (WORM), turn on Data Access
+  audit logs (`DATA_WRITE`) for Firestore so every write is attributed in Cloud Logging, and enable point-in-time
+  recovery to restore the original documents after a detected tamper **[verify]**. These are billed beyond the
+  free tier and are not part of `PROFILE=free`.
+
+Offline proof: `uv run pytest tests/gcp/test_gcp_firestore_audit_chain.py -v` runs the store under the real
+`transactional` decorator against an in-memory Firestore with serializable transactions: sealing and parity with
+`InMemoryCaseStore`, the six tampers of `python -m wapsi.audit drill` applied to the stored documents, a deleted
+anchor and a forged append (and the refusal to write on top of it), documents that no longer parse, contended
+and threaded appends, a lost commit response, the clock sweep, and the Audit page's chip.
 
 ## What was verified and what was assumed
 

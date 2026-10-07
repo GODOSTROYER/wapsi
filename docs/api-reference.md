@@ -1285,7 +1285,9 @@ port. See the `approve` example.
 `src/wapsi/adapters/` also contains `BigQueryLedger` (`bigquery_ledger.py`), `FirestoreCaseStore`
 (`firestore_store.py`), `GeminiLLM` (`gemini_llm.py`) and `ModelArmorGuard` (`model_armor_guard.py`). They need
 the `gcp` extra and are documented with the edition in [`editions/gcp/README.md`](../editions/gcp/README.md).
-`FirestoreCaseStore` does not seal the audit chain yet.
+`FirestoreCaseStore` seals the audit chain like `InMemoryCaseStore`: each append is one Firestore transaction that
+reads the case's anchor (`audit_anchors/{case_id}`, outside the log), creates `cases/{case_id}/audit/{seq:010d}`
+and advances the anchor; `audit_anchor(case_id)` and `verify_audit(case_id)` work as above.
 
 ---
 
@@ -1328,7 +1330,7 @@ True True True True True True
 | Function | Does |
 |---|---|
 | `append_event(events, event, *, case_id) -> AuditEvent` | seal `event` as the next link and append it. The pipeline's only way to write an event: never `bundle.audit.append` |
-| `verify_chain(events, *, case_id=..., anchor=None) -> ChainReport` | walk the log from `GENESIS_HASH`; `ChainReport(ok, first_bad_seq, reason, code, length, head, anchored)`, `code` one of `OK`, `UNCHAINED`, `UNSEALED`, `SEQUENCE`, `LINK`, `CONTENT`, `CASE`, `TRUNCATED`, `HEAD` |
+| `verify_chain(events, *, case_id=..., anchor=None) -> ChainReport` | walk the log from `GENESIS_HASH`; `ChainReport(ok, first_bad_seq, reason, code, length, head, anchored)`, `code` one of `OK`, `UNCHAINED`, `UNSEALED`, `SEQUENCE`, `LINK`, `CONTENT`, `CASE`, `TRUNCATED`, `HEAD` (plus `ANCHOR`, reported only by a store's `verify_audit`: its anchor is missing or events were written without advancing it) |
 | `anchor_of(events) -> ChainAnchor` | checkpoint (event count and head hash) to keep outside the log |
 | `chain_extend(old, new, *, case_id) -> list[AuditEvent]` | a new log: the history followed by copies of `new` re-sealed onto it |
 | `extend_stored(stored, incoming, *, case_id) -> list[AuditEvent]` | a store's append-only `put_bundle` rule: recorded events are never dropped, changed or reordered |

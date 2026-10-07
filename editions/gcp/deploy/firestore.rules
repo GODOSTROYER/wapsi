@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// Firestore security rules for the Wapsi case store (editions/gcp, FirestoreCaseStore).
+//
+// Scope. Security rules apply to Firestore's web and mobile client SDKs (and REST / RPC calls made with an
+// end-user Firebase Auth token). Wapsi's Cloud Run services (wapsi-api, wapsi-ui) use the server client library
+// with their service accounts; IAM authorises those calls and rules do not apply to them. See README.md,
+// "Audit log on Firestore", for what protects the log on the server side.
+//
+// Wapsi has no client-SDK path today, so every client is denied by default. The audit rules below are the
+// append-only contract any future client path must keep: an audit event is created once, at the next position,
+// together with the anchor that seals it, and is never updated or deleted; the anchor only moves forward.
+//
+// Deploy (Firebase CLI; firebase.json next to this file points at it; Firebase must be added to the project
+// once with `firebase projects:addfirebase PROJECT_ID`):
+//   cd editions/gcp/deploy && firebase deploy --only firestore:rules --project PROJECT_ID
+// or paste this file into the Firebase console, Firestore Database > Rules, and publish.
+// Check with the Firestore emulator before relying on them [verify].
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(roles) {
+      return request.auth != null && request.auth.token.wapsi_role in roles;
+    }
+
+    function anchorAfter(caseId) {
+      return getAfter(/databases/$(database)/documents/audit_anchors/$(caseId)).data;
+    }
+
+    // Default: no client reads or writes anywhere (cases, chunks, ADK sessions, everything else).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Audit events: create-only. The document id is the zero-padded seq; the event must be the anchor's new head.
+    match /cases/{caseId}/audit/{seq} {
+      allow get, list: if signedInAs(['analyst', 'supervisor', 'auditor']);
+      allow create: if signedInAs(['analyst', 'supervisor'])
+        && request.resource.data.seq is int
+        && int(seq) == request.resource.data.seq
+        && request.resource.data.hash is string
+        && request.resource.data.hash.size() == 64
+        && request.resource.data.prev_hash is string
+        && request.resource.data.event.case_id == caseId
+        && anchorAfter(caseId).length == request.resource.data.seq + 1
+        && anchorAfter(caseId).head == request.resource.data.hash;
+      allow update, delete: if false;
+    }
+
+    // Chain anchors (event count + head hash), outside the log: created with the first event, then only ever
+    // advanced, never rewound, rewritten in place or deleted.
+    match /audit_anchors/{caseId} {
+      allow get: if signedInAs(['analyst', 'supervisor', 'auditor']);
+      allow create: if signedInAs(['analyst', 'supervisor'])
+        && request.resource.data.case_id == caseId
+        && request.resource.data.length is int
+        && request.resource.data.length >= 1;
+      allow update: if signedInAs(['analyst', 'supervisor'])
+        && request.resource.data.case_id == resource.data.case_id
+        && request.resource.data.length is int
+        && request.resource.data.length > resource.data.length;
+      allow delete: if false;
+    }
+  }
+}

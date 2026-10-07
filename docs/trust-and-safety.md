@@ -612,8 +612,9 @@ uv run python -m wapsi.audit drill     # 40-event showcase log: 6/6 tampering at
 | drop the last two events | #38 | `TRUNCATED` | no (anchor needed) |
 | edit the approval and recompute every later hash | #39 | `HEAD` | no (anchor needed) |
 
-An edit made inside the store itself is detected too. `InMemoryCaseStore` and the AMD `FileCaseStore` chain on
-write; `FirestoreCaseStore` does not seal yet, and its logs verify as "not chained". The Audit page shows each chain's status and a **Verify
+An edit made inside the store itself is detected too. `InMemoryCaseStore`, `FirestoreCaseStore` (a Firestore
+transaction per append; create-only `audit/{seq}` documents plus `audit_anchors/{case_id}`) and the AMD
+`FileCaseStore` chain on write. The Audit page shows each chain's status and a **Verify
 chain** button; Approvals shows the case's chain chip next to every decision.
 
 | Event | Written by | Details |

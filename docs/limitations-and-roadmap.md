@@ -300,9 +300,9 @@ switcher (analyst, supervisor and auditor) so that a demo can show each view. Th
 signed role grants ([`editions/gcp/README.md`](../editions/gcp/README.md)).
 
 **Plan:** single sign-on, named makers and checkers, and a rule that no one approves their own work. The audit
-log is already hash-chained and append-only in `InMemoryCaseStore` and the AMD `FileCaseStore`;
-`FirestoreCaseStore` does not seal the chain yet, and a production anchor belongs in a separate trust domain (WORM
-storage, a signed receipt, a daily digest).
+log is already hash-chained and append-only in `InMemoryCaseStore`, `FirestoreCaseStore` and the AMD
+`FileCaseStore`; a production anchor belongs in a separate trust domain (WORM storage, a signed receipt, a
+daily digest).
 
 <a id="l-actions"></a>
 ### 7.2 Actions are records only
@@ -385,7 +385,7 @@ flowchart LR
 | Real-LLM evaluation | Run `evals.harness` against a real model (the command is in [1.4](#l-llm)) and commit `llm_prose_fallback_rate` and `llm_only_hallucination_rate` |
 | Injection guard | Commission a fresh blind set that includes Devanagari, Hinglish and split-sentence attacks; add a model-based second guard and report both on the new set |
 | SOP gaps | Flag the Process 1 ₹50,000 / FIR condition; add the Para 10.1 grievance-based 90-day clock and the extension, and mark which holds are contested |
-| Small fixes | Alert when a due date falls outside the covered holiday years; seal the audit chain in `FirestoreCaseStore` |
+| Small fixes | Alert when a due date falls outside the covered holiday years; export Firestore's `audit_anchors` to a locked (WORM) bucket |
 | Regulatory radar | Review the 11 pending radar rows with a supervisor before the RBI DRAFT's comment deadline (2 October 2026); add the final text when the RBI issues it |
 
 <a id="pilot-readiness"></a>
