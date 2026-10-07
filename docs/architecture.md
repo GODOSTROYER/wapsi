@@ -3,8 +3,8 @@
 Wapsi is one Python package (`src/wapsi`) that turns NCRP / 1930 complaints into an amount-specific hold plan,
 verified drafts and SOP clocks. It is built as **ports and adapters**: the legal and numerical logic lives in a
 portable core, and every platform-specific concern (where the ledger lives, which LLM writes prose, where cases are
-stored, where approved actions go) sits behind one of six small interfaces in `src/wapsi/ports.py`. The three
-hackathon editions (Snowflake, Google Cloud, AMD) plug in different adapters. None of them changes the core.
+stored, where approved actions go) sits behind one of six small interfaces in `src/wapsi/ports.py`. The two
+hackathon editions (Google Cloud, AMD) plug in different adapters. Neither of them changes the core.
 
 Because every edition calls the same functions, the numbers are the same everywhere. In showcase case 1 a
 ₹4,80,000.00 loss becomes holds of ₹1,42,848.00 on 5 accounts, where a whole-account freeze would immobilise
@@ -79,7 +79,7 @@ flowchart TB
 | Pro-rata apportionment per victim | `ApportionmentRule.PRO_RATA` is the default in `TraceConfig`; FIFO and LIFO exist as overrides | [0002](adr/0002-pro-rata-apportionment.md) |
 | Numbers come from data, words come from the LLM | Template slots, `⟦slot⟧` placeholders, positional skeletons | [0003](adr/0003-numbers-from-data-words-from-llm.md) |
 | Nodal / pool / escrow accounts: hold the disputed amount only | `Disposition.HOLD_AMOUNT_INTERMEDIARY`, no forward hold, no s.106 flag | [0004](adr/0004-intermediary-accounts-sop-9-1-iii.md) |
-| One core, three editions | `src/wapsi/ports.py`, thin `editions/<platform>/` layers | [0005](adr/0005-one-core-three-editions.md) |
+| One core, two editions | `src/wapsi/ports.py`, thin `editions/<platform>/` layers | [0005](adr/0005-one-core-two-editions.md) |
 | A classifier an officer can read | `HeuristicScorer` by default, `XgbScorer` opt-in | [0006](adr/0006-transparent-heuristic-classifier-default.md) |
 | Synthetic data only | `wapsi.synth`, `data/golden/` | [0007](adr/0007-synthetic-data-only.md) |
 | The verifier does not trust the planner | `wapsi.verify` re-implements the rules | [0008](adr/0008-verifier-independent-of-planner.md) |
@@ -101,9 +101,9 @@ flowchart TB
     PIPE --> G["Guard"]
     PIPE --> S["CaseStore"]
     PIPE --> A["ActionSink"]
-    L --> L1["InMemoryLedger<br/>ParquetLedger<br/>BigQueryLedger<br/>SnowflakeLedger"]
+    L --> L1["InMemoryLedger<br/>ParquetLedger<br/>BigQueryLedger"]
     D --> D1["LocalDocSearch (BM25)"]
-    M --> M1["FakeLLM<br/>OpenAICompatLLM<br/>GeminiLLM<br/>CortexLLM"]
+    M --> M1["FakeLLM<br/>OpenAICompatLLM<br/>GeminiLLM"]
     G --> G1["RulesGuard<br/>ModelArmorGuard"]
     S --> S1["InMemoryCaseStore<br/>FirestoreCaseStore"]
     A --> A1["RecordingActionSink"]
@@ -111,12 +111,12 @@ flowchart TB
 
 | Port | What the core needs from it | Adapters in this repository | Adapters in editions |
 |---|---|---|---|
-| `Ledger` | 15 read-only methods: `home_bank_id`, `banks`, `complaint`, `complaints`, `complaint_transactions`, `accounts`, `customers`, `balances_at`, `transactions_touching`, `consortium_transactions`, `invoices_for_transactions`, `external_signals`, `device_links`, `device_links_for_devices`, `gst_records` | `InMemoryLedger` (`adapters/memory.py`, tests and small demos); `ParquetLedger` (`adapters/parquet_ledger.py`, Arrow tables with per-account CSR indices, built for the ~2M-transaction `full` world); `BigQueryLedger` (`adapters/bigquery_ledger.py`, parameterised SQL, used by the Google Cloud edition); `SnowflakeLedger` (`adapters/snowflake_ledger.py`, one bind-parameter query per call on `WAPSI.RAW`, or a snapshot into `ParquetLedger`) | Snowflake: `SnowflakeLedger` inside the Snowpark procedures |
-| `DocSearch` | `search(query, k)` and `citation(citation_id)` | `LocalDocSearch` (`search/index.py`, pure-Python BM25 over the legal corpus; falls back to the committed quotes when the index is not built) | Snowflake: `CortexDocSearch` (`editions/snowflake/snowpark/wapsi_sf/docsearch.py`) over Cortex Search `DOCS.SOP_SEARCH` and `DOCS.CITATIONS`, falling back to the packaged quotes |
-| `LLM` | `name` and `complete(messages, *, temperature, max_tokens, json_schema)` | `FakeLLM` (`adapters/llm_fake.py`, deterministic and offline, with `hallucinate` and `inject_obedience` switches for evals); `OpenAICompatLLM` (`adapters/llm_openai_compat.py`, any `/chat/completions` server such as vLLM, Ollama or Gemini's OpenAI-compatible endpoint); `GeminiLLM` and `gemma_private_llm` (`adapters/gemini_llm.py`); `CortexLLM` (`adapters/cortex_llm.py`, Cortex `AI_COMPLETE` through a Snowpark session). `OpenAICompatLLM` also takes `extra_body` (server-specific request fields) and reports token usage (`complete_with_usage`, `last_usage`, `usage`) | AMD: `OpenAICompatLLM` against vLLM on ROCm; Snowflake: `CortexLLM` |
+| `Ledger` | 15 read-only methods: `home_bank_id`, `banks`, `complaint`, `complaints`, `complaint_transactions`, `accounts`, `customers`, `balances_at`, `transactions_touching`, `consortium_transactions`, `invoices_for_transactions`, `external_signals`, `device_links`, `device_links_for_devices`, `gst_records` | `InMemoryLedger` (`adapters/memory.py`, tests and small demos); `ParquetLedger` (`adapters/parquet_ledger.py`, Arrow tables with per-account CSR indices, built for the ~2M-transaction `full` world); `BigQueryLedger` (`adapters/bigquery_ledger.py`, parameterised SQL, used by the Google Cloud edition) | AMD: `ParquetLedger` on a mounted world, or the showcase ledger |
+| `DocSearch` | `search(query, k)` and `citation(citation_id)` | `LocalDocSearch` (`search/index.py`, pure-Python BM25 over the legal corpus; falls back to the committed quotes when the index is not built) | Both editions use `LocalDocSearch` |
+| `LLM` | `name` and `complete(messages, *, temperature, max_tokens, json_schema)` | `FakeLLM` (`adapters/llm_fake.py`, deterministic and offline, with `hallucinate` and `inject_obedience` switches for evals); `OpenAICompatLLM` (`adapters/llm_openai_compat.py`, any `/chat/completions` server such as vLLM, Ollama or Gemini's OpenAI-compatible endpoint); `GeminiLLM` and `gemma_private_llm` (`adapters/gemini_llm.py`). `OpenAICompatLLM` also takes `extra_body` (server-specific request fields) and reports token usage (`complete_with_usage`, `last_usage`, `usage`) | AMD: `OpenAICompatLLM` against vLLM on ROCm |
 | `Guard` | `screen(text) -> GuardResult` | `RulesGuard` (`verify/injection.py`, English, Hinglish and Devanagari rules); `ModelArmorGuard` (`adapters/model_armor_guard.py`, unions its result with `RulesGuard` and falls back to `RulesGuard` if Model Armor fails) | AMD: `LLMJudgeGuard` (`editions/amd/app/judge.py`) adds an independent LLM judge to the rules guard; the judge can add flags, never clear one |
-| `CaseStore` | `put_bundle`, `get_bundle`, `list_cases`, `append_audit` | `InMemoryCaseStore` (`adapters/memory.py`; seals the audit chain on write and keeps an anchor per case); `FirestoreCaseStore` (`adapters/firestore_store.py`, compressed chunks of at most 512 KiB, append-only audit subcollection; does not seal the chain yet, so its logs verify as "not chained") | AMD: `FileCaseStore` (`editions/amd/app/file_store.py`, JSON files with atomic writes, chained); Snowflake: `SnowflakeCaseStore` (`editions/snowflake/snowpark/wapsi_sf/casestore.py`, insert-only hash-chained `AUDIT_LOG` plus `AUDIT_ANCHOR`) |
-| `ActionSink` | `submit(action) -> Action` | `RecordingActionSink` (`adapters/memory.py`, marks actions `DONE`) | Snowflake: approved actions are recorded `PENDING` and written to `CASEMGMT.ACTIONS` by `SnowflakeCaseStore` (trial accounts have no external network access); a local runner drains them. CFCFRMS actions everywhere carry `payload.interface = "SIMULATED_CFCFRMS"` |
+| `CaseStore` | `put_bundle`, `get_bundle`, `list_cases`, `append_audit` | `InMemoryCaseStore` (`adapters/memory.py`; seals the audit chain on write and keeps an anchor per case); `FirestoreCaseStore` (`adapters/firestore_store.py`, compressed chunks of at most 512 KiB, hash-chained audit subcollection `audit/{seq}` written in Firestore transactions, anchor in `audit_anchors/{case_id}`) | AMD: `FileCaseStore` (`editions/amd/app/file_store.py`, JSON files with atomic writes, chained) |
+| `ActionSink` | `submit(action) -> Action` | `RecordingActionSink` (`adapters/memory.py`, marks actions `DONE`) | CFCFRMS actions everywhere carry `payload.interface = "SIMULATED_CFCFRMS"` |
 
 Two more extension points are not in `ports.py` but work the same way:
 
@@ -152,7 +152,7 @@ These rules are written in the `Ledger` docstrings and in [`docs/data-contract.m
 | `wapsi.config` | `TraceConfig` (72-hour window, depth 6, ₹100 minimum edge, pro-rata, follow CFCFRMS, 500 accounts), `ClassifyConfig` (mule ≥ 0.6, innocent ≤ 0.35, 24-hour feature window), `WapsiConfig` (s.106 flag needs ≥ 2 prior reports) | `WapsiConfig` | — |
 | `wapsi.money` | `r2`, `eq`, `fmt_inr` (Indian grouping) and the shared token finders for money, account numbers, UTRs and dates. The drafter and the verifier parse text with the same code. | `fmt_inr`, `find_amounts`, `find_money_mentions` | `tests/verify/test_verify_money_mentions.py` |
 | `wapsi.timeutil` | IST zone; store UTC, display IST | `ensure_utc`, `fmt_ist` | — |
-| `wapsi.citations` | 35 canonical citation ids (as of 2026-09-29). Quotes come from `data/docs/citations.json`, or the packaged copy `src/wapsi/_data/citations.json` inside a wheel or Snowpark zip | `KNOWN_IDS`, `registry()` | `tests/search/test_search_citations.py` |
+| `wapsi.citations` | 35 canonical citation ids (as of 2026-09-29). Quotes come from `data/docs/citations.json`, or the packaged copy `src/wapsi/_data/citations.json` inside a wheel or a zipped package | `KNOWN_IDS`, `registry()` | `tests/search/test_search_citations.py` |
 | `wapsi.graph` | Candidate expansion (`expand`), exact taint replay under pro-rata, FIFO or LIFO (`taint`), the merchant-delivery rule shared by trace and plan (`common`), dispositions, the per-victim paisa cap and the account-level exception (`holdplan`) | `trace_case`, `build_hold_plan`, `apply_account_level_hold`, `account_level_block` | `tests/graph` |
 | `wapsi.classify` | 33 account features, hard rules (victim, intermediary, merchant), scorers (with the optional `bind_trace` hook), the innocent-holder safety guard, the bona fide recipient / unwitting conduit split (`conduit_indicators`), plain-English reasons, an XGBoost training CLI | `classify_trace`, `account_features` | `tests/classify` |
 | `wapsi.draft` | Fact sheet and slots, Jinja templates (eight draft kinds plus the LEA clarification letter), LLM prose with placeholders and an optional prose log, skeletons for positional binding | `draft_case`, `draft_account_level_request` | `tests/draft` |
@@ -169,7 +169,7 @@ These rules are written in the `Ledger` docstrings and in [`docs/data-contract.m
 
 Heavy or cloud dependencies are never imported at module load. `wapsi.classify` never imports XGBoost or
 scikit-learn at import time. The Google Cloud adapters import Google client libraries on first use. This keeps
-`import wapsi` working inside a Snowpark zip, a slim container or a laptop without extras.
+`import wapsi` working inside a slim container, a zipped package or a laptop without extras.
 
 ## The pipeline: `process_case`
 
@@ -497,10 +497,8 @@ print([a.kind.value for a in bundle.actions])  # ['HOLD_INSTRUCTION', 'JIRA_TICK
 ## How editions plug in
 
 An edition is a thin folder under `editions/<platform>/` that builds adapters, calls `process_case` and `approve`,
-and adds the platform's own interface (Snowflake procedures and Streamlit in Snowflake, ADK agents on Cloud Run, a
-FastAPI service on an MI300X). The legal rules, numbers and drafts are the same in all three, because they come
-from the same functions. The Snowflake adapters are in the repository and tested offline; CoCo sessions deploy
-them on Snowflake 29 Sep to 3 Oct 2026 ([editions.md](editions.md#snowflake-edition-coco)).
+and adds the platform's own interface (ADK agents on Cloud Run, a FastAPI service on an MI300X). The legal rules,
+numbers and drafts are the same in both, because they come from the same functions.
 
 ```mermaid
 flowchart TB
@@ -509,42 +507,35 @@ flowchart TB
         UI["ui/app.py<br/>Streamlit officer app"]
         EV["evals/ + data/golden/<br/>golden set and harness"]
     end
-    subgraph SF["editions/snowflake"]
-        SF1["Snowpark procedures run the core<br/>SnowflakeLedger, CortexLLM, Cortex Search"]
-    end
     subgraph GC["editions/gcp"]
         GC1["ADK tools call process_case and approve<br/>BigQuery, Firestore, Gemini"]
     end
     subgraph AM["editions/amd"]
         AM1["FastAPI service calls process_case<br/>vLLM on ROCm, GNN scorer, file store"]
     end
-    SF1 --> CORE
     GC1 --> CORE
     AM1 --> CORE
-    SF1 --> UI
     GC1 --> UI
     AM1 --> UI
 ```
 
-| Concern | Snowflake | Google Cloud | AMD |
-|---|---|---|---|
-| `Ledger` | `SnowflakeLedger` on `WAPSI.RAW`, or a snapshot into `ParquetLedger` | `BigQueryLedger`, or `ParquetLedger` with `WAPSI_LEDGER=parquet` | `ParquetLedger`; the showcase ledger if no world is mounted |
-| `LLM` for prose | `CortexLLM` (`AI_COMPLETE`) | `GeminiLLM` (Gemini API free tier by default, Vertex AI optional); Gemma on Cloud Run GPU via `OpenAICompatLLM` as a paid add-on | `OpenAICompatLLM` against vLLM on ROCm; `FakeLLM` in demo mode |
-| `Guard` | `RulesGuard`; Cortex guardrails are a setting in `APP.SETTINGS` (off by default) and sit outside the port | `RulesGuard`; `ModelArmorGuard` (falls back to `RulesGuard`) when a Model Armor template is configured | `RulesGuard`; `LLMJudgeGuard` (rules plus an LLM judge) when `WAPSI_VERIFIER_BASE_URL` is set |
-| `CaseStore` | `SnowflakeCaseStore` | `FirestoreCaseStore` | `FileCaseStore` |
-| `DocSearch` | `CortexDocSearch` | `LocalDocSearch` | `LocalDocSearch` |
-| `Scorer` | Heuristic | Heuristic | `GnnHttpScorer` when `WAPSI_GNN_URL` is set, with heuristic fallback |
+| Concern | Google Cloud | AMD |
+|---|---|---|
+| `Ledger` | `BigQueryLedger`, or `ParquetLedger` with `WAPSI_LEDGER=parquet` | `ParquetLedger`; the showcase ledger if no world is mounted |
+| `LLM` for prose | `GeminiLLM` (Gemini API free tier by default, Vertex AI optional); Gemma on Cloud Run GPU via `OpenAICompatLLM` as a paid add-on | `OpenAICompatLLM` against vLLM on ROCm; `FakeLLM` in demo mode |
+| `Guard` | `RulesGuard`; `ModelArmorGuard` (falls back to `RulesGuard`) when a Model Armor template is configured | `RulesGuard`; `LLMJudgeGuard` (rules plus an LLM judge) when `WAPSI_VERIFIER_BASE_URL` is set |
+| `CaseStore` | `FirestoreCaseStore` | `FileCaseStore` |
+| `DocSearch` | `LocalDocSearch` | `LocalDocSearch` |
+| `Scorer` | Heuristic | `GnnHttpScorer` when `WAPSI_GNN_URL` is set, with heuristic fallback |
 
-Sources: `editions/snowflake/snowpark/wapsi_sf/procs.py`, `editions/snowflake/sql/`, `editions/gcp/app/services.py`,
-`editions/amd/app/services.py`.
+Sources: `editions/gcp/app/services.py`, `editions/amd/app/services.py`.
 
 Rules for edition authors:
 
 1. **Do not fork the core.** If a rule is wrong, fix it in `src/wapsi` with a test, so all editions get the fix.
 2. **Prove parity.** An edition's ledger must reproduce `SHOWCASE_1` and `SHOWCASE_2`. The Google Cloud edition's
    README reports that its BigQuery SQL, run on SQLite through a dialect translation, matches `InMemoryLedger`
-   on the showcase world and on a sample of the demo world. The Snowflake edition proves it on the account with
-   `uv run python -m editions.snowflake.deploy --step parity`.
+   on the showcase world and on a sample of the demo world.
 3. **Keep imports lazy.** Cloud SDKs are imported inside functions, so the core imports cleanly anywhere.
 4. **Use the extras.** `pyproject.toml` defines `ml`, `docs`, `ui`, `amd`, `amd-app` and `gcp` extras. The core
    itself depends only on pydantic, numpy, pandas, pyarrow, jinja2 and httpx.
@@ -611,9 +602,9 @@ returns.
 - **Tamper drill.** `uv run python -m wapsi.audit drill` builds the showcase case, records an approval, tampers
   with the stored log in six ways and exits 0 only if every attempt is detected.
 
-Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-09-29 it reported 1,707 tests, 320 of
-them in the edition suites `tests/gcp` (127), `tests/amd` (113) and `tests/snowflake` (80), and the full suite
-passed with 0 failures.
+Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-10-07 it collected 1,623 tests
+and the full suite passed with 0 failures; 240 of the tests are in the edition suites `tests/gcp` (127) and
+`tests/amd` (113).
 
 ## Limitations
 
@@ -636,15 +627,15 @@ passed with 0 failures.
 - **In-memory adapters are for demos.** `InMemoryCaseStore` and `RecordingActionSink` keep nothing across
   restarts. `ParquetLedger` loads the world into memory.
 - **Approval roles are strings.** `approve` trusts the `role` argument; each edition must authenticate the user.
-- **Edition status.** As of 2026-09-29 the Snowflake edition is complete in the repository and deployed during
-  the CoCo sessions (29 Sep–3 Oct), the Google Cloud edition is built and tested offline, and the AMD edition runs
-  on an AMD GPU only during 12–18 Oct 2026 ([editions.md](editions.md#summary)).
-- **Not every store seals the audit chain.** `InMemoryCaseStore`, the AMD `FileCaseStore` and
-  `SnowflakeCaseStore` chain on write; `FirestoreCaseStore` does not yet, so its logs verify as "not chained".
+- **Edition status.** As of 2026-09-29 the Google Cloud edition is built and tested offline, and the AMD edition
+  runs on an AMD GPU only during 12–18 Oct 2026 ([editions.md](editions.md#summary)).
+- **The in-store anchor shares a trust domain with the log.** `InMemoryCaseStore`, `FirestoreCaseStore` and the
+  AMD `FileCaseStore` chain on write and keep an anchor per case; someone who can rewrite both the log and its
+  anchor is caught only by an anchor kept elsewhere (WORM storage, a signed receipt, a digest).
 
 ## Related documents
 
-- [editions.md](editions.md): the three editions and their status
+- [editions.md](editions.md): the two editions and their status
 - [adr/README.md](adr/README.md): architecture decision records
 - [legal-spine.md](legal-spine.md): every rule, its SOP paragraph and the code that enforces it
 - [algorithms/money-trail.md](algorithms/money-trail.md), [algorithms/hold-plan.md](algorithms/hold-plan.md),
@@ -655,5 +646,5 @@ passed with 0 failures.
 - [synthetic-data.md](synthetic-data.md) and [data-contract.md](data-contract.md): the generated world and its tables
 - [draft-contract.md](draft-contract.md): slots, skeletons and the verifier's body rules
 - [limitations-and-roadmap.md](limitations-and-roadmap.md): what is missing and what comes next
-- [originality.md](originality.md): build timeline for the three hackathons
+- [originality.md](originality.md): build timeline for the two hackathons
 - `AGENTS.md` (repository root): conventions every contributor and coding agent follows

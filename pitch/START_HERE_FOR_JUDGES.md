@@ -57,8 +57,8 @@ had their prose rejected and replaced by fixed text, drafts passing the verifier
 blind-holdout precision 0.9661, blind-holdout recall 0.75 ([`guard-latest.json`](../evals/reports/guard-latest.json)).
 The guard is a warning layer. The defence is structural: the hold plan, not the LLM, decides every action.
 
-**Measured so far with the deterministic stub LLM.** Real-LLM A/B runs (Cortex AI_COMPLETE, Gemini, Gemma 4 on
-MI300X) fill a slot in each edition's deck; until then they read **TBD**. All case data is synthetic.
+**Measured so far with the deterministic stub LLM.** Real-LLM A/B runs (Gemini, Gemma 4 on MI300X) fill a slot in
+each edition's deck; until then they read **TBD**. All case data is synthetic.
 
 ## Try it in 2 minutes
 
@@ -77,18 +77,14 @@ uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101
 uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory \
   --kind HOLD_INSTRUCTION --tamper "₹43,200.00" "₹45,000.00"
 
-# 5. the Snowflake SQL guard blocks a DROP (exit 2): the PreToolUse hook configured for CoCo's SQL and bash tools
-echo '{"tool_name":"snowflake_sql_execute","tool_input":{"sql":"DROP SCHEMA WAPSI.CASEMGMT"}}' \
-  | uv run python editions/snowflake/hooks/pre_sql_guard.py
-
-# 6. audit log tamper drill: 6/6 tampering attempts detected on a hash-chained case log
+# 5. audit log tamper drill: 6/6 tampering attempts detected on a hash-chained case log
 uv run python -m wapsi.audit drill
 
-# 7. golden-set evaluation on the showcase world (writes evals/reports/latest.json)
+# 6. golden-set evaluation on the showcase world (writes evals/reports/latest.json)
 uv run python -m wapsi.synth --size showcase --out data/generated/showcase
 uv run python -m evals.harness --world showcase
 
-# 8. the officer UI: Inbox, Case Room, Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit
+# 7. the officer UI: Inbox, Case Room, Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit
 uv run streamlit run ui/app.py
 ```
 
@@ -116,7 +112,6 @@ this folder.
 
 | Event | Edition | Pitch material |
 |---|---|---|
-| Snowflake CoCo CLI Hackathon (GCC edition), problem statement 1 | [`editions/snowflake/`](../editions/snowflake/README.md) | [`pitch/coco/`](coco/) |
 | AI Builder Cup 2026 (Google Cloud), BFSI | [`editions/gcp/`](../editions/gcp/README.md) | [`pitch/aibc/`](aibc/) |
 | AMD Developer Hackathon ACT III | [`editions/amd/`](../editions/amd/README.md) | [`pitch/amd/`](amd/) |
 

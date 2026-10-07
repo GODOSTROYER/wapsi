@@ -8,7 +8,8 @@ Two backends, chosen by the ``backend`` argument or ``WAPSI_GEMINI_BACKEND``:
   logged, printed or put in ``repr``; error text is scrubbed of it.
 - ``vertex``: Gemini on Agent Platform (Vertex AI) with Application Default Credentials, billed per token.
 
-``GeminiLLM`` implements ``wapsi.ports.LLM``:
+``GeminiLLM`` implements ``wapsi.ports.LLM`` (plus ``extract_media`` for voice intake: audio bytes inline and a
+response schema, with the same retries):
 - system messages become ``system_instruction``; ``assistant`` turns become ``model`` turns;
 - ``json_schema`` switches on JSON mode (``response_mime_type="application/json"`` +
   ``response_json_schema``); the reply is parsed (code fences tolerated) and returned as compact JSON text;
@@ -296,6 +297,54 @@ class GeminiLLM:
         contents, config = self.build_request(
             messages, temperature=temperature, max_tokens=max_tokens, json_schema=json_schema
         )
+        return self._generate(contents, config, json_schema)
+
+    # ------------------------------------------------------------------ multimodal (voice intake)
+    def build_media_request(
+        self,
+        data: bytes,
+        mime_type: str,
+        *,
+        system: str,
+        prompt: str,
+        json_schema: dict | None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """One user turn: the media inline (bytes + MIME type) followed by the text prompt."""
+        contents = [{"role": "user", "parts": [{"inline_data": {"mime_type": mime_type, "data": data}},
+                                               {"text": prompt}]}]
+        config: dict[str, Any] = {"temperature": temperature, "max_output_tokens": max_tokens, "candidate_count": 1}
+        if system:
+            config["system_instruction"] = system
+        if json_schema is not None:
+            config["response_mime_type"] = "application/json"
+            config["response_json_schema"] = json_schema
+        if self.thinking_budget is not None:
+            config["thinking_config"] = {"thinking_budget": self.thinking_budget}
+        if self.labels and self.backend == "vertex":  # the Gemini API rejects request labels
+            config["labels"] = {**self.labels, "step": "voice_intake"}
+        return contents, config
+
+    def extract_media(
+        self,
+        data: bytes,
+        mime_type: str,
+        *,
+        system: str,
+        prompt: str,
+        json_schema: dict,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Audio / image / PDF bytes + prompt -> JSON text matching ``json_schema`` (``wapsi.intake.voice``).
+        Same retries, quota handling and key redaction as ``complete``."""
+        contents, config = self.build_media_request(data, mime_type, system=system, prompt=prompt,
+                                                    json_schema=json_schema, temperature=temperature,
+                                                    max_tokens=max_tokens)
+        return self._generate(contents, config, json_schema)
+
+    def _generate(self, contents: list[dict[str, Any]], config: dict[str, Any], json_schema: dict | None) -> str:
         client = self.client  # a missing API key fails here, once, with MISSING_KEY_MESSAGE
         secret = self._key()
         attempts = self.max_retries + 1

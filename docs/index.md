@@ -126,9 +126,9 @@ All results come from synthetic data. [Evaluation](evaluation.md) explains the m
 | Audit log tamper drill | 6 of 6 tampering attempts on a 40-event hash-chained case log detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout (151 texts written without seeing the rules) | precision 0.9661, recall 0.75. The guard is a warning layer: template-bound drafts and the verifier are the real defence | `evals/reports/guard-latest.json` |
 | Speed (demo world, laptop, stub LLM) | p95 0.72 s per case, trace to verified drafts | `evals/reports/demo.json` |
-| Test suite | 1,707 tests pass, 0 fail (full suite, 29-09-2026) | `uv run pytest -q` |
+| Test suite | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
-## One core, three editions
+## One core, two editions
 
 The portable Python core (`src/wapsi`) and the Streamlit officer app (`ui/`) are shared. Each edition swaps in
 its own adapters for the ledger, the LLM, the guard and the case store. Details and honest status:
@@ -136,7 +136,6 @@ its own adapters for the ledger, the LLM, the guard and the case store. Details 
 
 | Edition | Built for | Platform | Status (29-09-2026) |
 |---|---|---|---|
-| Snowflake | Snowflake CoCo CLI Hackathon (GCC edition) | Snowpark procedures running the core unchanged, Cortex Search / Analyst / Agent, Streamlit in Snowflake, RBAC and governance; deployed and proven in Snowflake CoCo (Cortex Code) sessions | Complete in the repo and tested offline (80 tests in `tests/snowflake`): SQL scripts, Snowpark handlers, the SiS app and `deploy.py`. CoCo sessions deploy it 29 Sep–3 Oct 2026. See [Editions](editions.md#snowflake-edition-coco) |
 | Google Cloud | AI Builder Cup | ADK agents on Cloud Run, Gemini, an optional Gemma tier on Cloud Run GPU, BigQuery, Firestore, Model Armor | Built and unit-tested offline with fakes; deployment follows in October. See `editions/gcp/README.md` |
 | AMD | lablab.ai AMD ACT III | AMD Instinct MI300X with ROCm: vLLM serving, fine-tuning, a graph neural network mule scorer | Code prepared and CPU-tested; GPU training, serving and benchmarks run only during the event (12 to 18 Oct 2026). See `editions/amd/` and [Originality](originality.md) |
 

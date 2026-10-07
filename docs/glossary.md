@@ -148,12 +148,10 @@ Grievance Redressal* (02.01.2026). "SOP 12(x)" means Para 12, clause (x).
 
 ## Platforms and events
 
-Wapsi ships one portable core and three platform editions. See [Editions](editions.md).
+Wapsi ships one portable core and two platform editions. See [Editions](editions.md).
 
 | Term | Meaning |
 |---|---|
 | **ADK** | Google's Agent Development Kit. The Google Cloud edition runs ADK agents on Cloud Run (`editions/gcp/README.md`). |
 | **AMD Instinct MI300X / ROCm** | AMD's data-centre GPU and its open GPU software stack. The AMD edition serves open models with vLLM on ROCm on a single MI300X (`editions/amd/README.md`). |
-| **CoCo** | Snowflake Cortex Code, Snowflake's AI coding agent. CoCo sessions deploy the Snowflake edition, build its semantic view and agent, and prove it live (`editions/snowflake/COCO_SPRINT.md`). |
-| **GCC** | Global Capability Centre: an in-house centre, often in India, that runs technology or operations for a parent company, such as a bank's fraud operations. The Snowflake edition is entered in the GCC edition of the Snowflake CoCo CLI hackathon. It does not mean the Gulf Cooperation Council here. |
-| **Streamlit** | The Python web framework used for Wapsi's officer UI (`ui/app.py`). The Snowflake edition runs it in Snowflake. |
+| **Streamlit** | The Python web framework used for Wapsi's officer UI (`ui/app.py`), shared by both editions. |

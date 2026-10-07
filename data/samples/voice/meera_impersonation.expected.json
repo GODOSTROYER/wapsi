@@ -1,0 +1,23 @@
+{
+  "transcript": "Sir, mera naam Meera Joshi hai. Das September ko subah gyarah baj kar do minute par bank ke naam se call aaya. Bola aapka account block ho jayega, paisa safe account mein daal do. Maine IMPS se chaar lakh assi hazaar rupaye bhej diye. UTR hai 4253 1000 0001. Mera account Konkan Commercial Bank mein hai, last four 0001. Phone number 98123 45621. Mera paisa wapas dila dijiye.",
+  "translation_en": "Sir, my name is Meera Joshi. On 10 September at two minutes past eleven in the morning I got a call in the name of my bank. He said my account would be blocked and told me to put the money in a safe account. I sent four lakh eighty thousand rupees by IMPS. The UTR is 4253 1000 0001. My account is with Konkan Commercial Bank, last four 0001. Phone number 98123 45621. Get my money back, please.",
+  "languages": ["hi-en"],
+  "fields": {
+    "victim_name": {"value": "Meera Joshi", "confidence": 0.97},
+    "phone": {"value": "9812345621", "confidence": 0.88},
+    "bank": {"value": "Konkan Commercial Bank", "confidence": 0.93},
+    "account_last4": {"value": "0001", "confidence": 0.9},
+    "date_time": {"value": "2026-09-10T11:02:00+05:30", "confidence": 0.86},
+    "payment_mode": {"value": "IMPS", "confidence": 0.95},
+    "fraud_type": {"value": "IMPERSONATION", "confidence": 0.9},
+    "beneficiary": {"value": "", "confidence": 0.0},
+    "narrative": {"value": "A caller posing as her bank said her account would be blocked and told her to move her money to a 'safe account'; she sent the money by IMPS.", "confidence": 0.9}
+  },
+  "amounts": [
+    {"value": 480000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "chaar lakh assi hazaar rupaye", "confidence": 0.95}
+  ],
+  "txn_refs": [
+    {"ref": "425310000001", "kind": "UTR", "confidence": 0.92}
+  ],
+  "instruction_like": []
+}

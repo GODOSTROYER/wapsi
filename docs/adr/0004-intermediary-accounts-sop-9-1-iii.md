@@ -2,7 +2,8 @@
 
 - **Status:** Accepted. Supersedes the earlier rule "never hold nodal, pool or escrow accounts"
   (`BLOCK_NODAL_POOL_ESCROW`), which is withdrawn.
-- **Date:** 2026-09-16 (the correction date recorded in `editions/snowflake/COCO_PLAYBOOK.md`)
+- **Date:** 2026-09-16 (the correction date recorded in a build playbook that is now only in the git history; see
+  Context and [originality](../originality.md))
 - **Related:** [0001](0001-amount-specific-holds.md), [0008](0008-verifier-independent-of-planner.md)
 
 ## Context
@@ -25,9 +26,10 @@ things:
 - Para 5(x), the paragraph the old rule cited, says money held with banks at any layer can be released to the victim
   `[SOP-5-X]`. It supports holding, not blocking.
 
-The correction is recorded in `editions/snowflake/COCO_PLAYBOOK.md` ("Legal corrections applied on 2026-09-16 (they
-override `WAPSI_BUILD_PLAN.md` §2 and §3.3)"), in `editions/snowflake/README.md` (convention 6 "as corrected on
-2026-09-16") and in `AGENTS.md` convention 6.
+The correction overrides `WAPSI_BUILD_PLAN.md` §2 and §3.3; the corrected rule is in `AGENTS.md` convention 6. The
+dated record of the correction is the build playbook's "Legal corrections applied on 2026-09-16" block, which was
+removed from the tree on 2026-10-07 with the edition it belonged to and is still readable in the git history (commits
+`b27a8de` to `13ee458`).
 
 ## Decision
 
@@ -45,8 +47,7 @@ override `WAPSI_BUILD_PLAN.md` §2 and §3.3)"), in `editions/snowflake/README.m
 6. **The drafts say it.** The hold instruction and customer notice are addressed to the intermediary, and the hold
    instruction must state that the account is not suspended or seized.
 7. **The legacy disposition is gone.** `Disposition` has no `BLOCK_NODAL_POOL_ESCROW` value, so a plan that
-   carries it fails validation; the `lien-calculator` skill script and the Snowflake `sql-reviewer` template also
-   reject it. `HOLD_AMOUNT_INTERMEDIARY` is reserved for intermediary accounts, and the verifier reads the account
+   carries it fails validation; the `lien-calculator` skill script also rejects it. `HOLD_AMOUNT_INTERMEDIARY` is reserved for intermediary accounts, and the verifier reads the account
    type from the trace, not from the plan.
 
 ## Consequences
@@ -67,9 +68,9 @@ Costs and trade-offs:
 - **The operator carries a hold inside a shared account.** Wapsi does not model a payment aggregator's settlement
   cycle or check whether a hold of this size disturbs other merchants. That stays with the bank and the operator.
 - **Several copies to keep in step.** The rule lives in the planner (`wapsi.graph.holdplan`), the independent verifier
-  (`wapsi.verify.policy`), the reference implementation for the golden set (`wapsi.synth.reference`), the
-  `lien-calculator` skill script and the Snowflake `sql-reviewer` template. The skill script still carries a
-  comment about the migration from the legacy disposition.
+  (`wapsi.verify.policy`), the reference implementation for the golden set (`wapsi.synth.reference`) and the
+  `lien-calculator` skill script. The skill script still carries a comment about the migration from the legacy
+  disposition.
 - **One stale comment remains.** The docstring of `src/wapsi/classify/rules.py` still describes intermediary
   accounts with "(SOP Para 5(x): never held)". The code in that module only assigns the role; the hold decision is
   made in `holdplan.py`. The comment should be corrected in a code change.
@@ -99,7 +100,7 @@ now cites a registered id whose quote is checked word for word against the downl
   `test_pool_account_never_flagged_for_escalation`, `test_other_bank_pool_account_is_an_outbound_request`);
   `tests/verify/test_verify_drafts.py` (`test_pool_hold_instruction_must_not_suspend_or_seize`,
   `test_pool_hold_instruction_must_state_the_intermediary_rule`).
-- History: `editions/snowflake/COCO_PLAYBOOK.md` (legal corrections block), `editions/snowflake/README.md`,
-  `.claude/skills/lien-calculator/scripts/hold_plan.py` (legacy check),
-  `editions/snowflake/templates/agents/sql-reviewer.md`.
+- History: `AGENTS.md` convention 6 (the corrected rule), `.claude/skills/lien-calculator/scripts/hold_plan.py`
+  (legacy check), and the build playbook's legal corrections block in the git history (commits `b27a8de` to
+  `13ee458`).
 - Citations: `SOP-9-1-III`, `SOP-9-1-I`, `SOP-5-X`, `SOP-9-1`, `SOP-ANNEX-I`.

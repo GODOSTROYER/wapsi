@@ -1,6 +1,6 @@
 """Mirror .claude/skills/* to .agents/skills/* so Gemini CLI (and other Agent Skills readers) load the same skills.
 
-Claude Code and Snowflake CoCo read .claude/skills; Gemini CLI reads .agents/skills. The source of truth is
+Claude Code reads .claude/skills; Gemini CLI reads .agents/skills. The source of truth is
 .claude/skills. The sync is idempotent: files are copied only when their bytes differ, files deleted from a
 source skill are deleted from its mirror, and mirrored skills removed from the source are removed from
 .agents/skills (tracked in .agents/skills/.sync-manifest.json). Skills that exist only in .agents/skills are

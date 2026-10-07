@@ -26,7 +26,7 @@ Please include:
   not match the plan";
 - the smallest reproduction you can give, built on **synthetic data only**: the showcase fixture
   (`src/wapsi/fixtures/showcase.py`) or a world from `uv run python -m wapsi.synth`;
-- the commit you tested and, if relevant, the edition (Snowflake, Google Cloud or AMD).
+- the commit you tested and, if relevant, the edition (Google Cloud or AMD).
 
 We will confirm receipt, work out a fix and a disclosure date with you, and credit you if you wish.
 
@@ -59,8 +59,8 @@ Out of scope (known and documented; ordinary issues are welcome):
   unsupported amount past `verify_draft` is in scope.
 - **The local UI's demo role switcher**, which has no sign-in by design. Identity and access control belong to
   each deployed edition (see [editions/gcp/README.md](editions/gcp/README.md) for signed role grants and IAP).
-- Vulnerabilities in third-party services or libraries (Snowflake, Google Cloud, Model Armor, AMD ROCm, vLLM,
-  Streamlit, model providers). Please report those to the vendor.
+- Vulnerabilities in third-party services or libraries (Google Cloud, Model Armor, AMD ROCm, vLLM, Streamlit,
+  model providers). Please report those to the vendor.
 - Denial of service against a demo deployment, social engineering, and physical attacks.
 
 Test only against your own local copy or your own deployment. Do not test against a deployment you do not own.
@@ -89,7 +89,6 @@ variables or from the platform's secret store.
 | API key for any OpenAI-compatible endpoint (vLLM, Gemini's OpenAI-compatible API, others) | `WAPSI_LLM_API_KEY` (optional for local servers) | `src/wapsi/adapters/llm_openai_compat.py` |
 | Gemini API key (AI Studio backend) | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `src/wapsi/adapters/gemini_llm.py` |
 | Role-grant signing key (Google Cloud edition) | `WAPSI_ROLE_SIGNING_KEY`, mounted from Secret Manager | [editions/gcp/README.md](editions/gcp/README.md) |
-| Snowflake connection | `%USERPROFILE%\.snowflake\connections.toml`, outside the repository | [editions/snowflake/COCO_PLAYBOOK.md](editions/snowflake/COCO_PLAYBOOK.md) |
 | AMD edition tokens | the shell environment read by `editions/amd/docker-compose.yml` | [editions/amd/README.md](editions/amd/README.md) |
 
 Rules:
@@ -100,8 +99,7 @@ Rules:
   (`.github/workflows/ci.yml`) uses no repository secrets.
 - Do not log secrets. The core LLM adapters read their key from the environment and do not log it; error
   messages name the environment variable, not the key. Keep it that way in new adapters.
-- Do not paste keys into prompts, notebooks, screenshots or CoCo / Claude Code / Gemini CLI session transcripts
-  (`editions/snowflake/coco-sessions/` is committed evidence).
+- Do not paste keys into prompts, notebooks, screenshots or Claude Code / Gemini CLI session transcripts.
 
 **If a secret is committed:** revoke or rotate it at the provider first. Removing it from git history is not
 enough, because clones and forks may already hold it. Then remove it from history and tell the maintainers

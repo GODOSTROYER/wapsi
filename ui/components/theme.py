@@ -4,7 +4,7 @@ Restrained palette: neutral ink derived from Streamlit's own text colour (``curr
 work in light and dark themes without detection; one accent (ink blue); categorical hues (validated with the
 dataviz palette checker, adjacent pairs, both modes) only for dispositions; status hues only for real state.
 
-No external fonts, images or scripts (Streamlit in Snowflake CSP).
+No external fonts, images or scripts (works offline and under a strict content security policy).
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """End-to-end case processing: screen → trace → classify → plan → draft → verify → clocks.
 
-Every edition calls this with its own adapters (Snowflake ledger + Cortex LLM, BigQuery + Gemini, Postgres + vLLM).
+Every edition calls this with its own adapters (BigQuery + Gemini on Google Cloud, Parquet + vLLM on AMD).
 """
 
 from __future__ import annotations

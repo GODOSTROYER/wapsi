@@ -1,4 +1,4 @@
-"""Pure-Python Okapi BM25 (no third-party dependencies, so it runs inside Snowflake / Cloud Run as is).
+"""Pure-Python Okapi BM25 (no third-party dependencies, so it runs on Cloud Run or an AMD box as is).
 
 Tokenizer: NFKC + lowercase, Indian legal abbreviations normalised (``s.``/``sec.``/``u/s`` -> ``section``,
 BNSS / PMLA / CrPC spellings, ``A/c`` -> ``account``, ``Rs.``/``₹`` -> ``rs``), digit grouping commas removed

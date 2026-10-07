@@ -19,7 +19,6 @@ data/golden
 models
 *.ckpt
 *.safetensors
-editions/snowflake
 editions/gcp
 editions/amd/gnn
 editions/amd/lora

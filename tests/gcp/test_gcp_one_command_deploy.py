@@ -410,6 +410,60 @@ def test_gcloudignore_uploads_everything_the_image_copies():
         assert not [f for f in files if f in excluded], (src, [f for f in files if f in excluded][:5])
     assert "data/docs/citations.json" not in excluded and "src/wapsi/citations.py" not in excluded
     assert any(f.startswith("tests/") for f in excluded) and any(f.startswith("docs/") for f in excluded)
+    assert not [f for f in ls() if f.startswith("editions/snowflake/")]  # that edition is gone from main
+
+
+# files the merged features read at run time: voice intake (the sample voice notes and their scripts), the agent
+# trace panel (the recorded showcase run), Firestore audit sealing (the rules shipped next to the deploy)
+RUNTIME_FILES = ("data/samples/voice/manifest.json", "data/samples/voice/meera_impersonation.wav",
+                 "data/samples/voice/meera_impersonation.expected.json", "src/wapsi/agenttrace/showcase_recording.json",
+                 "src/wapsi/intake/voice.py", "editions/gcp/app/tracing.py", "editions/gcp/app/intake.py",
+                 "editions/gcp/deploy/firestore.rules", "data/docs/citations.json", "data/docs/facts.json")
+
+
+def _dockerignored(path: str, patterns: list[str]) -> bool:
+    """BuildKit .dockerignore semantics for the simple patterns this repository uses: anchored at the context root,
+    a directory pattern excludes everything below it, ``**/`` matches at any depth, ``!`` re-includes."""
+    from fnmatch import fnmatchcase
+
+    out = False
+    for raw in patterns:
+        neg = raw.startswith("!")
+        pat = raw[1:] if neg else raw
+        cands = [pat[3:], pat] if pat.startswith("**/") else [pat]
+        parts = path.split("/")
+        prefixes = ["/".join(parts[:i]) for i in range(1, len(parts) + 1)]
+        hit = any(fnmatchcase(p, c) for c in cands for p in prefixes) or (
+            pat.startswith("**/") and any(fnmatchcase("/".join(parts[i:j]), pat[3:])
+                                          for i in range(len(parts)) for j in range(i + 1, len(parts) + 1)))
+        if hit:
+            out = not neg
+    return out
+
+
+def test_image_gets_the_runtime_files_of_the_merged_features():
+    """Cloud Build upload (.gcloudignore), docker build context (Dockerfile.dockerignore) and the Dockerfile's COPY
+    lines all carry what voice intake, the agent trace panel and the docs corpus read at run time."""
+    git = shutil.which("git")
+    if git is None or not _works([git, "-C", str(ROOT), "rev-parse", "--is-inside-work-tree"]):
+        pytest.skip("not a git work tree")
+    tracked = set(subprocess.run([git, "-C", str(ROOT), "ls-files", "-c"], capture_output=True, text=True, check=True,
+                                 timeout=60).stdout.splitlines())
+    excluded = set(subprocess.run([git, "-C", str(ROOT), "ls-files", "-c", "-i",
+                                   f"--exclude-from={ROOT / '.gcloudignore'}"], capture_output=True, text=True,
+                                  check=True, timeout=60).stdout.splitlines())
+    dockerignore = [ln.strip() for ln in (ROOT / "editions" / "gcp" / "Dockerfile.dockerignore").read_text(
+        encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+    copies = [ln.split()[1] for ln in (ROOT / "editions" / "gcp" / "Dockerfile").read_text(encoding="utf-8")
+              .splitlines() if ln.startswith("COPY ") and "--from" not in ln]
+    for f in RUNTIME_FILES:
+        assert f in tracked, f
+        assert f not in excluded, f"{f} is not uploaded to Cloud Build (.gcloudignore)"
+        assert not _dockerignored(f, dockerignore), f"{f} is not in the docker build context (Dockerfile.dockerignore)"
+        assert any(f == c or f.startswith(c.rstrip("/") + "/") for c in copies), f"no COPY line ships {f}"
+    assert _dockerignored("data/docs/raw/sop-2026.pdf", dockerignore)  # never the raw documents
+    assert _dockerignored("tests/gcp/gcp_fakes.py", dockerignore) and not _dockerignored("src/wapsi/models.py",
+                                                                                         dockerignore)
 
 
 @needs_bash

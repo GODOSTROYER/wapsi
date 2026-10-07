@@ -21,6 +21,7 @@ route is a pure function of the data. Drafts still wait for a supervisor's appro
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -37,6 +38,7 @@ from wapsi.timeutil import fmt_ist, utcnow
 from .services import get_services
 
 APP_NAME = "case_pipeline"
+log = logging.getLogger("wapsi.gcp.workflow")
 NCRP_RE = re.compile(r"^\d{14}$")
 ACTOR = "case-pipeline"
 
@@ -167,7 +169,7 @@ def sweep_clocks(node_input: dict[str, Any]) -> dict[str, Any]:
     """Cloud Scheduler job: re-evaluate every open case's clocks and notify on WARNING / OVERDUE."""
     svc = get_services()
     now = utcnow()
-    swept, alerts = 0, []
+    swept, alerts, audit_failed = 0, [], []
     for case in svc.store.list_cases():
         if case.status == CaseStatus.CLOSED:
             continue
@@ -183,11 +185,15 @@ def sweep_clocks(node_input: dict[str, Any]) -> dict[str, Any]:
         if due:
             worst = "OVERDUE" if any(c.status == ClockStatus.OVERDUE for c in due) else "WARNING"
             _notify(case.case_id, f"{case.case_id}: {len(due)} clock(s) {worst}", "clocks")
-            svc.store.append_audit(case.case_id, AuditEvent(
-                at=now, actor=ACTOR, role="system", action="clock_sweep", object_type="case",
-                object_id=case.case_id, details={"alerts": [f"{c.kind.value}:{c.status.value}" for c in due]}))
+            try:
+                svc.store.append_audit(case.case_id, AuditEvent(
+                    at=now, actor=ACTOR, role="system", action="clock_sweep", object_type="case",
+                    object_id=case.case_id, details={"alerts": [f"{c.kind.value}:{c.status.value}" for c in due]}))
+            except Exception:  # noqa: BLE001 - e.g. AuditChainError on a tampered log: keep sweeping the others
+                log.exception("could not record the clock sweep in the audit log of %s", case.case_id)
+                audit_failed.append(case.case_id)
     return {"outcome": "clocks_swept", "cases": swept, "alerts": alerts[:50], "alert_count": len(alerts),
-            "as_of": fmt_ist(now)}
+            "audit_failed": audit_failed[:50], "as_of": fmt_ist(now)}
 
 
 def build_workflow() -> Workflow:
