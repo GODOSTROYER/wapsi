@@ -28,7 +28,7 @@ def test_dockerfile_python311_uv_non_root():
     for path in ("src", "ui", "editions/gcp", "data/docs"):
         assert f"COPY {path} " in text, path
     ignore = read(GCP / "Dockerfile.dockerignore")
-    for pattern in ("data/generated", ".venv", ".git", "tests", "editions/snowflake", "editions/amd"):
+    for pattern in ("data/generated", ".venv", ".git", "tests", "editions/amd"):
         assert pattern in ignore
 
 

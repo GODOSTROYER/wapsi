@@ -24,7 +24,7 @@ EDD, s.106, Process 1 / 2) are explained in the [Glossary](glossary.md).
 | Hallucination stress test (demo world) | a stub LLM that writes a wrong rupee amount into every prose field | 27.57% of drafts had their prose rejected and replaced by fixed text; drafts passing verification still 1.0; holds still exact | `evals/reports/baseline/demo-fake-hallucinate.json` |
 | Prompt-injection guard, blind holdout | 151 texts written by a separate agent that never saw the rules | precision 0.9661, recall 0.75, false-positive rate 0.0267 | `evals/reports/guard-latest.json` |
 | Audit-log tamper drill | the showcase case's 40-event hash-chained log | 6 of 6 tampering attempts detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
-| Test suite | `tests/` | 1,707 tests pass, 0 fail (full suite, 29-09-2026) | `uv run pytest -q` |
+| Test suite | `tests/` | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
 Two things stand out. **Hold amounts were exact in every world**, including the hard world built to break the
 classifier. **Every error that remains is a label, never money**: an innocent holder taken for a mule or the
@@ -502,8 +502,8 @@ same demo-world check (3 of 3 adversarial, 0 of 40 benign flagged).
 
 ## Test suite
 
-`uv run pytest --co -q -p no:warnings` collected 1,707 tests on 29-09-2026, and the full suite passed with 0
-failures the same day (`pitch/NUMBERS.md`, row `cmd_tests`):
+The full suite passed with 0 failures on 07-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`). That day
+`uv run pytest --co -q -p no:warnings` collected 1,623 tests:
 
 | Area | Tests | Area | Tests |
 |---|---:|---|---:|
@@ -511,18 +511,16 @@ failures the same day (`pitch/NUMBERS.md`, row `cmd_tests`):
 | `tests/graph` | 288 | `tests/synth` | 49 |
 | `tests/ui` | 152 | `tests/audit` | 42 |
 | `tests/draft` | 124 | `tests/pipeline` | 35 |
-| `tests/classify` | 110 | files directly in `tests/` (including `test_sop_annexure_v.py`) | 14 |
+| `tests/classify` | 110 | files directly in `tests/` (including `test_sop_annexure_v.py`) | 10 |
 | `tests/search` | 98 | `tests/pitch` | 6 |
 | `tests/gcp` (edition) | 127 | `tests/amd` (edition) | 113 |
-| `tests/snowflake` (edition) | 80 | | |
 
-The core suite with the light install (everything except `tests/gcp` and `tests/amd`) is 1,467 tests. The
+The core suite with the light install (everything except `tests/gcp` and `tests/amd`) is 1,383 tests. The
 wall-clock checks `tests/graph/test_graph_property.py::test_performance_20k_transactions` (one per apportionment
 rule, limit 2 s) can exceed their limit on a machine busy with evaluations; re-run on their own, they pass. Tests
 keep being added, so count your own checkout; the edition suites are described in
-[`editions/gcp/README.md`](../editions/gcp/README.md), [`editions/amd/README.md`](../editions/amd/README.md) and
-[`editions/snowflake/README.md`](../editions/snowflake/README.md). By convention (AGENTS.md) tests make no network
-calls.
+[`editions/gcp/README.md`](../editions/gcp/README.md) and [`editions/amd/README.md`](../editions/amd/README.md). By
+convention (AGENTS.md) tests make no network calls.
 
 ## Speed
 

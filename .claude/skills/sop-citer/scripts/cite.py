@@ -80,7 +80,7 @@ def search(query: str, k: int) -> int:
     except Exception as exc:
         print(
             f"local doc index unavailable ({type(exc).__name__}: {exc}). Build it with "
-            "`uv run python -m wapsi.search.build`, or use Cortex Search WAPSI.DOCS.SOP_SEARCH."
+            "`uv run python -m wapsi.search.build`."
         )
         return 1
     hits = ds.search(query, k=k)

@@ -1,6 +1,6 @@
 ---
 name: sop-citer
-description: Look up, search and quote the legal and regulatory basis behind a Wapsi decision — MHA/I4C SOP for NCRP-CFCFRMS (02.01.2026) paragraphs, BNSS sections, PML (Maintenance of Records) Rules, RBI fraud directions, FIU-IND circulars and the lien-not-freeze court rulings — using Cortex Search WAPSI.DOCS.SOP_SEARCH or the local index (wapsi.search.index.LocalDocSearch). Cites only ids registered in wapsi.citations and never invents a clause. Use for "cite", "which para", "what does the SOP say", "legal basis", "check citations".
+description: Look up, search and quote the legal and regulatory basis behind a Wapsi decision — MHA/I4C SOP for NCRP-CFCFRMS (02.01.2026) paragraphs, BNSS sections, PML (Maintenance of Records) Rules, RBI fraud directions, FIU-IND circulars and the lien-not-freeze court rulings — using the citation registry and the local BM25 docs index (wapsi.search.index.LocalDocSearch). Cites only ids registered in wapsi.citations and never invents a clause. Use for "cite", "which para", "what does the SOP say", "legal basis", "check citations".
 ---
 
 # sop-citer
@@ -18,7 +18,7 @@ come from the docs corpus. If a rule is not in the registry, it cannot be cited.
 - For a question: up to k passages with their citation id (only if registered), section and a ≤ 25-word excerpt.
 - For text: every `[ID]` token marked ok / UNKNOWN.
 
-## Steps — local
+## Steps
 ```
 uv run python .claude/skills/sop-citer/scripts/cite.py SOP-9-2 SOP-5-XII
 uv run python .claude/skills/sop-citer/scripts/cite.py --search "merchant goods delivered hold" -k 3
@@ -26,27 +26,6 @@ uv run python .claude/skills/sop-citer/scripts/cite.py --check "Hold per [SOP-9-
 uv run python .claude/skills/sop-citer/scripts/cite.py --list
 ```
 The local index is built with `uv run python -m wapsi.search.build`. If it is missing, the id lookup still works.
-
-## Steps — Snowflake (Cortex Search)
-Lookup by id (exact, no retrieval needed):
-```sql
-SELECT citation_id, source_title, section, quote, url, page
-FROM WAPSI.DOCS.CITATIONS WHERE citation_id IN ('SOP-9-2', 'SOP-5-XII');
-```
-Semantic search ([Cortex Search docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)):
-```sql
-SELECT r.value:citation_id::STRING AS citation_id, r.value:section::STRING AS section,
-       r.value:doc_title::STRING AS doc_title, LEFT(r.value:chunk_text::STRING, 400) AS excerpt
-FROM TABLE(FLATTEN(input => PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-  'WAPSI.DOCS.SOP_SEARCH',
-  '{"query": "merchant goods delivered no hold",
-    "columns": ["citation_id", "section", "doc_title", "chunk_text", "source_url"],
-    "limit": 5}'
-))['results'])) r;
-```
-Restrict to one id with `"filter": {"@eq": {"citation_id": "SOP-9-2"}}` (`citation_id` is an `ATTRIBUTES` column
-of the service). The service is defined over `WAPSI.DOCS.DOC_CHUNKS(chunk_id, chunk_text, citation_id, doc_id,
-doc_title, section, source_url, page)`, chunks ≤ 512 tokens.
 
 ## How to answer
 1. Resolve the id(s) first; if the officer asked a question, search, then map hits to registered ids.
@@ -69,5 +48,4 @@ doc_title, section, source_url, page)`, chunks ≤ 512 tokens.
 ## How to verify
 - `cite.py SOP-9-2` prints the Para 9.2 section title and exit code 0; `cite.py SOP-99` exits 1 with UNKNOWN.
 - `cite.py --check` on any approved draft body exits 0.
-- In Snowflake: `SHOW CORTEX SEARCH SERVICES IN SCHEMA WAPSI.DOCS;` lists `SOP_SEARCH`, and the search above
-  returns at least one row whose `citation_id` is `SOP-9-2`.
+- `cite.py --search "merchant goods delivered hold" -k 3` returns at least one hit labelled `[SOP-9-2]`.

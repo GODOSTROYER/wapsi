@@ -87,7 +87,7 @@ def build_totals_waterfall(totals: TraceTotals, *, dark: bool = False, height: i
             name="",
         )
     )
-    try:  # rounded bar ends need plotly >= 5.19; older builds (some SiS channels) just keep square ends
+    try:  # rounded bar ends need plotly >= 5.19; older builds just keep square ends
         fig.update_traces(marker_cornerradius=3)
     except (ValueError, AttributeError):
         pass

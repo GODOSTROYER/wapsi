@@ -5,7 +5,7 @@ The showcase world is processed by the real pipeline (``wapsi.pipeline.run.proce
 otherwise. Engine modules are imported lazily, inside try/except, so a partial install never breaks a page.
 ``WAPSI_DATA_SOURCE`` (``resolve_source`` / ``load_source``) switches to a synthetic parquet world instead: ``demo``
 (``data/generated/demo``) or a path; its cases come from the world's golden set (else ``group_complaints``).
-Editions swap ``ShowcaseDataSource`` for a Snowflake / BigQuery / Postgres-backed implementation of the same
+Editions swap ``ShowcaseDataSource`` for a BigQuery- or Parquet-backed implementation of the same
 ``DataSource`` protocol.
 """
 

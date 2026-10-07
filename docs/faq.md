@@ -1,7 +1,7 @@
 # Frequently asked questions
 
-These are 25 questions that Snowflake, Google Cloud and AMD judges and bank fraud and compliance reviewers are
-likely to ask about Wapsi. The answers are short and straight. Each number comes from a file in this repository,
+These are 25 questions that Google Cloud and AMD judges and bank fraud and compliance reviewers are likely to
+ask about Wapsi. The answers are short and straight. Each number comes from a file in this repository,
 and the file is named next to it so you can check it. Abbreviations such as STR, EDD, IO, SHO and DGO are defined
 in the [Glossary](glossary.md).
 
@@ -505,7 +505,7 @@ the bank observed (`wapsi.classify.explain`). **There is no integration with any
 repository the values are synthetic ([Q13](#q13)), and the text says "MuleHunter-style score" for that reason.
 
 <a id="q17"></a>
-### 17. What is platform-specific in the Snowflake, Google Cloud and AMD editions?
+### 17. What is platform-specific in the Google Cloud and AMD editions?
 
 Tracing, taint, the hold plan, drafting, verification and clocks are one portable Python package (`src/wapsi`).
 Each edition is designed to call the same core functions through its own adapters: `process_case`
@@ -516,7 +516,6 @@ supplies adapters and platform services around the core:
 
 | Edition | Platform-specific part | Status on 29-09-2026 | Read |
 |---|---|---|---|
-| Snowflake (built with CoCo) | Data in Snowflake, the core in Snowpark procedures, Cortex Search, Analyst and Agent, Streamlit in Snowflake, and role-based governance | Complete in the repository and tested offline (80 tests): SQL, Snowpark procedures, the SiS app and `deploy.py`. CoCo sessions from 29 September to 3 October deploy it and prove it live | [`editions/snowflake/README.md`](../editions/snowflake/README.md) |
 | Google Cloud | ADK agents on Cloud Run with Gemini, BigQuery and Firestore; Model Armor and Gemma as options | Built and unit-tested locally with fakes; not deployed yet | [`editions/gcp/README.md`](../editions/gcp/README.md) |
 | AMD | A GraphSAGE mule scorer, a Gemma LoRA fine-tune, vLLM-ROCm serving and benchmarks on AMD Instinct MI300X | Code prepared and tested on CPU; GPU runs happen only during the event (12 to 18 October) | [`editions/amd/README.md`](../editions/amd/README.md) |
 
@@ -532,11 +531,7 @@ records what was built when, and commit dates are never rewritten:
 
 - **Core.** Work started on 2026-09-16. The git history begins with the commit "Wapsi core: money-trail
   tracing, amount-specific hold plans, verified drafts", dated 2026-09-23. It contains the portable core, the
-  UI, the evaluations, the CoCo skills and playbook, and the Google Cloud edition scaffold.
-- **Snowflake.** The Snowflake edition (`editions/snowflake/`: SQL scripts, Snowpark handlers, the SiS app and
-  `deploy.py`) is in the repository and tested offline. CoCo sessions from 2026-09-29 to 2026-10-03 deploy it on
-  Snowflake, build the semantic view and the Cortex Agent with CoCo's own skills, and prove parity live (see
-  `editions/snowflake/COCO_SPRINT.md`). Evidence is kept in `editions/snowflake/coco-sessions/`.
+  UI, the evaluations, the agent skills, and the Google Cloud edition scaffold.
 - **Google Cloud.** The edition's scaffold is in the first commit. Completing and deploying it is scheduled for
   2026-10-04 to 2026-10-18.
 - **AMD.** Some AMD edition code was prepared before the event and is disclosed as such: serving scripts, a
@@ -601,8 +596,8 @@ We have not measured production cost. This is what we have measured:
   fact sheet, about 15,000 characters per call). Showcase 2 makes 2 calls, about 15,000 characters in total.
   Each prose field is retried at most once. Running with the offline `FakeLLM` costs nothing and changes only the
   wording of the prose, not any number.
-- **Cloud.** Cost guardrails are set per edition. For example, the Snowflake edition README specifies one X-Small
-  warehouse that auto-suspends after 60 s, capped by a resource monitor. See the edition READMEs.
+- **Cloud.** Cost guardrails are set per edition. For example, the Google Cloud edition's default profile uses
+  the Gemini API free tier, scales Cloud Run to zero and sets a 5 USD budget alert. See the edition READMEs.
 
 The cost that matters is on the other side of the ledger. From April 2021 to November 2025, ₹52,969 crore was
 reported and ₹7,647 crore of it was saved, but only ₹167 crore, about 2.18% of the money saved, was restored to

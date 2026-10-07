@@ -1,6 +1,7 @@
-# Wapsi UI settings. Streamlit reads this file when it sits next to the main script (current releases and
-# Streamlit in Snowflake, where ui/ is the app root). Per-mode accents keep "Use system setting" working, so
-# the app follows the viewer's light / dark choice. (Versions before per-mode themes ignore these two
+# Wapsi UI settings. Streamlit reads this file from the directory it is started in (the repo-root copy) and, in
+# current releases, from next to the main script (the identical copy in ui/, so `streamlit run ui/app.py` gets the
+# same theme from any directory). Keep the two copies the same. Per-mode accents keep "Use system setting" working,
+# so the app follows the viewer's light / dark choice. (Versions before per-mode themes ignore these two
 # sections with a log warning and keep Streamlit's default theme.)
 [theme.light]
 primaryColor = "#256abf"

@@ -18,7 +18,6 @@ data/golden
 models
 *.ckpt
 *.safetensors
-editions/snowflake
 editions/amd
 tests
 .streamlit/secrets.toml

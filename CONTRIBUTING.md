@@ -31,8 +31,7 @@ testing strategy. This page is the short version.
 7. **Coordinate before changing shared contracts:** `src/wapsi/models.py`, `src/wapsi/ports.py` and
    `pyproject.toml` are used by every module and every edition.
 
-`AGENTS.md` is the authoritative list of conventions. Coding agents (Claude Code, Snowflake CoCo, Gemini CLI)
-read it too.
+`AGENTS.md` is the authoritative list of conventions. Coding agents (Claude Code, Gemini CLI) read it too.
 
 ## Set up
 
@@ -121,15 +120,13 @@ behaviour change per pull request is easiest to review against the SOP.
 
 ## Event rules
 
-Wapsi is entered in three hackathons. Follow "Originality and event boundaries" in AGENTS.md and
+Wapsi is entered in two hackathons. Follow "Originality and event boundaries" in AGENTS.md and
 [docs/originality.md](docs/originality.md):
 
 - AI Builder Cup: only work created on or after 2026-09-01 counts. Work on Wapsi started on 2026-09-16; the
   first commit is dated 2026-09-23.
 - AMD ACT III: every run on AMD hardware and every reported GPU number happens during 12–18 Oct 2026. CPU
   development numbers are labelled as such.
-- Snowflake: Snowflake-native work is built in CoCo sessions, with evidence in
-  `editions/snowflake/coco-sessions/`.
 - Gemini outputs are not used to train other models.
 - Never rewrite commit dates.
 

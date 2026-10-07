@@ -44,7 +44,7 @@ def test_form_limits_hold_and_are_stated():
     errors, found = check.check_limits()
     assert errors == []
     limits = {(Path(path).as_posix(), limit) for path, _, limit in found}
-    assert ("pitch/coco/BRIEF.md", 1024) in limits
+    assert ("pitch/aibc/SUBMISSION_FIELDS.md", 1000) in limits
     assert ("pitch/amd/LABLAB_FIELDS.md", 50) in limits
     assert ("pitch/amd/LABLAB_FIELDS.md", 255) in limits
 

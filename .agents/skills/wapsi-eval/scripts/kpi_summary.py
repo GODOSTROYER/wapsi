@@ -1,11 +1,10 @@
 """Summarise the latest golden-set evaluation against the build-plan targets and the previous report.
 
-Part of the `wapsi-eval` skill (also used by the CoCo SessionStart hook). Run from the repo root.
+Part of the `wapsi-eval` skill. Run from the repo root.
 
     uv run python .claude/skills/wapsi-eval/scripts/kpi_summary.py                 # evals/reports/latest.json
     uv run python .claude/skills/wapsi-eval/scripts/kpi_summary.py --run --world demo
     uv run python .claude/skills/wapsi-eval/scripts/kpi_summary.py --brief          # one line (hooks)
-    uv run python .claude/skills/wapsi-eval/scripts/kpi_summary.py --sql            # INSERT for WAPSI.APP.EVAL_RUNS
 
 Report schema: docs/eval-report.md. Exit codes: 0 all targets met, 1 a target missed or (with
 --fail-on-regression) a metric regressed, 2 no report / harness failed. --brief always exits 0.
@@ -151,8 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", action="store_true", help="run the harness first")
     ap.add_argument("--world", default="demo")
     ap.add_argument("--quick", action="store_true", help="with --run: first 10 cases only")
-    ap.add_argument("--brief", action="store_true", help="one line, never fails (SessionStart hook)")
-    ap.add_argument("--sql", action="store_true", help="print an INSERT for WAPSI.APP.EVAL_RUNS")
+    ap.add_argument("--brief", action="store_true", help="one line, never fails (hooks)")
     ap.add_argument("--fail-on-regression", action="store_true")
     args = ap.parse_args(argv)
 
@@ -170,15 +168,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.previous
         else find_reports(None, latest)
     )
-
-    if args.sql:
-        body = json.dumps(latest, ensure_ascii=False)
-        print(
-            "INSERT INTO WAPSI.APP.EVAL_RUNS (world, generated_at, cases, report)\n"
-            f"SELECT '{latest.get('world', '')}', '{latest.get('generated_at', '')}'::TIMESTAMP_TZ, "
-            f"{int(latest.get('cases', 0))}, PARSE_JSON($${body}$$);"
-        )
-        return 0
 
     rows, missed, worse = [], 0, 0
     for label, key, kind, op, target, hib in KPIS:
