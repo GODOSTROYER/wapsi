@@ -11,7 +11,8 @@ One ``AgentTrace`` per agent invocation (one officer message and everything the 
   policy, untrusted text found in its result) and the verifier verdict it carries (plan policy check, draft
   verification, re-verification before an approval);
 - ``output`` the agent's reply, the output guard's verdict (Model Armor response screening when configured) and a
-  grounding check: every rupee amount and account number in the reply must appear in a tool result.
+  grounding check: every rupee amount and account number in the reply must appear in a tool result;
+- ``note``   only in a size-bounded audit record (``bounded``): how many steps were left out.
 
 A trace is stored as one ``agent_trace`` audit event per case it touched (``trace_event``), so the case's hash
 chain covers it; ``traces_from_audit`` reads them back.
@@ -33,8 +34,9 @@ from wapsi.timeutil import ensure_utc
 TRACE_ACTION = "agent_trace"
 TRACE_OBJECT = "agent_run"
 SCHEMA_VERSION = 1
+MAX_EVENT_BYTES = 512 * 1024  # one agent_trace audit event (Firestore caps a document at 1 MiB)
 
-StepKind = Literal["input", "model", "tool", "output"]
+StepKind = Literal["input", "model", "tool", "output", "note"]
 OK_STATUSES = frozenset({"ok", "approved", "passed"})
 STOPPED_STATUSES = frozenset({"blocked", "refused"})
 FAILED_STATUSES = frozenset({"error", "exception"})
@@ -127,7 +129,8 @@ class AgentTrace(_M):
     trace_id: str
     app: str = ""
     session_id: str = ""
-    user: str = ""
+    user: str = ""  # display name (the audit actor)
+    user_id: str = ""  # the authenticated user id (IAP e-mail on Cloud Run): scopes who may read the trace
     role: str = ""
     source: str = "adk"
     model: str = ""
@@ -190,9 +193,41 @@ class AgentTrace(_M):
 # --------------------------------------------------------------------------- audit events
 
 
+def bounded(trace: AgentTrace, max_bytes: int = MAX_EVENT_BYTES) -> AgentTrace:
+    """``trace`` itself when its JSON fits ``max_bytes``; otherwise a copy that fits: first without the redacted
+    raw results (every step keeps its one-line summary, status, guards and verifier verdict), then keeping only the
+    first and last steps around a ``note`` step that says how many were left out. A runaway agent loop must not
+    produce an audit event a store cannot write (a Firestore document is capped at 1 MiB)."""
+
+    def size(t: AgentTrace) -> int:
+        return len(t.model_dump_json().encode("utf-8"))
+
+    if size(trace) <= max_bytes:
+        return trace
+    t = trace.model_copy(deep=True)
+    for s in t.steps:
+        s.result = {}
+    if size(t) <= max_bytes:
+        return t
+    steps, keep = t.steps, len(t.steps)
+    while keep > 2:
+        keep = max(2, keep // 2)
+        head = steps[: (keep + 1) // 2]
+        tail = steps[len(steps) - keep // 2:]
+        gap = TraceStep(seq=head[-1].seq + 1, kind="note", name="steps left out", status="truncated",
+                        started_at=head[-1].started_at,
+                        summary=f"{len(steps) - len(head) - len(tail)} of {len(steps)} steps left out of this "
+                                "audit record (trace too large); the run's totals above count every step")
+        candidate = t.model_copy(update={"steps": [*head, gap, *tail]})
+        if keep == 2 or size(candidate) <= max_bytes:
+            return candidate
+    return t
+
+
 def trace_event(trace: AgentTrace, *, case_id: str | None = None) -> AuditEvent:
     """The audit event recording ``trace`` on a case's hash-chained log (summary fields first, so the audit page's
-    one-line summary reads well; the full trace sits under ``trace``)."""
+    one-line summary reads well; the full trace sits under ``trace``). The summary fields describe the whole run;
+    the stored trace is size-bounded (``bounded``)."""
     s = trace.summary()
     details: dict[str, Any] = {
         "tools": " → ".join(s.tools) if s.tools else "no tool calls",
@@ -202,7 +237,7 @@ def trace_event(trace: AgentTrace, *, case_id: str | None = None) -> AuditEvent:
         "guard_flags": s.guard_flags,
         "source": trace.source,
         "trace_id": trace.trace_id,
-        "trace": trace.model_dump(mode="json"),
+        "trace": bounded(trace).model_dump(mode="json"),
     }
     if case_id:
         details["case_id"] = case_id

@@ -215,6 +215,8 @@ class WapsiGuardPlugin(BasePlugin):
             return None
         if g.flagged:
             log.warning("model response flagged: %s", ", ".join(g.categories))
+        if any(p.function_call for p in (content.parts or [])):
+            return None  # text that goes with a tool call, not the reply: screened and logged, not traced as output
         self._report(callback_context, GuardVerdict(
             stage="output", source=self.source(), flagged=g.flagged, action="logged" if g.flagged else "passed",
             categories=list(g.categories),

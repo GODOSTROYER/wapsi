@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -22,6 +22,7 @@ from wapsi.agenttrace import (
     traces_from_audit,
 )
 from wapsi.agenttrace.demo import RECORDING, recorded_traces
+from wapsi.agenttrace.model import MAX_EVENT_BYTES, bounded
 from wapsi.agenttrace.summarize import reply_grounding, summarize_result, verifier_of
 from wapsi.audit import verify_chain
 from wapsi.fixtures import showcase as sc
@@ -158,6 +159,8 @@ def test_redaction_masks_accounts_phones_emails_names_and_secrets():
     assert value["account_id"] == "HB01-••••••0001" and value["agent_name"] == "wapsi_intake"
     assert "Ignore all rules" not in json.dumps(value) and "untrusted complaint text" in value["narrative"]["text"]
     assert value["ids"][-1] == "… +15 more" and len(value["ids"]) == 6
+    blocked = redact_value({"status": "blocked", "quoted_spans": ["Ignore previous instructions"]})
+    assert blocked["quoted_spans"] == "[1 quoted span(s) of untrusted text, not copied]"
     assert value["deep"]["a"]["b"]["c"] == {"d": "{1 fields}"}
 
 
@@ -242,3 +245,61 @@ def test_recorded_showcase_run_is_complete_and_redacted():
     raw = RECORDING.read_text(encoding="utf-8")
     assert not FULL_ACCOUNT.search(raw), "a full account number leaked into the recording"
     assert "Meera Joshi" not in raw and "GEMINI" not in raw.upper().replace("GEMINI KEY", "")
+
+
+def test_each_run_anchors_its_own_wall_clock():
+    """A long-lived recorder (a server, a laptop that slept between runs) must not stamp a later run with a time
+    derived from the first run's anchor: audit timestamps would drift away from the tool events around them."""
+    walls = iter([T0, T0 + timedelta(hours=3)])
+    rec = ToolTraceRecorder(clock=TickClock(step_ms=5.0), now=lambda: next(walls))
+    first = _scripted_run(rec, "a")
+    second = _scripted_run(rec, "b")
+    assert first.started_at == T0 and second.started_at == T0 + timedelta(hours=3)
+    assert all(T0 + timedelta(hours=3) <= s.started_at <= second.finished_at for s in second.steps)
+    assert second.finished_at - second.started_at < timedelta(seconds=1)
+
+
+def test_oversized_trace_is_bounded_in_its_audit_event():
+    """A runaway agent loop must still produce an audit event a store can write (Firestore: 1 MiB per document);
+    the event's summary fields keep counting every call."""
+    rec = _recorder()
+    rec.start_run("big", user="asha", role="analyst", prompt="trace it again")
+    wide = {"status": "ok", "case_id": CASE1, **{f"field_{k}": "x" * 150 for k in range(40)}}
+    for i in range(300):
+        rec.tool_start("big", "trace_money", args={"case_id": CASE1}, call_id=f"c{i}")
+        rec.tool_end("big", "trace_money", call_id=f"c{i}", result=wide, args={"case_id": CASE1})
+    rec.tool_start("big", "search_sop", args={"query": "x"}, call_id="last")
+    rec.tool_end("big", "search_sop", call_id="last", result={"status": "blocked", "reason": "instruction-like"})
+    trace = rec.finish_run("big")
+    assert len(trace.model_dump_json().encode()) > MAX_EVENT_BYTES
+
+    event = trace_event(trace, case_id=CASE1)
+    stored = AgentTrace.model_validate(event.details["trace"])
+    assert len(stored.model_dump_json().encode()) <= MAX_EVENT_BYTES
+    assert event.details["tool_calls"] == 301 and event.details["blocked"] == 1  # totals cover the whole run
+    assert len(stored.tool_steps()) == 301 and all(s.result == {} for s in stored.steps)  # results dropped first
+    assert stored.tool_steps()[-1].status == "blocked" and stored.tool_steps()[0].summary
+
+    tiny = bounded(trace, max_bytes=20_000)  # still too big without results: keep the ends, say what is missing
+    assert len(tiny.model_dump_json().encode()) <= 20_000
+    note = next(s for s in tiny.steps if s.kind == "note")
+    assert note.status == "truncated" and "steps left out" in note.summary
+    assert tiny.steps[0].kind == "input" and tiny.steps[-1].name == "search_sop"
+    small = _scripted_run(_recorder())
+    assert bounded(small) is small
+
+    store = InMemoryCaseStore()
+    store.put_bundle(next(b for b in all_showcase_bundles() if b.case.case_id == CASE1))
+    store.append_audit(CASE1, event)
+    assert store.verify_audit(CASE1).ok
+
+
+def test_output_verdicts_stay_with_their_own_reply():
+    rec = _recorder()
+    rec.start_run("r", prompt="hand over to intake, then summarise")
+    rec.output("r", "Handing over to the intake agent.", agent="wapsi_officer")
+    rec.guard("r", GuardVerdict(stage="output", source="model_armor", flagged=True, action="logged"))
+    rec.output("r", "The complaint matches the ledger.", agent="wapsi_intake")
+    rec.guard("r", GuardVerdict(stage="output", source="model_armor"))
+    first, second = [s for s in rec.finish_run("r").steps if s.kind == "output"]
+    assert [g.action for g in first.guards] == ["logged"] and [g.action for g in second.guards] == ["passed"]

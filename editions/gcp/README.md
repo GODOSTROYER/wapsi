@@ -232,13 +232,18 @@ answer it (a blocked call still gets its step). The guard plugin reports its ver
 `wapsi.agenttrace.ToolTraceRecorder` (pure Python, edition-neutral). When a run ends, its trace is appended to the
 audit log of every case it touched as an `agent_trace` event, so the case's hash chain covers it (editing a
 recorded step breaks the chain), and it is logged as one JSON line for Cloud Logging. `GET /wapsi/traces?case_id=`
-on the API service returns the runs that instance recorded.
+on the API service returns the runs that instance recorded (behind IAP an analyst sees only their own runs;
+supervisors and auditors see all). A stored trace is size-bounded (512 KiB: raw results are dropped first, then
+middle steps, with a note saying how many), so a runaway agent loop still yields an audit event Firestore can
+write; the event's totals always count every call.
 
 No API key needed: the showcase case shows a recorded offline run (`src/wapsi/agenttrace/showcase_recording.json`):
 the real app, tools and guards, driven by the scripted model through a fixed officer script (open a case, explain
 an account, an analyst's approval refused by maker-checker, an injected instruction rewritten by the input guard
-and the search that follows blocked). In demo mode the GCP UI also runs that script once at start-up, so its traces
-sit in the showcase cases' audit chains. With a Gemini key, live runs replace both.
+and the search that follows blocked). In demo mode the GCP UI also runs that script once at start-up (first
+session only; a spinner shows while it runs, about 10-30 s on a laptop, mostly ADK's one-time start-up), so its
+traces sit in the showcase cases' audit chains. `WAPSI_SEED_AGENT_TRACE=0` skips it. With a Gemini key, live runs
+replace both.
 
 ```bash
 uv run python -m editions.gcp.app.trace_demo            # run the script, print each run's tool sequence

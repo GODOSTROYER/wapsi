@@ -139,8 +139,12 @@ def test_server_exposes_recorded_traces():
     from editions.gcp.app.server import create_app
     from editions.gcp.app.services import build_services, set_services
 
-    settings = GcpSettings(demo_mode=True, serve_adk_web=False)
+    settings = GcpSettings(demo_mode=True, serve_adk_web=False, supervisors=("sup@bank.example",))
     services = build_services(settings)
+
+    def iap(email: str) -> dict[str, str]:
+        return {"X-Goog-Authenticated-User-Email": f"accounts.google.com:{email}"}
+
     try:
         with TestClient(create_app(settings, services=services)) as client:
             sid = client.post("/apps/wapsi_officer/users/asha/sessions", json={}).json()["id"]
@@ -148,11 +152,19 @@ def test_server_exposes_recorded_traces():
                                           "new_message": {"role": "user", "parts": [{"text": f"Open case {sc.N1}"}]}})
             assert r.status_code == 200, r.text
             body = client.get("/wapsi/traces", params={"case_id": CASE1, "limit": 1}).json()
+            # behind IAP an analyst reads only their own runs; a supervisor reads every run
+            other = client.get("/wapsi/traces", params={"case_id": CASE1}, headers=iap("bob@bank.example")).json()
+            own = client.get("/wapsi/traces", params={"case_id": CASE1, "limit": 100}, headers=iap("asha")).json()
+            sup = client.get("/wapsi/traces", params={"case_id": CASE1, "limit": 1},
+                             headers=iap("sup@bank.example")).json()
     finally:
         set_services(None)
     (summary,) = body["summaries"]
     assert summary["tools"] == PIPELINE and summary["cases"] == [CASE1] and summary["blocked"] == 0
-    assert body["traces"][0]["steps"][0]["kind"] == "input"
+    assert body["traces"][0]["steps"][0]["kind"] == "input" and body["traces"][0]["user_id"] == "asha"
+    assert other == {"traces": [], "summaries": []}
+    assert own["traces"] and all(t["user_id"] == "asha" for t in own["traces"])
+    assert own["summaries"][-1]["trace_id"] == summary["trace_id"] == sup["summaries"][-1]["trace_id"]
     bundle = services.store.get_bundle(CASE1)
     assert traces_from_audit(bundle.audit, case_id=CASE1)[-1].trace_id == summary["trace_id"]
 

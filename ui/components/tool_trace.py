@@ -21,6 +21,7 @@ from ui.components.formatting import ROLE_TITLES, humanize, ist
 from ui.components.theme import MONO
 from wapsi.agenttrace import (
     SOURCE_LABELS,
+    TRACE_ACTION,
     AgentTrace,
     GuardVerdict,
     TraceStep,
@@ -32,6 +33,7 @@ from wapsi.agenttrace.model import FAILED_STATUSES, STOPPED_STATUSES
 from wapsi.models import CaseBundle
 
 ORIGIN_AUDIT, ORIGIN_RECORDING, ORIGIN_NONE = "audit", "recording", "none"
+ORIGIN_AUDIT_UNSEALED = "audit_unsealed"  # in the audit log, but the store did not seal it into the hash chain
 Masker = Callable[[str], str]
 
 STAGE_LABELS = {
@@ -134,6 +136,20 @@ def case_traces(bundle: CaseBundle | None) -> tuple[list[AgentTrace], str]:
     return [], ORIGIN_NONE
 
 
+def sealed_trace_ids(bundle: CaseBundle | None) -> set[str]:
+    """Trace ids whose ``agent_trace`` event carries a hash-chain seal (stores that do not seal yet, e.g.
+    Firestore today, leave it unset: the panel must not claim the chain covers those runs)."""
+    if bundle is None:
+        return set()
+    return {e.object_id for e in bundle.audit if e.action == TRACE_ACTION and e.hash}
+
+
+def trace_origin(trace: AgentTrace, origin: str, sealed: set[str]) -> str:
+    if origin == ORIGIN_AUDIT and trace.trace_id not in sealed:
+        return ORIGIN_AUDIT_UNSEALED
+    return origin
+
+
 # --------------------------------------------------------------------------- formatting
 
 
@@ -169,12 +185,17 @@ def status_tone(step: TraceStep) -> str:
 
 def status_text(step: TraceStep) -> str:
     if step.status == "blocked":
-        return "Blocked by guard"
+        # a guard (Model Armor / RulesGuard) screened the arguments, or the tool's own rule stopped the call
+        # (e.g. draft_documents before verification_report has been shown)
+        by_guard = any(g.stopped and g.source not in {"tool", "maker_checker"} for g in step.guards)
+        return "Blocked by guard" if by_guard else "Blocked by tool rule"
     if step.status == "refused":
         policy = next((g for g in step.guards if g.stage == "tool_policy" and g.stopped), None)
         return "Refused · maker-checker" if policy and policy.source == "maker_checker" else "Refused"
     if step.status == "flagged":
         return "Rewritten by guard" if step.kind == "input" else "Check failed"
+    if step.status == "truncated":
+        return "Left out"
     return {"ok": "OK", "approved": "Approved", "exception": "Raised an error", "error": "Error",
             "unfinished": "Unfinished", "running": "Running"}.get(step.status, humanize(step.status))
 
@@ -183,6 +204,8 @@ def guard_chip(v: GuardVerdict) -> str:
     stage = STAGE_LABELS.get(v.stage, humanize(v.stage))
     if v.stage == "tool_policy" and v.source == "maker_checker":
         text = f"Maker-checker · {ACTION_WORDS.get(v.action, v.action)}"
+    elif v.stage == "tool_policy" and v.source == "tool":
+        text = f"Tool rule · {ACTION_WORDS.get(v.action, v.action)}"
     elif v.stage == "tool_result":
         text = f"{stage} · {ACTION_WORDS.get(v.action, v.action)}"
     else:
@@ -274,8 +297,12 @@ def model_step_html(step: TraceStep, mask: Masker = str) -> str:
 def io_step_html(step: TraceStep, mask: Masker = str) -> str:
     kind = step.kind
     cls = " stop" if step.stopped or step.status == "flagged" else ""
-    label = "Officer asked" if kind == "input" else "Agent replied"
+    label = {"input": "Officer asked", "output": "Agent replied"}.get(kind, "Note")
     status = h.chip(status_text(step), status_tone(step)) if step.status != "ok" else ""
+    if kind == "note":
+        return (f'<div class="wp-tt-step" data-kind="note"><span class="wp-tt-dot" aria-hidden="true"></span>'
+                f'<div class="wp-tt-mini"><span class="wp-tt-kind">{label}</span>'
+                f"<span>{h.esc(mask(step.summary or '—'))}</span></div></div>")
     return (
         f'<div class="wp-tt-step" data-kind="{h.esc(kind)}"><span class="wp-tt-dot {h.esc(kind)}{cls}" '
         f'aria-hidden="true"></span><div class="wp-tt-mini"><span class="wp-tt-kind">{label}</span>'
@@ -318,6 +345,10 @@ def run_header_html(trace: AgentTrace, number: int, *, origin: str = ORIGIN_AUDI
     if origin == ORIGIN_AUDIT:
         chips.append(h.chip("In the case's hash-chained audit log", "good",
                             title="Recorded as an agent_trace audit event; the audit page re-verifies the chain"))
+    elif origin == ORIGIN_AUDIT_UNSEALED:
+        chips.append(h.chip("In the case's audit log", "gray",
+                            title="Recorded as an agent_trace audit event; this case store does not seal events "
+                                  "into the hash chain yet"))
     if s.blocked:
         chips.append(h.chip(f"{s.blocked} blocked", "warn"))
     if s.errors:
@@ -355,7 +386,8 @@ def summary_html(traces: Sequence[AgentTrace]) -> str:
         h.Tile("Time in tools", fmt_ms(tool_ms), f"model turns: {turns}", title=f"{tool_ms:.1f} ms"),
         h.Tile("Tokens in / out", tokens, "as reported by the model" if tin or tout
                else "not reported (scripted model)", swatch="gray"),
-        h.Tile("Blocked calls", str(blocked), "guard or maker-checker", swatch="orange" if blocked else None),
+        h.Tile("Blocked calls", str(blocked), "guard, maker-checker or tool rule",
+               swatch="orange" if blocked else None),
         h.Tile("Guard checks", str(checks), f"{flags} flagged", swatch="teal"),
         h.Tile("Verifier verdicts", f"{vpass} ✓ · {vfail} ✕", "plan, drafts, approvals, reply",
                swatch="red" if vfail else "teal"),
@@ -377,10 +409,18 @@ def render_agent_trace(ctx: object) -> None:
     from ui.views.common import md
 
     bundle: CaseBundle | None = getattr(ctx, "bundle", None)
-    mask_fn = getattr(ctx, "mask", None)
+    viewer = getattr(ctx, "viewer", None)
+    if getattr(viewer, "masked", False) and callable(getattr(ctx, "pii", None)):
+        # look the case's names and mobiles up once, not once per trace fragment (ledger lookups)
+        names, mobiles = ctx.pii(bundle)  # type: ignore[attr-defined]
 
-    def mask(text: str) -> str:
-        return mask_fn(text, bundle) if callable(mask_fn) and text else text
+        def mask(text: str) -> str:
+            return viewer.text(text, names, mobiles) if text else text  # type: ignore[union-attr]
+    else:
+        mask_fn = getattr(ctx, "mask", None)
+
+        def mask(text: str) -> str:
+            return mask_fn(text, bundle) if callable(mask_fn) and text else text
 
     traces, origin = case_traces(bundle)
     md(css())
@@ -407,15 +447,18 @@ def render_agent_trace(ctx: object) -> None:
     if newest_first:
         numbered.reverse()
     scale = bar_scale(traces)  # one latency scale for every run on the page
-    md("".join(run_html(t, n, origin=origin, tools_only=tools_only, mask=mask, max_ms=scale) for n, t in numbered))
+    sealed = sealed_trace_ids(bundle)
+    md("".join(run_html(t, n, origin=trace_origin(t, origin, sealed), tools_only=tools_only, mask=mask,
+                        max_ms=scale) for n, t in numbered))
 
 
 def _empty_args() -> tuple[str, str, str, str]:
     return ("No agent runs on this case yet",
             "When an officer asks the Wapsi agent (Gemini on ADK) about this case, every tool call it makes "
             "appears here in order — arguments, result, latency and the guard and verifier verdicts around it — "
-            "and is sealed into the case's audit chain.",
-            "⋯", "uv run python -m editions.gcp.app.trace_demo")
+            "and is recorded in the case's audit log. On the showcase data, case CASE-31009260000101 shows a "
+            "recorded offline run.",
+            "⋯", "")
 
 
 def tab_label(bundle: CaseBundle | None) -> str:
@@ -426,6 +469,7 @@ def tab_label(bundle: CaseBundle | None) -> str:
 
 __all__ = [
     "ORIGIN_AUDIT",
+    "ORIGIN_AUDIT_UNSEALED",
     "ORIGIN_NONE",
     "ORIGIN_RECORDING",
     "STOPPED_STATUSES",
@@ -437,9 +481,11 @@ __all__ = [
     "model_step_html",
     "render_agent_trace",
     "run_html",
+    "sealed_trace_ids",
     "summary_html",
     "tab_label",
     "timeline_html",
     "tool_step_html",
+    "trace_origin",
     "verifier_chip",
 ]

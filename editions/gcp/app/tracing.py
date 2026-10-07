@@ -104,7 +104,7 @@ class ToolTracePlugin(BasePlugin):
             self.recorder.start_run(
                 str(invocation_context.invocation_id), app=str(getattr(invocation_context, "app_name", "") or ""),
                 session_id=str(getattr(session, "id", "") or ""), user=display_name(state, user) if user else "",
-                role=verified_role(state, user) if user else "", prompt=_texts(user_message))
+                user_id=user, role=verified_role(state, user) if user else "", prompt=_texts(user_message))
         except Exception:  # noqa: BLE001 - tracing never breaks a run
             log.exception("trace: could not start the run")
         return None

@@ -62,6 +62,7 @@ class TickClock:
 class _Run:
     trace: AgentTrace
     t0: float
+    wall0: datetime  # wall-clock time of monotonic reading t0 (each run anchors its own steps)
     open_tools: dict[str, tuple[TraceStep, float]] = field(default_factory=dict)
     open_model: tuple[TraceStep, float] | None = None
     pending_tool_guards: list[tuple[str, str, GuardVerdict]] = field(default_factory=list)  # (call_id, tool, v)
@@ -88,15 +89,14 @@ class ToolTraceRecorder:
         self._runs: OrderedDict[str, _Run] = OrderedDict()
         self.finished: deque[AgentTrace] = deque(maxlen=max_finished)
         self._lock = threading.RLock()
-        self._wall0: tuple[datetime, float] | None = None
 
     # ------------------------------------------------------------------ time
-    def _stamp(self, t: float) -> datetime:
-        """Wall-clock time of monotonic reading ``t`` (one anchor per recorder: steps are ordered consistently)."""
-        if self._wall0 is None:
-            self._wall0 = (self.now(), t)
-        base, t0 = self._wall0
-        return base + timedelta(seconds=t - t0)
+    @staticmethod
+    def _stamp(run: _Run, t: float) -> datetime:
+        """Wall-clock time of monotonic reading ``t`` in ``run``. Each run anchors to the wall clock when it
+        starts, so a long-lived process (a server, a laptop that slept) never drifts its audit timestamps, and
+        the steps of one run stay ordered by the monotonic clock."""
+        return run.wall0 + timedelta(seconds=t - run.t0)
 
     @staticmethod
     def _ms(t0: float, t1: float) -> float:
@@ -104,16 +104,17 @@ class ToolTraceRecorder:
 
     # ------------------------------------------------------------------ runs
     def start_run(self, run_id: str, *, app: str = "", session_id: str = "", user: str = "", role: str = "",
-                  prompt: str = "", source: str | None = None, model: str = "") -> AgentTrace:
+                  prompt: str = "", source: str | None = None, model: str = "", user_id: str = "") -> AgentTrace:
         with self._lock:
             t = self.clock()
-            trace = AgentTrace(trace_id=run_id, app=app, session_id=session_id, user=user, role=role,
-                               source=source or self.source, model=model,
-                               prompt=redact_text(prompt or "", max_len=PROMPT_CHARS), started_at=self._stamp(t))
+            wall0 = self.now()
+            trace = AgentTrace(trace_id=run_id, app=app, session_id=session_id, user=user, user_id=user_id,
+                               role=role, source=source or self.source, model=model,
+                               prompt=redact_text(prompt or "", max_len=PROMPT_CHARS), started_at=wall0)
             if prompt:
                 trace.steps.append(TraceStep(seq=1, kind="input", name="officer message", status="ok",
                                              started_at=trace.started_at, summary=trace.prompt))
-            self._runs[run_id] = _Run(trace=trace, t0=t)
+            self._runs[run_id] = _Run(trace=trace, t0=t, wall0=wall0)
             while len(self._runs) > 64:  # abandoned runs (crashed invocations) must not pile up
                 self._runs.popitem(last=False)
             return trace
@@ -144,12 +145,18 @@ class ToolTraceRecorder:
                     step = next((s for s in run.trace.steps if s.kind == "input"), None)
                     if step is None:
                         step = self._add(run, kind="input", name="officer message",
-                                         started_at=self._stamp(self.clock()))
+                                         started_at=self._stamp(run, self.clock()))
                     step.guards.append(verdict)
                     if verdict.action == "rewritten":
                         step.status = "flagged"
                 elif verdict.stage == "output":
-                    run.pending_output_guards.append(verdict)
+                    # the reply step is recorded just before the guard screens it (the trace plugin runs first):
+                    # attach to it, so a run with two replies never shifts a verdict onto the wrong one
+                    last = run.trace.steps[-1] if run.trace.steps else None
+                    if last is not None and last.kind == "output":
+                        last.guards.append(verdict)
+                    else:
+                        run.pending_output_guards.append(verdict)
                 elif verdict.stage in TOOL_STAGES:
                     open_ = run.open_tools.get(call_id) if call_id else None
                     if open_ is None and tool:
@@ -163,7 +170,7 @@ class ToolTraceRecorder:
                                                                       else None)
                     if target is None:
                         target = self._add(run, kind="input", name="officer message",
-                                           started_at=self._stamp(self.clock()))
+                                           started_at=self._stamp(run, self.clock()))
                     target.guards.append(verdict)
         except Exception:  # noqa: BLE001 - tracing never breaks a run
             log.exception("trace: guard verdict not recorded")
@@ -179,7 +186,7 @@ class ToolTraceRecorder:
                 run.amounts |= amounts
                 run.accounts |= accounts
                 t = self.clock()
-                step = self._add(run, kind="model", name=model or "model", agent=agent, started_at=self._stamp(t))
+                step = self._add(run, kind="model", name=model or "model", agent=agent, started_at=self._stamp(run, t))
                 run.open_model = (step, t)
                 if model and not run.trace.model:
                     run.trace.model = model
@@ -193,7 +200,7 @@ class ToolTraceRecorder:
                 run = self._run(run_id)
                 t = self.clock()
                 if run.open_model is None:
-                    step = self._add(run, kind="model", name=run.trace.model or "model", started_at=self._stamp(t))
+                    step = self._add(run, kind="model", name=run.trace.model or "model", started_at=self._stamp(run, t))
                     t0 = t
                 else:
                     step, t0 = run.open_model
@@ -220,7 +227,7 @@ class ToolTraceRecorder:
                 t = self.clock()
                 key = call_id or f"{tool}#{len(run.trace.steps) + 1}"
                 step = self._add(run, kind="tool", name=tool, agent=agent, call_id=call_id,
-                                 args=redact_value(dict(args or {}), max_str=200), started_at=self._stamp(t),
+                                 args=redact_value(dict(args or {}), max_str=200), started_at=self._stamp(run, t),
                                  status="running")
                 keep = []
                 for cid, name, v in run.pending_tool_guards:
@@ -272,7 +279,7 @@ class ToolTraceRecorder:
             with self._lock:
                 run = self._run(run_id)
                 t = self.clock()
-                step = self._add(run, kind="output", name="agent reply", agent=agent, started_at=self._stamp(t),
+                step = self._add(run, kind="output", name="agent reply", agent=agent, started_at=self._stamp(run, t),
                                  summary=redact_text(text or "", max_len=PROMPT_CHARS))
                 step.guards.extend(run.pending_output_guards)
                 run.pending_output_guards = []
@@ -298,7 +305,7 @@ class ToolTraceRecorder:
                 if out_step is not None:
                     out_step.guards.extend(run.pending_output_guards)
                 run.pending_output_guards = []
-            run.trace.finished_at = self._stamp(t)
+            run.trace.finished_at = self._stamp(run, t)
             trace = run.trace
             self.finished.append(trace)
         if self.on_finish is not None:

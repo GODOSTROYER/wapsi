@@ -100,10 +100,64 @@ def test_case_traces_prefers_the_audit_log_then_the_recording():
     assert "No agent runs on this case yet" in _text(tt.empty_html())
 
 
-def test_masking_hook_applies_to_prompt_args_and_results():
+def test_masking_hook_applies_to_prompt_args_results_and_raw_json():
     trace = recorded_traces(CASE1)[0]
+    assert "31009260000101" in tt.run_html(trace, 1)
     out = tt.run_html(trace, 1, mask=lambda s: s.replace("31009260000101", "[masked]"))
-    assert "31009260000101" not in _text(out).replace("Raw JSON", "").split("{")[0]
+    assert "31009260000101" not in out and "[masked]" in _text(out)
+
+
+def test_tool_rule_block_is_not_called_a_guard_block():
+    rec = ToolTraceRecorder(clock=TickClock(), now=lambda: T0)
+    rec.tool_start("r", "draft_documents", args={"case_id": CASE1}, call_id="d")
+    rec.tool_end("r", "draft_documents", call_id="d", result={
+        "status": "blocked", "case_id": CASE1, "reason": "Show the verification report first"})
+    (step,) = rec.finish_run("r").tool_steps()
+    text = _text(tt.tool_step_html(step, 1, 50.0))
+    assert "Blocked by tool rule" in text and "Tool rule · blocked" in text and "Blocked by guard" not in text
+    assert tt.status_text(_trace().tool_steps()[0]) == "Blocked by guard"
+
+
+class _Null:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_auditor_masking_looks_up_case_pii_once(monkeypatch):
+    """A masked viewer's names and mobiles are looked up once per render (not once per trace fragment: each
+    lookup reads the ledger, BigQuery on Cloud Run) and applied to every fragment."""
+    import streamlit as st
+
+    class Viewer:
+        masked = True
+
+        def text(self, text, names, mobiles):
+            for n in names:
+                text = text.replace(n, "A•••")
+            return text
+
+    class Ctx:
+        viewer = Viewer()
+        bundle = next(b for b in all_showcase_bundles() if b.case.case_id == CASE1)
+        lookups = 0
+
+        def pii(self, bundle=None):
+            Ctx.lookups += 1
+            return ["asha"], []
+
+        def mask(self, text, bundle=None):
+            raise AssertionError("mask() must not be called per fragment for a masked viewer")
+
+    page: list[str] = []
+    monkeypatch.setattr(st, "markdown", lambda body, **kw: page.append(body))
+    monkeypatch.setattr(st, "toggle", lambda *a, **kw: False)
+    monkeypatch.setattr(st, "columns", lambda spec, **kw: [_Null() for _ in spec])
+    tt.render_agent_trace(Ctx())
+    text = _text("".join(page))
+    assert Ctx.lookups == 1 and "open_case" in text and "A••• · Analyst" in text and "asha ·" not in text
 
 
 def test_case_room_has_an_agent_trace_tab(monkeypatch):
@@ -121,3 +175,23 @@ def test_case_room_has_an_agent_trace_tab(monkeypatch):
     text = "\n".join(html.unescape(m.value) for m in at.markdown)
     assert "Recorded offline run." in text and "open_case" in text and "Blocked by guard" in text
     assert not at.warning
+
+
+def test_hash_chain_badge_only_for_sealed_trace_events():
+    """A store that does not seal yet (Firestore today) keeps the trace in the audit log, but the panel must not
+    claim the hash chain covers it."""
+    b1 = next(b for b in all_showcase_bundles() if b.case.case_id == CASE1)
+    live = _trace()
+    live.case_ids = [CASE1]
+    unsealed = trace_event(live, case_id=CASE1)
+    b1.audit.append(unsealed)  # as FirestoreCaseStore.append_audit stores it: no seq / prev_hash / hash
+    traces, origin = tt.case_traces(b1)
+    assert origin == tt.ORIGIN_AUDIT and tt.sealed_trace_ids(b1) == set()
+    shown = tt.trace_origin(traces[0], origin, tt.sealed_trace_ids(b1))
+    text = _text(tt.run_html(traces[0], 1, origin=shown))
+    assert shown == tt.ORIGIN_AUDIT_UNSEALED
+    assert "In the case's audit log" in text and "hash-chained" not in text
+
+    b1.audit.pop()
+    append_event(b1.audit, trace_event(live, case_id=CASE1), case_id=CASE1)
+    assert tt.trace_origin(traces[0], origin, tt.sealed_trace_ids(b1)) == tt.ORIGIN_AUDIT

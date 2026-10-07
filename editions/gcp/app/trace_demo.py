@@ -29,7 +29,7 @@ import sys
 import threading
 from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, TypeVar
 
 from wapsi.agenttrace import AgentTrace, TickClock, ToolTraceRecorder, dump_traces
@@ -144,7 +144,8 @@ def build_demo_traces(*, deterministic: bool = False, script: Sequence[DemoTurn]
 
     os.environ.setdefault("WAPSI_DEMO_MODE", "1")
     if deterministic:
-        recorder = ToolTraceRecorder(clock=TickClock(step_ms=7.0), now=lambda: DETERMINISTIC_START,
+        clock = TickClock(step_ms=7.0)  # wall clock follows the tick clock: runs start one after another
+        recorder = ToolTraceRecorder(clock=clock, now=lambda: DETERMINISTIC_START + timedelta(seconds=clock.t),
                                      source="adk-offline-demo")
     else:
         recorder = ToolTraceRecorder(source="adk-offline-demo")
@@ -182,6 +183,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="measure the first run as is (default: one unrecorded warm-up run first, so one-time "
                          "imports are not counted as tool latency)")
     args = ap.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):  # a cp1252 console (Windows PowerShell 5) must not crash on '•' / '₹'
+        try:
+            stream.reconfigure(errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
     if not args.cold and not args.deterministic:
         build_demo_traces(script=DEMO_SCRIPT[:1])  # warm-up: imports and caches, as on a running server
     traces = build_demo_traces(deterministic=args.deterministic)

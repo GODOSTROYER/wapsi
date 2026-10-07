@@ -29,6 +29,8 @@ _NAME_KEYS = frozenset({"victim_name", "holder_name", "customer_name", "account_
 _PHONE_KEYS = ("mobile", "phone")
 _SECRET_KEYS = ("api_key", "apikey", "token", "secret", "password", "authorization", "credential", "signing_key")
 _DROP_KEYS = frozenset({"address", "pan", "aadhaar", "email", "dob"})
+# spans a guard quoted from untrusted text (complaint narratives, flagged arguments): counted, never copied
+_QUOTED_KEYS = frozenset({"quoted_spans"})
 
 
 def mask_name(name: str) -> str:
@@ -71,6 +73,8 @@ def _key_kind(key: str | None) -> str:
         return "phone"
     if k in _DROP_KEYS:
         return "drop"
+    if k in _QUOTED_KEYS:
+        return "quoted"
     return ""
 
 
@@ -86,6 +90,9 @@ def redact_value(value: Any, *, key: str | None = None, max_str: int = 200, max_
         return "[secret]"
     if kind == "drop" and value not in (None, ""):
         return "[redacted]"
+    if kind == "quoted":
+        n = len(value) if isinstance(value, (list, tuple)) else (1 if value else 0)
+        return f"[{n} quoted span(s) of untrusted text, not copied]"
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
