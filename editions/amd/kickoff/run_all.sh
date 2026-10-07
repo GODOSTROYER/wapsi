@@ -228,6 +228,7 @@ wait_http() { run slog wait-http "$1" --timeout "${2:-1800}" --interval "${3:-10
 
 env_set() {  # env_set KEY VALUE: persist in editions/amd/.env so later `docker compose` commands agree
   show set "${ENV_FILE}" "$1=$2"; [[ "${DRY_RUN}" == "1" ]] && return 0
+  if [[ ! -f "${ENV_FILE}" ]]; then cp "${AMD}/.env.example" "${ENV_FILE}"; chmod 600 "${ENV_FILE}"; fi
   local tmp; tmp="$(mktemp "${ENV_FILE}.XXXXXX")"
   awk -v k="$1" -v v="$2" 'BEGIN { d = 0 } $0 ~ "^" k "=" { print k "=" v; d = 1; next } { print } END { if (!d) print k "=" v }' \
     "${ENV_FILE}" > "${tmp}" && mv "${tmp}" "${ENV_FILE}"
@@ -275,8 +276,17 @@ hf_download() { run env "HF_HOME=${HF_CACHE_DIR}" uvx --from "huggingface_hub==$
 inr_args() { [[ -n "${INR_PER_USD}" ]] && printf '%s\n' --inr-per-usd "${INR_PER_USD}"; return 0; }
 
 # ------------------------------------------------------------------ GPU stages (MI300X droplet)
+preflight_args() {  # the operator's explicit overrides also relax the matching preflight rows (FAIL -> WARN)
+  [[ "${NO_BASELINE}" == "1" ]] && printf '%s
+' --allow-no-baseline
+  [[ "${ALLOW_AFTER}" == "1" ]] && printf '%s
+' --allow-after-window
+  return 0
+}
+
 gpu_env() {
-  [[ "${SKIP_PREFLIGHT}" == "1" ]] || run bash "${KICK}/preflight.sh" --json "${EVID}/preflight.json"
+  # shellcheck disable=SC2046
+  [[ "${SKIP_PREFLIGHT}" == "1" ]] || run bash "${KICK}/preflight.sh" $(preflight_args) --json "${EVID}/preflight.json"
   run slog static "${EVID}/amd_smi_static.json"
   note git_commit "$(git rev-parse HEAD)"
   note amd_baseline "$(git rev-parse -q --verify 'refs/tags/amd-baseline^{commit}' || echo missing)"
@@ -297,7 +307,7 @@ gpu_env() {
   run_soft py -m wapsi.search.build
   run bash "${AMD}/serving/pull_and_pin.sh" "ROCM_PYTORCH_IMAGE=${ROCM_PYTORCH_IMAGE}"
   run_sh "grep -E '^[A-Z_]+_IMAGE(_TAG)?=' '${ENV_FILE}' > '${EVID}/images.txt'"
-  run_sh "uv export --frozen --no-dev --extra amd --extra ml --extra amd-app --no-hashes --no-emit-project --no-header --no-annotate | grep -Ev '^(torch|triton|pytorch-triton|nvidia-)' > '${WORK}/train-image/requirements-rocm.txt'"
+  run_sh "uv export --frozen --no-dev --extra amd --extra ml --extra amd-app --no-hashes --no-emit-project --no-header --no-annotate | grep -Ev '^(torch|triton|pytorch-triton|nvidia-|cuda-)' > '${WORK}/train-image/requirements-rocm.txt'"
   run docker build -f "${KICK}/Dockerfile.train" --build-arg "BASE_IMAGE=${ROCM_PYTORCH_IMAGE}" -t "${TRAIN_IMAGE}" "${WORK}/train-image"
   in_rocm python3 -c "import torch; assert torch.cuda.is_available(), 'no GPU visible in the container'; print('torch', torch.__version__, 'hip', torch.version.hip, torch.cuda.get_device_name(0))"
   run "${COMPOSE[@]}" --profile gpu --profile gnn build

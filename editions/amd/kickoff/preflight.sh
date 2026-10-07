@@ -19,11 +19,15 @@ ROOT="$(cd "${AMD_DIR}/../.." && pwd)"
 MODE="gpu"
 OFFLINE=0
 JSON_OUT=""
+ALLOW_NO_BASELINE=0  # run_all.sh --no-baseline-check: a missing amd-baseline tag is WARN, not FAIL
+ALLOW_AFTER=0        # run_all.sh --allow-after-window: after the event window is WARN, not FAIL
 
 for arg in "$@"; do
   case "${arg}" in
     --rehearsal) MODE="rehearsal" ;;
     --offline) OFFLINE=1 ;;
+    --allow-no-baseline) ALLOW_NO_BASELINE=1 ;;
+    --allow-after-window) ALLOW_AFTER=1 ;;
     --json=*) JSON_OUT="${arg#--json=}" ;;
     --json) JSON_OUT="__next__" ;;
     -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -90,6 +94,8 @@ check_python() {
 check_repo() {
   if git -C "${ROOT}" rev-parse -q --verify refs/tags/amd-baseline >/dev/null 2>&1; then
     add "amd-baseline tag" PASS "$(git -C "${ROOT}" rev-parse --short amd-baseline^{commit})"
+  elif [[ "${MODE}" == "gpu" && "${ALLOW_NO_BASELINE}" == "1" ]]; then
+    add "amd-baseline tag" WARN "missing (--no-baseline-check): results are not event-eligible"
   elif [[ "${MODE}" == "gpu" ]]; then
     add "amd-baseline tag" FAIL "create it at kickoff before any GPU run (RUNBOOK.md step 1)"
   else
@@ -99,6 +105,7 @@ check_repo() {
     local w rc=0; w="$("${PY}" "${HERE}/stagelog.py" window 2>/dev/null)" || rc=$?
     if [[ "${MODE}" == "rehearsal" ]]; then add "event window" SKIP "CPU rehearsal: no GPU numbers (${w##*: })"
     elif [[ ${rc} -eq 0 ]]; then add "event window" PASS "${w##*: }"
+    elif [[ ${rc} -eq 4 && "${ALLOW_AFTER}" == "1" ]]; then add "event window" WARN "${w##*: } (--allow-after-window: not event results)"
     else add "event window" FAIL "${w##*: } (GPU runs and GPU numbers only 2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC)"; fi
   fi
 }
