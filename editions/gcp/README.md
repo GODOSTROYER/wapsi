@@ -145,6 +145,8 @@ editions/gcp/
     tools.py       ADK tools: open_case, list_cases, trace_money, explain_account, hold_plan,
                    verification_report, draft_documents, approve_draft, search_sop, case_clocks
     intake.py      extract_complaint (Gemini multimodal, untrusted output, ledger cross-check)
+    tools.py       ... + intake_voice_note (Hinglish voice note -> schema-bound fields, ledger reconciliation;
+                   see docs/voice-intake.md)
     agent.py       App "wapsi_officer": LlmAgent + wapsi_intake sub-agent + plugins; Gemini API key or Vertex
     workflow.py    App "case_pipeline": ADK 2.x Workflow for Pub/Sub notices, uploads and clock sweeps
     plugins.py     guard (Model Armor -> RulesGuard), structured audit log, memory saving, 429 notice

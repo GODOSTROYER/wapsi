@@ -7,3 +7,8 @@
 *.pdf binary
 *.parquet binary
 *.safetensors binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+*.ogg binary
+*.webm binary

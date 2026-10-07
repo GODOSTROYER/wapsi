@@ -622,6 +622,62 @@ class ShowcaseDataSource:
                else f"{len(result.missing)} of 8 checklist fields missing or unclear.")
         return Outcome(True, msg, bundle=bundle, data=result)
 
+    def open_case_for_ncrp(self, ncrp_ids: list[str], *, actor: str, role: str,
+                           details: dict[str, Any] | None = None) -> Outcome:
+        """Open the case for complaints a voice note was matched to (``wapsi.intake``): an existing case that holds
+        them is linked, otherwise the pipeline runs for exactly these NCRP ids. Amounts come from the ledger; the
+        voice note only names the complaint. The link is recorded in the case's audit chain."""
+        if role.lower() == "auditor":
+            return Outcome(False, "Auditors have read-only access.")
+        ids = sorted(dict.fromkeys(str(i).strip() for i in ncrp_ids if str(i).strip()))
+        if not ids:
+            return Outcome(False, "No NCRP complaint matched this voice note, so there is no case to open.")
+        extra = dict(details or {})
+        existing = next((b for b in self._bundles.values() if set(ids) <= set(b.case.ncrp_ids)), None)
+        if existing is not None:
+            cid = existing.case.case_id
+            _chain(existing, _audit_event("voice_intake_linked", "case", cid, actor=actor, role=role,
+                                          ncrp_ids=ids, **extra))
+            return Outcome(True, f"Voice note linked to {cid}. Every amount shown comes from the ledger.",
+                           bundle=existing)
+        try:
+            process_case = _optional("wapsi.pipeline.run", "process_case")
+            fake_llm_cls = _optional("wapsi.adapters.llm_fake", "FakeLLM")
+        except ImportError:
+            return Outcome(False, "The case pipeline isn't installed in this build.", unavailable=True)
+        case_id = f"CASE-{ids[0]}"
+        try:
+            fresh = process_case(self.ledger(), ids, llm=fake_llm_cls(), search=doc_search(), case_id=case_id,
+                                 assigned_to=actor)
+        except KeyError:
+            return Outcome(False, f"Complaint(s) {', '.join(ids)} are not in this ledger.")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("process_case failed for %s", case_id)
+            return Outcome(False, f"The case couldn't be opened: {exc}")
+        _chain(fresh, _audit_event("voice_intake_opened", "case", case_id, actor=actor, role=role, ncrp_ids=ids,
+                                   **extra))
+        self._bundles[case_id] = fresh
+        return Outcome(True, f"Opened {case_id} from the voice note and ran the pipeline. Every amount comes from "
+                             "the ledger.", bundle=fresh)
+
+
+def voice_llm() -> Any:
+    """The model that reads voice notes: Gemini when a key (``GEMINI_API_KEY`` / ``GOOGLE_API_KEY``) or Agent
+    Platform (``WAPSI_GEMINI_BACKEND=vertex`` + a project) is configured, else the offline ``FakeLLM``, which knows
+    the bundled synthetic samples only. Never prints or stores the key."""
+    from wapsi.adapters.gemini_llm import DEFAULT_MODEL, GeminiLLM, gemini_api_key
+    from wapsi.adapters.llm_fake import FakeLLM
+
+    model = os.environ.get("WAPSI_VOICE_MODEL") or os.environ.get("WAPSI_MODEL") or DEFAULT_MODEL
+    backend = os.environ.get("WAPSI_GEMINI_BACKEND", "aistudio").strip().lower()
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("WAPSI_PROJECT")
+    if os.environ.get("WAPSI_VOICE_OFFLINE", "").strip() != "1":
+        if backend == "vertex" and project:
+            return GeminiLLM(model, project=project, backend="vertex", max_retries=2, timeout_s=90)
+        if backend != "vertex" and gemini_api_key():
+            return GeminiLLM(model, backend="aistudio", max_retries=2, timeout_s=90)
+    return FakeLLM(name="offline demo model")
+
 
 FixtureDataSource = ShowcaseDataSource  # backwards-compatible name
 

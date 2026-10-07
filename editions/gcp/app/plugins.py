@@ -50,6 +50,7 @@ FREE_TEXT_ARGS: dict[str, tuple[str, ...]] = {
     "search_sop": ("query",),
     "approve_draft": ("approver", "reason_code"),
     "extract_complaint": ("file_uri",),
+    "intake_voice_note": ("audio",),
     "open_case": ("ncrp_ids",),
 }
 
@@ -330,3 +331,65 @@ class MemoryPlugin(BasePlugin):
         except Exception:  # noqa: BLE001 - memory is best effort
             log.exception("could not save the session to memory")
         return None
+
+
+VOICE_PLACEHOLDER = '[Uploaded voice note: "{name}"] Call intake_voice_note with audio="{name}".'
+_AUDIO_EXT = {"audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav", "audio/mpeg": ".mp3",
+              "audio/mp3": ".mp3", "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".m4a",
+              "audio/ogg": ".ogg", "audio/opus": ".ogg", "audio/webm": ".webm"}
+MAX_VOICE_BYTES = 15 * 1024 * 1024
+
+
+def _voice_name(display: str | None, invocation_id: str, i: int, mime: str) -> str:
+    import re
+
+    base = re.sub(r"[^A-Za-z0-9 _.\-]", "_", (display or "").strip())[:120].strip(" .")
+    if base and base[0].isalnum():
+        return base
+    return f"voice-{re.sub(r'[^A-Za-z0-9]', '', invocation_id)[:16] or 'note'}-{i}{_AUDIO_EXT.get(mime, '.audio')}"
+
+
+class VoiceUploadPlugin(BasePlugin):
+    """Saves audio uploaded in the chat as a session artifact and replaces it with a placeholder, so the agent
+    calls ``intake_voice_note`` with the artifact name (schema-bound extraction plus ledger reconciliation) instead
+    of reading the recording free-form. Other uploads (PDFs, images) are left untouched.
+
+    Registered after ``WapsiGuardPlugin``: if the guard rewrites a message (flagged typed text), the audio stays
+    inline for that one turn and is still treated as untrusted data by the agents' instructions."""
+
+    def __init__(self, name: str = "wapsi_voice_uploads") -> None:
+        super().__init__(name=name)
+        self.saved: list[str] = []
+
+    async def on_user_message_callback(self, *, invocation_context: Any,
+                                       user_message: types.Content) -> types.Content | None:
+        parts = list(user_message.parts or [])
+        audio = [p for p in parts if p.inline_data is not None
+                 and str(p.inline_data.mime_type or "").lower().startswith("audio/")]
+        service = getattr(invocation_context, "artifact_service", None)
+        if not audio or service is None:
+            return None
+        new_parts: list[types.Part] = []
+        for i, p in enumerate(parts):
+            blob = p.inline_data
+            if blob is None or not str(blob.mime_type or "").lower().startswith("audio/"):
+                new_parts.append(p)
+                continue
+            if len(blob.data or b"") > MAX_VOICE_BYTES:
+                new_parts.append(types.Part(text="[Wapsi] The voice note is larger than 15 MB; ask for a shorter "
+                                                 "recording."))
+                continue
+            name = _voice_name(blob.display_name, str(getattr(invocation_context, "invocation_id", "") or ""), i,
+                               str(blob.mime_type).lower())
+            try:
+                await service.save_artifact(
+                    app_name=invocation_context.app_name, user_id=invocation_context.user_id,
+                    session_id=invocation_context.session.id, filename=name,
+                    artifact=types.Part(inline_data=types.Blob(data=blob.data, mime_type=blob.mime_type)))
+            except Exception:  # noqa: BLE001 - keep the original part if the artifact store is unavailable
+                log.exception("could not save the voice note %s as an artifact", name)
+                new_parts.append(p)
+                continue
+            self.saved = (self.saved + [name])[-50:]
+            new_parts.append(types.Part(text=VOICE_PLACEHOLDER.format(name=name)))
+        return types.Content(role=user_message.role or "user", parts=new_parts)

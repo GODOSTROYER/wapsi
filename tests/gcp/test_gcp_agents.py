@@ -16,7 +16,13 @@ from editions.gcp.app import workflow as wf
 from editions.gcp.app.config import GcpSettings
 from editions.gcp.app.demo_model import DemoScriptedLlm
 from editions.gcp.app.identity import granted_state
-from editions.gcp.app.plugins import AuditLogPlugin, MemoryPlugin, ModelQuotaPlugin, WapsiGuardPlugin
+from editions.gcp.app.plugins import (
+    AuditLogPlugin,
+    MemoryPlugin,
+    ModelQuotaPlugin,
+    VoiceUploadPlugin,
+    WapsiGuardPlugin,
+)
 from editions.gcp.app.tracing import ToolTracePlugin
 from wapsi.fixtures import showcase as sc
 
@@ -37,9 +43,9 @@ def test_demo_app_constructs_offline(demo_services):
     assert isinstance(root, LlmAgent) and isinstance(root.model, DemoScriptedLlm)
     assert _tool_names(root) == TOOLS
     intake = root.sub_agents[0]
-    assert intake.name == "wapsi_intake" and _tool_names(intake) == {"extract_complaint"}
+    assert intake.name == "wapsi_intake" and _tool_names(intake) == {"extract_complaint", "intake_voice_note"}
     assert [type(p) for p in app.plugins] == [ToolTracePlugin, WapsiGuardPlugin, AuditLogPlugin, MemoryPlugin,
-                                              ModelQuotaPlugin]
+                                              ModelQuotaPlugin, VoiceUploadPlugin]
     text = root.instruction
     for rule in ("UNTRUSTED", "Never state a number", "verification_report", "supervisor", "Never invent"):
         assert rule in text
