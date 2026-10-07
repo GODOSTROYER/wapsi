@@ -42,6 +42,16 @@ the paisa** (`evals/reports/demo.json`).
   account was used as a conduit**. Unclear accounts go to the officer.
 - **Checks police / LEA hold requests** against an 8-field checklist, limits the hold to the amount identifiable
   on the trail, and drafts a template-bound clarification letter for whatever is missing.
+- **Takes a victim's voice note.** A frightened victim's WhatsApp-style voice note in Hinglish, Hindi or English
+  becomes a verbatim transcript, an English translation and structured complaint fields (one Gemini multimodal
+  call with a response schema). Every number in it is a **claim**: the phone is masked in code, spoken
+  instructions are quoted and never followed, and each UTR, amount, date and account digit is reconciled with the
+  ledger (matched, mismatch or not in ledger). Only a ledger match opens a case, and the case's amounts come from
+  the ledger. Works offline on six bundled synthetic samples.
+- **Shows exactly what the AI agent did.** The Case Room's **Agent trace** tab lists every tool call the ADK agent
+  made on a case, in order: redacted arguments, a result summary taken from the tool's own result, latency, and the
+  guard, maker-checker and verifier verdicts around it, plus a check that every amount and account number in the
+  agent's reply came from a tool. Each run is sealed into the case's hash-chained audit log.
 - **Drafts the paperwork from templates**: hold instruction, customer notice, EDD memo, outbound CFCFRMS request,
   STR (modelled on FINnet 2.0), CFCFRMS update, restoration pack (Process 1 or 2) and the officer's account-level
   hold request. The LLM writes prose only, through placeholders.
@@ -100,7 +110,8 @@ the method; every figure here is also in [pitch/NUMBERS.md](pitch/NUMBERS.md).
 | Tamper-evident audit log | 6 of 6 tampering attempts on a 40-event case log detected (edit, re-hash one event, delete, reorder, truncate, re-hash the whole tail), plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout of 151 texts | precision 0.9661, recall 0.75 | `evals/reports/guard-latest.json` |
 | Speed, demo world, stub LLM | p95 0.72 s per case, trace to verified drafts (laptop) | `evals/reports/demo.json` |
-| Test suite | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Voice intake, 6 synthetic Hinglish voice notes (offline model) | every sample reconciles as documented: the showcase victim's note matches 9 of 9 claims; two notes with spoken "release the hold" instructions get them quoted, never followed; claimed figures the ledger lacks show as mismatch or not in ledger | `tests/intake`, `data/samples/voice/manifest.json` |
+| Test suite | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
 **Every miss is a label, never money.** The hard world adds sleeper mules, task-scam victim chains, a labour
 contractor's salary pool, a festival-season home seller and same-second relays. Dispositions drop to 0.9198, but
@@ -119,7 +130,9 @@ uv run streamlit run ui/app.py               # officer app, opens on the Inbox
 ```
 
 The app runs the real pipeline on the showcase world with an offline FakeLLM, so it needs no API keys and no
-generated data. To reproduce the results:
+generated data. Its **Voice Intake** page reads the bundled synthetic voice notes offline (set `GEMINI_API_KEY` to
+transcribe your own recording), and the Case Room's **Agent trace** tab shows a recorded offline agent run on the
+showcase case. To reproduce the results:
 
 ```bash
 uv run pytest -q                                                              # full test suite
@@ -162,11 +175,12 @@ flowchart TB
 | `src/wapsi/verify` | numeric, citation, policy and prompt-injection checks; police / LEA request checklist |
 | `src/wapsi/domain` | India bank working-day calendar, SOP clocks, regulatory change radar (read-only) |
 | `src/wapsi/audit` | hash-chained, append-only audit log per case and the tamper drill |
+| `src/wapsi/intake` | voice-note intake: audio checks, the schema-bound extraction, phone masking, guard screening, reconciliation of every claim with the ledger, the bundled synthetic samples |
 | `src/wapsi/agenttrace` | agent trace: every tool call an agent makes, with redacted arguments, result, latency and the guard and verifier verdicts around it, sealed into the case's audit chain |
 | `src/wapsi/search` | legal corpus fetcher, section-aware chunking, pure-Python BM25, citation and radar checks |
 | `src/wapsi/synth` | synthetic Indian banking world (demo, full and hard sizes), independent reference implementation, golden sets |
 | `src/wapsi/pipeline` | end-to-end case processing, maker-checker approval, account-level requests, LEA checks |
-| `ui/` | Streamlit officer app: Inbox, Case Room (money trail and agent trace), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit |
+| `ui/` | Streamlit officer app: Inbox, Voice Intake, Case Room (money trail and agent trace), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit |
 | `evals/` | golden-set harness (`--scorer`, `--world-dir`, `--report-name`), guard corpus and reports |
 | `editions/` | the two platform editions (below) |
 | `.claude/skills` | 6 skills shared by Claude Code and Gemini CLI (mirrored to `.agents/skills`) |
@@ -179,9 +193,9 @@ The Python core (`src/wapsi`) and the officer app (`ui/`) are shared. Each editi
 the ledger, the LLM, the guard and the case store; the showcase numbers are the parity test for both.
 Details: [Editions](docs/editions.md).
 
-| Edition | Built for | Platform | Status (29-09-2026) |
+| Edition | Built for | Platform | Status (07-10-2026) |
 |---|---|---|---|
-| [Google Cloud](editions/gcp/README.md) | AI Builder Cup | ADK agents on Cloud Run, Gemini, BigQuery, Firestore; optional Model Armor and a Gemma tier on Cloud Run GPU | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Deployment follows in October. |
+| [Google Cloud](editions/gcp/README.md) | AI Builder Cup | ADK agents on Cloud Run, Gemini (agent, voice and document intake, draft prose), BigQuery, Firestore (cases and a transaction-sealed audit chain); optional Model Armor and a Gemma tier on Cloud Run GPU | Built and unit-tested offline with fakes, including the voice-note tool, the agent trace and the Firestore audit seal. Deploy scripts are dry-run in tests with a fake `gcloud`. Deployment follows in October. |
 | [AMD](editions/amd/README.md) | lablab.ai AMD Developer Hackathon ACT III | One AMD Instinct MI300X with ROCm: vLLM serving, a GraphSAGE mule scorer, a LoRA fine-tune, benchmarks | Code prepared before the event and tested on CPU only. GPU training, serving and benchmarks run only during the event (12–18 Oct 2026). |
 
 ## Documentation
@@ -214,6 +228,11 @@ Details: [Editions](docs/editions.md).
   instructs a whole-account or debit freeze outside such an exception.
 - **Complaint text cannot change a hold.** Narratives never feed tracing, classification or the hold plan. The LLM
   sees them only inside `UNTRUSTED` markers, and the guard flags instruction-like text for the officer.
+- **A voice note is a claim, not a fact.** Every value heard is reconciled with the ledger, the ledger's figure is
+  the one used, an amount alone never identifies a complaint, and spoken instructions are quoted, never followed.
+- **The agent is accountable.** Every tool call it makes is recorded with its checks, redacted (account numbers,
+  phones, e-mails, secrets, complaint text) and sealed into the case's audit chain; behind IAP an analyst reads
+  only their own runs.
 - **Nothing happens without a supervisor, and nothing is forgotten.** An approval applies only to the exact
   verified draft (SHA-256 fingerprint); the audit log is hash-chained and append-only; auditors see names and
   mobile numbers masked. See [SECURITY.md](SECURITY.md).

@@ -211,6 +211,22 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | gcp_tools | ADK agent with 10 pipeline tools | 10 | editions/gcp/architecture.md | `text:10 pipeline tools` |
 | gcp_cost | expected cost at demo scale $0 on the free trial | 0 | editions/gcp/README.md | `text:Expected cost at demo scale is **$0**` |
 
+## Voice intake samples and the recorded agent run (`data/samples/voice/`, `src/wapsi/agenttrace/`)
+
+The voice counts are the bundled samples' expected reconciliation with the offline model (the tests in
+`tests/intake` check each one). With Gemini, a live transcription's counts are whatever the screen shows. The trace
+figures come from the recorded offline run (real ADK app, tools and guards; scripted model).
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| voice_samples | six bundled synthetic voice notes | 6 | data/samples/voice/manifest.json | `len:samples` |
+| voice_meera_matched | Meera Joshi's note: 9 of 9 claims match NCRP 31009260000101 | 9 | data/samples/voice/manifest.json | `json:samples.0.expect.counts.MATCHED` |
+| voice_meera_seconds | a 31-second voice note | 31 | data/samples/voice/manifest.json | `json:samples.0.duration_s` |
+| voice_fatima_matched | Fatima Shaikh's note: 8 of 8 claims match NCRP 31109260000103 | 8 | data/samples/voice/manifest.json | `json:samples.2.expect.counts.MATCHED` |
+| voice_kavitha_matched | Kavitha Sundaram's note: 9 of 9 claims match NCRP 11208260078296 (offline expected answer) | 9 | data/samples/voice/manifest.json | `json:samples.5.expect.counts.MATCHED` |
+| trace_verifier | Verifier · 17/17 passed (plan check plus 16 drafts) | 17 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 17` |
+| trace_grounding | Reply grounding · 23/23 values traced to tools | 23 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 23` |
+
 ## AMD edition: memory plan and budget (config in `editions/amd/`)
 
 | ID | Pitched as | Value | Source | Locator |
@@ -238,4 +254,6 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | cmd_drill | 6/6 tampering attempts detected (plus an in-store edit), 40-event chain | 6 | src/wapsi/audit/drill.py | `cmd:uv run python -m wapsi.audit drill` |
 | cmd_policy | 48/48 policy re-checks pass on showcase case 1 | 48 | .claude/skills/lien-calculator/scripts/hold_plan.py | `cmd:uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101 --world showcase-memory` |
 | cmd_str_slots | 78 numbers in the STR recomputed by the verifier | 78 | .claude/skills/str-drafter/scripts/draft_and_verify.py | `cmd:uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory` |
-| cmd_tests | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | 1623 | pyproject.toml | `cmd:uv run pytest -q` |
+| cmd_tests | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | 1765 | pyproject.toml | `cmd:uv run pytest -q` |
+| cmd_trace_run1 | 5 tool calls behind "Open case 31009260000101" (agent trace demo, 07-10-2026) | 5 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
+| cmd_trace_case | Agent trace · 8: 8 tool calls in 4 runs on the showcase case, 2 blocked (agent trace demo, 07-10-2026) | 8 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |

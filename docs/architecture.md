@@ -23,6 +23,9 @@ Design decisions and the reasons behind them are recorded in the [ADRs](adr/READ
 - [Module map](#module-map)
 - [The pipeline: `process_case`](#the-pipeline-process_case)
 - [Maker-checker: `approve`](#maker-checker-approve)
+- [Voice intake: from a recording to a case](#voice-intake-from-a-recording-to-a-case)
+- [Agent trace: what the agent did](#agent-trace-what-the-agent-did)
+- [Audit chain storage](#audit-chain-storage)
 - [Data model](#data-model)
 - [Worked example: showcase case 1](#worked-example-showcase-case-1)
 - [How editions plug in](#how-editions-plug-in)
@@ -36,6 +39,8 @@ Design decisions and the reasons behind them are recorded in the [ADRs](adr/READ
 
 ```mermaid
 flowchart TB
+    VN["Victim's voice note<br/>(untrusted audio)"] --> VI["Voice intake<br/>wapsi.intake"]
+    VI -->|"matched NCRP ids only"| IN
     IN["NCRP / 1930 complaints<br/>CFCFRMS hold notices<br/>(untrusted text)"] --> SCR["Screen text<br/>Guard port"]
     SCR --> TR["Trace and taint<br/>wapsi.graph"]
     TR --> CL["Classify accounts<br/>wapsi.classify"]
@@ -54,6 +59,9 @@ flowchart TB
     DOCS["DocSearch port<br/>legal corpus"] --> DR
     DOCS --> VE
     VE -.->|"case bundle"| STORE[("CaseStore port")]
+    LED --> VI
+    AG["AI agent tool calls<br/>(ADK, Google Cloud edition)"] --> AT["Agent trace<br/>wapsi.agenttrace"]
+    AT -->|"agent_trace event"| AUD
 ```
 
 | Step | What happens | Where |
@@ -69,6 +77,8 @@ flowchart TB
 | Audit | Every event is sealed as the next link of the case's hash chain (SHA-256, append-only); a checkpoint kept outside the log catches truncation and wholesale re-hashing. | `wapsi.audit` |
 | LEA check | A police hold request is checked against an 8-field checklist; the hold is limited to the identifiable amount and a clarification letter lists what is missing. The plan never changes. | `wapsi.verify.lea_request`, `wapsi.pipeline.run.check_lea` |
 | Radar | New and pending rules set against the SOP, with verbatim quotes; per-case findings for a human to review. Read-only. | `wapsi.domain.regradar` |
+| Voice intake | A victim's voice note becomes a transcript, an English translation and complaint fields (one schema-bound multimodal call). The phone is masked in code, the text is screened, and every claim is reconciled with the ledger. Only matched NCRP ids can open a case, whose amounts come from the ledger. | `wapsi.intake.intake_voice_note`, `wapsi.intake.reconcile` |
+| Agent trace | Every model turn and tool call an agent makes, with redacted arguments, a result summary taken from the tool's own result, latency, status and the guard and verifier verdicts around it, sealed into each touched case's audit chain. | `wapsi.agenttrace.ToolTraceRecorder`, `trace_event`; the Google Cloud edition's `ToolTracePlugin` |
 
 ## Design principles
 
@@ -159,12 +169,14 @@ These rules are written in the `Ledger` docstrings and in [`docs/data-contract.m
 | `wapsi.verify` | Numeric, citation, policy and injection checks with stable check codes (`CheckResult.code`); report assembly; the police / LEA request checklist | `verify_draft`, `verify_plan`, `RulesGuard`, `check_lea_request` | `tests/verify` |
 | `wapsi.domain` | India bank working-day calendar (Sundays, 2nd and 4th Saturdays, DoPT closed holidays for 2026 and 2027), SOP / PML clocks, the read-only regulatory change radar | `add_working_days`, `is_bank_holiday`, `clocks_for_bundle`, `evaluate_clocks`, `load_radar`, `case_impact` | `tests/domain` |
 | `wapsi.audit` | Hash-chained, append-only audit log per case; chain verification against an optional anchor; the tamper drill | `append_event`, `verify_chain`, `chain_extend`, `extend_stored`, `python -m wapsi.audit drill` | `tests/audit` |
+| `wapsi.intake` | Voice-note intake: audio sniffing by magic bytes, the Gemini response schema and its validation, phone masking, guard screening, reconciliation of every claim with the ledger, the bundled synthetic samples | `intake_voice_note`, `reconcile`, `validate_extraction`, `sniff_audio`, `VOICE_SCHEMA`, `wapsi.intake.samples` | `tests/intake` |
+| `wapsi.agenttrace` | Edition-neutral agent trace: data model, recorder, redaction, result summaries and verdicts, reply grounding, the `agent_trace` audit event (size-bounded), the recorded offline run | `ToolTraceRecorder`, `AgentTrace`, `trace_event`, `traces_from_audit`, `redact_text`, `redact_value` | `tests/test_agenttrace.py`, `tests/ui/test_ui_tool_trace.py`, `tests/gcp/test_gcp_tool_trace.py` |
 | `wapsi.search` | Polite corpus fetcher, PDF/HTML extraction, section-aware chunking, pure-Python BM25, quote checker, radar document fetcher and verifier | `LocalDocSearch.load`, `python -m wapsi.search.check_citations`, `python -m wapsi.search.radar` | `tests/search` |
 | `wapsi.synth` | Deterministic synthetic world (showcase, demo, full and hard sizes), an independent reference implementation for ground truth, golden-set writer | `python -m wapsi.synth` | `tests/synth` |
 | `wapsi.pipeline.run` | Case grouping, end-to-end processing, maker-checker approval, account-level requests, LEA checks | `group_complaints`, `process_case`, `approve`, `request_account_level_hold`, `check_lea`, `draft_fingerprint`, `pending_holds` | `tests/pipeline` |
 | `wapsi.adapters` | Adapter implementations (see the ports table) | — | `tests/draft`, `tests/synth`, `tests/gcp` |
 | `wapsi.fixtures` | Hand-computed showcase worlds: the numbers every module must reproduce | `showcase_ledger`, `SHOWCASE_1`, `SHOWCASE_2` | used everywhere |
-| `ui/` | Streamlit officer app with nine views: Inbox, Case Room, Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit | `uv run streamlit run ui/app.py` | `tests/ui` |
+| `ui/` | Streamlit officer app with ten views: Inbox, Voice Intake, Case Room (money trail and agent trace tabs), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit | `uv run streamlit run ui/app.py` | `tests/ui` |
 | `evals/` | Golden-set harness and the prompt-injection corpus | `python -m evals.harness`, `python -m evals.adversarial.run` | — |
 
 Heavy or cloud dependencies are never imported at module load. `wapsi.classify` never imports XGBoost or
@@ -318,6 +330,132 @@ figures, `requires_human` is set, and the reason codes carry the recorded reason
 and the case's CFCFRMS update are redrafted as new versions (fresh approval needed), and its unapproved customer
 notice and EDD memo are withdrawn. In the showcase case, an exception on mule A leaves A's hold at ₹43,200.00 and
 the plan total at ₹1,42,848.00.
+
+## Voice intake: from a recording to a case
+
+`wapsi.intake.intake_voice_note(audio, *, llm, ledger, guard, filename="", received_at=None, sample_id=None,
+max_bytes=MAX_AUDIO_BYTES) -> VoiceIntakeResult` turns a victim's voice note into a reconciled, structured
+complaint. Everything the recording says is a **claim by the complainant**: the ledger decides which complaint it
+belongs to, and every amount used downstream comes from the ledger.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Caller as UI page or ADK tool
+    participant VI as intake_voice_note
+    participant M as Audio model (AudioLLM)
+    participant G as Guard port
+    participant R as reconcile
+    participant L as Ledger port
+    participant P as process_case
+
+    Caller->>VI: audio bytes, llm, ledger, guard
+    VI->>VI: reject empty or over 15 MB, sniff WAV / MP3 / M4A / OGG / WebM by magic bytes
+    VI->>M: extract_media(audio, mime, system, prompt, json_schema=VOICE_SCHEMA)
+    M-->>VI: JSON: transcript, translation, languages, fields, amounts, refs, instruction_like
+    VI->>VI: validate_extraction (a malformed answer is rejected whole)
+    VI->>VI: mask the phone in fields, transcript, translation and free text (in code)
+    VI->>G: screen transcript, translation, narrative, name / bank / beneficiary
+    G-->>VI: flagged spans (merged with the model's instruction_like)
+    VI->>R: fields, amounts, refs
+    R->>L: complaints, reported transfers, victims' banks (indexed once per ledger)
+    R-->>VI: one row per claim: MATCHED / MISMATCH / NOT_FOUND, matched NCRP ids
+    VI-->>Caller: VoiceIntakeResult (JSON-safe), verdict sentence
+    opt officer presses Open case (matched ids only)
+        Caller->>P: process_case(ledger, matched ncrp_ids) or link the existing case
+        P-->>Caller: CaseBundle with amounts from the ledger, audit event voice_intake_opened or voice_intake_linked
+    end
+```
+
+| Stage | Rule | Where |
+|---|---|---|
+| Audio | Empty, over 15 MB or not audio by its bytes: `VoiceIntakeError` with a stable `code` (`EMPTY_AUDIO`, `TOO_LARGE`, `UNSUPPORTED_AUDIO`, `NO_AUDIO_MODEL`, `SCHEMA`) | `sniff_audio`, `intake_voice_note` |
+| Model | One call with a response schema. `GeminiLLM.extract_media` when a key or project is configured; `FakeLLM.extract_media` offline answers for the bundled samples by SHA-256 and returns an empty extraction for anything else. `wapsi.ports.LLM` stays text-only; `AudioLLM` is a separate protocol | `wapsi.intake.voice`, `wapsi.adapters.gemini_llm`, `wapsi.adapters.llm_fake` |
+| Privacy | The phone becomes `98XXXXXX21` (the ledger's own mask) before anything is displayed, stored or reconciled | `mask_phone` |
+| Untrusted text | Every model-written string is screened; instruction-like sentences are quoted back, never followed | `Guard.screen` |
+| Matching | A claimed UTR on a reported transfer identifies its complaint. Otherwise at least three agreements, one of them an amount, the last four digits or the masked phone, and exactly one best complaint. An amount alone never identifies a complaint. Each reported transfer backs at most one claimed payment | `wapsi.intake.reconcile` |
+| Case | Only the matched NCRP ids can open or link a case, through the normal pipeline | `ShowcaseDataSource.open_case_for_ncrp`, the ADK `open_case` tool |
+
+The Streamlit page (`ui/views/intake.py`) and the Google Cloud edition's ADK tool (`intake_voice_note` on the
+`wapsi_intake` sub-agent, with `VoiceUploadPlugin` turning chat uploads into session artifacts) call the same
+function. Details and the samples: [Voice intake](voice-intake.md).
+
+## Agent trace: what the agent did
+
+`wapsi.agenttrace` records one `AgentTrace` per agent run (one officer message and everything the agent did to
+answer it). It has no agent-framework imports: the Google Cloud edition drives `ToolTraceRecorder` from ADK plugin
+callbacks, and any other agent loop can call the same methods.
+
+```mermaid
+flowchart LR
+    MSG["Officer message"] --> TP["ToolTracePlugin<br/>(first ADK plugin)"]
+    TP --> REC["ToolTraceRecorder<br/>wapsi.agenttrace"]
+    GP["WapsiGuardPlugin<br/>input, arguments, maker-checker, output"] -->|"GuardVerdict"| REC
+    TOOLS["Tool results<br/>(numbers from data)"] -->|"summary, VerifierVerdict"| REC
+    REC -->|"finish_run"| TR["AgentTrace<br/>redacted, size-bounded"]
+    TR -->|"trace_event"| CHAIN[("agent_trace event in each<br/>touched case's hash chain")]
+    TR --> LOG["One JSON line<br/>(Cloud Logging)"]
+    TR --> API["GET /wapsi/traces<br/>(IAP-scoped)"]
+    CHAIN --> TAB["Case Room: Agent trace tab"]
+```
+
+- **Steps.** `input` (the officer's message and the input screen's verdict), `model` (model, latency, tokens when
+  reported, the tools it asked for), `tool` (redacted arguments, a one-line result summary, latency, status, guard
+  verdicts and the verifier verdict the result carries), `output` (the reply, the output screen and the reply
+  grounding check) and, only in a size-bounded record, a `note` saying how many steps were left out.
+- **Numbers come from data here too.** Summaries and verifier verdicts are read from the tool's own result
+  (`wapsi.agenttrace.summarize`), never computed by a model. Reply grounding fails a reply that states a rupee
+  amount or an account number no tool returned.
+- **Redaction** (`wapsi.agenttrace.redact`): account numbers keep their bank prefix and last four digits,
+  phones and e-mails are masked, values under name, phone and secret keys are masked or dropped, and untrusted
+  complaint text (anything inside `<<<UNTRUSTED…>>>` markers) is replaced by a placeholder with its length.
+- **Never breaks a run.** Every recorder method is safe to call out of order and never raises into the agent run;
+  a `finish_run` callback error is logged.
+- **Storage.** `trace_event(trace, case_id=)` makes an `agent_trace` `AuditEvent` whose summary fields count every
+  call and whose stored trace is size-bounded by `bounded` (512 KiB: raw results are dropped first, then middle
+  steps), so a runaway loop still yields an event a Firestore document can hold. Each run anchors its own
+  wall-clock time, so a long-lived server never drifts its timestamps.
+- **Who may read it.** `AgentTrace.user_id` is the authenticated user (the IAP e-mail on Cloud Run).
+  `GET /wapsi/traces` returns an analyst's own runs only; supervisors and auditors see all.
+
+With no live run, `wapsi.agenttrace.demo.recorded_traces` serves the recorded offline run of the showcase cases
+(`showcase_recording.json`, written by `python -m editions.gcp.app.trace_demo --write`: the real ADK app, tools
+and guards, with a scripted model).
+
+## Audit chain storage
+
+Every `CaseStore` that keeps a log seals it on write with the same rules (`wapsi.audit`); only the storage differs.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as Writer (pipeline, UI, trace plugin)
+    participant S as FirestoreCaseStore.append_audit
+    participant A as audit_anchors/{case_id}
+    participant E as cases/{case_id}/audit/{seq}
+
+    W->>S: AuditEvent
+    S->>A: read the anchor in a transaction (length, head hash)
+    S->>S: seal: seq = length, prev_hash = head, hash = SHA-256(...)
+    S->>E: create audit/{seq:010d} (create-only)
+    S->>A: advance the anchor to (length + 1, new hash), same commit
+    Note over S,A: two writers on the same head conflict on the anchor,<br/>Firestore aborts one and re-runs it on the new head
+    S-->>W: the event, stamped with its seal
+```
+
+| Store | Where events live | Anchor | Verify |
+|---|---|---|---|
+| `InMemoryCaseStore` | in the bundle, in memory | per case, in memory | `verify_audit(case_id)` |
+| `FirestoreCaseStore` (Google Cloud) | `cases/{case_id}/audit/{seq:010d}`, one document per event, never updated or deleted | `audit_anchors/{case_id}`, outside the log | `verify_audit(case_id)`: edited, deleted, inserted, swapped or unreadable events, truncation, re-hashing, a deleted anchor and events written without advancing it are all reported |
+| `FileCaseStore` (AMD) | JSON files with atomic writes | per case | `verify_audit(case_id)` |
+
+`put_bundle` keeps recorded events and seals only the bundle's new ones (`extend_stored`). In Firestore that
+happens in the same transaction that flips the case header to the new generation of its chunks. A document that no
+longer parses is read as an unsealed placeholder at its position, so the case still loads and the chain reads as
+broken there. A new event is always placed at the anchor's head; if a document already sits there, the store
+refuses to write (`AuditChainError`). Server client libraries bypass Firestore security rules, so
+`editions/gcp/deploy/firestore.rules` denies every client SDK path and records the append-only contract for any
+future one; on Cloud Run, IAM controls the service accounts.
 
 ## Data model
 
@@ -527,8 +665,10 @@ flowchart TB
 | `CaseStore` | `FirestoreCaseStore` | `FileCaseStore` |
 | `DocSearch` | `LocalDocSearch` | `LocalDocSearch` |
 | `Scorer` | Heuristic | `GnnHttpScorer` when `WAPSI_GNN_URL` is set, with heuristic fallback |
+| `AudioLLM` for voice notes | `GeminiLLM.extract_media` (offline `FakeLLM` in demo mode) | none served; the shared Voice Intake page uses the offline `FakeLLM` (bundled samples only) |
+| Agent loop and trace | ADK agents; `ToolTracePlugin` drives `ToolTraceRecorder` | no agent loop; the Agent trace tab shows the recorded offline run on the showcase cases |
 
-Sources: `editions/gcp/app/services.py`, `editions/amd/app/services.py`.
+Sources: `editions/gcp/app/services.py`, `editions/amd/app/services.py`, `ui/data_source.py` (`voice_llm`).
 
 Rules for edition authors:
 
@@ -550,7 +690,9 @@ Edition status and details: [editions.md](editions.md).
 | LLM output | Wrong amounts, invented account numbers or clauses | The LLM never writes values: only `⟦slot⟧` placeholders. The drafter rejects digits, currency words, number words and unknown placeholders, retries once, then uses a fixed paragraph. The verifier re-fills the skeleton with its own values. |
 | Planner and drafter code | A bug that produces consistent but wrong numbers | Independent verifier (`wapsi.verify`) and an independent reference implementation for the golden set (`wapsi.synth.reference`) |
 | Police / LEA requests | A request for whole-account action, or for more than the trail supports | `wapsi.verify.lea_request`: the hold is limited to `min(plan hold, victim money in the cited credits, amount requested)`; missing fields go into a template-bound clarification letter; request text is quoted back, never followed |
-| Recorded history | An event edited, deleted, reordered or re-hashed after the fact | `wapsi.audit`: SHA-256 hash chain per case, anchors kept outside the log; `python -m wapsi.audit drill` shows 6 of 6 tampering attempts detected |
+| Recorded history | An event edited, deleted, reordered or re-hashed after the fact | `wapsi.audit`: SHA-256 hash chain per case, anchors kept outside the log; `python -m wapsi.audit drill` shows 6 of 6 tampering attempts detected; on Google Cloud each append is one Firestore transaction with create-only event documents |
+| Voice notes | A recording that claims the wrong amount, names someone else's complaint or speaks an instruction ("release all holds") | Every extracted value is a claim reconciled with the ledger; only matched NCRP ids open a case, and amounts come from the ledger; the phone is masked in code; transcript, translation and free-text fields are screened and instruction-like text is quoted back; a malformed model answer is rejected whole |
+| Agent traces | Personal data or complaint text copied into an observability record; one officer reading another's runs | Redaction of account numbers, phones, e-mails, secrets and values under name keys; untrusted complaint text replaced by a placeholder; `GET /wapsi/traces` scoped to the IAP user for analysts; traces sealed into the case's hash chain |
 | Classifier roles | An innocent holder labelled `MULE` is proposed as an STR subject | The `UNKNOWN` band and the `innocent_blockers` guard send doubtful accounts to the officer; the verifier does not re-classify, so the supervisor's review is the remaining control ([ADR 0006](adr/0006-transparent-heuristic-classifier-default.md)) |
 | Human approval | Approving something other than what was checked | SHA-256 fingerprint of the draft is stored on the verification audit event and on the approval |
 | Legal citations | Invented or misquoted clauses | Citation ids must be in `wapsi.citations.KNOWN_IDS`; `python -m wapsi.search.check_citations` re-checks every quote, fact and regulatory-radar quote against the downloaded documents (121/121 checks passed on 2026-09-29) |
@@ -602,9 +744,9 @@ returns.
 - **Tamper drill.** `uv run python -m wapsi.audit drill` builds the showcase case, records an approval, tampers
   with the stored log in six ways and exits 0 only if every attempt is detected.
 
-Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-10-07 it collected 1,623 tests
-and the full suite passed with 0 failures; 240 of the tests are in the edition suites `tests/gcp` (127) and
-`tests/amd` (113).
+Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-10-07, after the voice-intake,
+agent-trace and Firestore audit-seal work was merged, it collected 1,765 tests and the full suite passed with 0
+failures; 291 of the tests are in the edition suites `tests/gcp` (178) and `tests/amd` (113).
 
 ## Limitations
 

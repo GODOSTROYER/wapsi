@@ -10,7 +10,7 @@ Why one core and not two products: [ADR 0005](adr/0005-one-core-two-editions.md)
 
 ## Summary
 
-Status as of 2026-09-29, checked against the repository.
+Status as of 2026-10-07, checked against the repository.
 
 | | Google Cloud | AMD |
 |---|---|---|
@@ -22,6 +22,9 @@ Status as of 2026-09-29, checked against the repository.
 | Prose LLM | `GeminiLLM`; Gemma via `OpenAICompatLLM` (paid add-on) | `OpenAICompatLLM` against vLLM |
 | Case store | `FirestoreCaseStore` | `FileCaseStore` |
 | Guard | `RulesGuard`; `ModelArmorGuard` when a template is configured | `RulesGuard`; plus an LLM judge when the verifier model is served |
+| Audit chain storage | `FirestoreCaseStore`: one Firestore transaction per append, create-only `cases/{case_id}/audit/{seq}` documents, the anchor in `audit_anchors/{case_id}`, `verify_audit` | `FileCaseStore`: JSON files with atomic writes, chained on write |
+| Voice-note intake | Gemini reads the audio (`GeminiLLM.extract_media`); the ADK tool `intake_voice_note` on the `wapsi_intake` sub-agent; the shared Voice Intake page | The shared Voice Intake page with the offline model, which knows the bundled samples only (no audio model is served) |
+| Agent trace | `ToolTracePlugin` records every ADK run and seals it into each case's audit chain; `GET /wapsi/traces` on the API, scoped per user behind IAP | No ADK agent, so no live runs; the shared Agent trace tab shows the recorded offline run on the showcase cases |
 | Status | Code built and tested offline with fakes. Deploy scripts written and dry-run in tests with a fake `gcloud`, not run against Google Cloud. Nothing deployed. | Code prepared before the event and tested offline. Training, fine-tuning, serving and benchmarks run on the MI300X only during 12–18 Oct 2026. No AMD GPU results exist yet. |
 
 ## What is shared and what is not
@@ -47,6 +50,8 @@ flowchart TB
 | Eight draft kinds, the LEA clarification letter and the placeholder-only prose contract (`wapsi.draft`) | How officers and supervisors sign in and reach the app |
 | The verifier, the LEA request checklist, the account-level exception and the approval fingerprint (`wapsi.verify`, `wapsi.pipeline.run`) | Event intake (Pub/Sub, a REST API) |
 | SOP clocks, the bank working-day calendar and the regulatory radar (`wapsi.domain`); the hash-chained audit log (`wapsi.audit`) | Extra guards on top of `RulesGuard` (Model Armor, an LLM judge) |
+| Voice-note intake: audio checks, the response schema, phone masking, guard screening and ledger reconciliation (`wapsi.intake`) | Which model reads audio (Gemini in the Google Cloud edition) and how audio arrives (a chat upload saved as an ADK artifact, a `gs://` object) |
+| The agent-trace model, recorder, redaction and the `agent_trace` audit event (`wapsi.agenttrace`) | Which agent loop drives the recorder (ADK plugin callbacks) and who may read traces (IAP identity) |
 | Citation ids and verbatim quotes (`wapsi.citations`, `data/docs/`) | Optional extra scorers (a GNN) |
 | The Streamlit officer app (`ui/`) | Deployment, cost controls and platform governance |
 | Golden set, evaluation harness, showcase fixtures | Platform benchmarks and evidence for the judges |
@@ -75,8 +80,31 @@ would immobilise (`src/wapsi/fixtures/showcase.py`).
   SQL, partitioned and clustered tables, a bytes-billed cap), `FirestoreCaseStore`, `ModelArmorGuard` and
   `GeminiLLM`. A private Gemma tier on Cloud Run GPU is reached through `OpenAICompatLLM`.
 - Role grants signed with an HMAC key from Secret Manager; a supervisor role is needed to approve.
+- **Hinglish voice-note intake.** The `wapsi_intake` sub-agent has the `intake_voice_note` tool. Audio uploaded in
+  the chat is saved as a session artifact by `VoiceUploadPlugin` and replaced with `[Uploaded voice note:
+  "name"]`; the tool also takes a `gs://` URI or `demo://voice/<sample_id>`. One Gemini multimodal call with a
+  response schema returns the transcript, an English translation and the complaint fields; the shared core masks
+  the phone, screens the text and reconciles every claim with the ledger (BigQuery in the cloud). The tool returns
+  the transcript sanitised inside untrusted-text markers, marks every claim as untrusted, and names only the
+  ledger-matched NCRP ids as the next step for `open_case`, whose amounts come from the ledger. Details:
+  [Voice intake](voice-intake.md).
+- **Agent trace.** `ToolTracePlugin` is the app's first plugin, so it records every model turn and tool call
+  (redacted arguments, a result summary taken from the tool's own result, latency, status) before any other
+  plugin can answer a callback; `WapsiGuardPlugin` reports its verdicts into the same recorder. When a run ends,
+  its trace is appended to the audit log of every case it touched (an `agent_trace` event, so the hash chain
+  covers it) and logged as one JSON line for Cloud Logging. `GET /wapsi/traces?case_id=` returns the runs the
+  instance recorded; behind IAP an analyst sees only their own runs, while supervisors and auditors see all. The
+  UI's Case Room shows the runs in its **Agent trace** tab ([User guide](user-guide.md#agent-trace-tab)).
+- **Audit chain sealed in Firestore.** `FirestoreCaseStore.append_audit` runs one Firestore transaction: it reads
+  the case's anchor (`audit_anchors/{case_id}`, outside the log), seals the event as the next link, creates
+  `cases/{case_id}/audit/{seq:010d}` and advances the anchor in the same commit. Concurrent writers conflict on
+  the anchor and Firestore re-runs one of them, so the chain stays gap-free. `verify_audit(case_id)` checks the
+  stored log against the anchor. `editions/gcp/deploy/firestore.rules` denies every client SDK path and states
+  the append-only contract (create-only events, an anchor that only moves forward) for any future client path;
+  Cloud Run's server libraries are governed by IAM instead.
 - A demo mode with zero cloud access: showcase ledger, in-memory case store, `FakeLLM`, `RulesGuard` and a
-  scripted ADK model.
+  scripted ADK model. In demo mode the edition's UI runs the offline agent script once at start-up, so the
+  showcase cases' audit chains hold a real (scripted-model) agent run.
 
 **Status, honestly.** The edition README says that nothing has been deployed. The code is built and unit-tested
 locally with fakes (`tests/gcp`: a SQLite-backed BigQuery fake, an in-memory Firestore, fake Model Armor and

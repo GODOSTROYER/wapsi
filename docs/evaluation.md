@@ -24,7 +24,7 @@ EDD, s.106, Process 1 / 2) are explained in the [Glossary](glossary.md).
 | Hallucination stress test (demo world) | a stub LLM that writes a wrong rupee amount into every prose field | 27.57% of drafts had their prose rejected and replaced by fixed text; drafts passing verification still 1.0; holds still exact | `evals/reports/baseline/demo-fake-hallucinate.json` |
 | Prompt-injection guard, blind holdout | 151 texts written by a separate agent that never saw the rules | precision 0.9661, recall 0.75, false-positive rate 0.0267 | `evals/reports/guard-latest.json` |
 | Audit-log tamper drill | the showcase case's 40-event hash-chained log | 6 of 6 tampering attempts detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
-| Test suite | `tests/` | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Test suite | `tests/` | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
 Two things stand out. **Hold amounts were exact in every world**, including the hard world built to break the
 classifier. **Every error that remains is a label, never money**: an innocent holder taken for a mule or the
@@ -502,20 +502,26 @@ same demo-world check (3 of 3 adversarial, 0 of 40 benign flagged).
 
 ## Test suite
 
-The full suite passed with 0 failures on 07-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`). That day
-`uv run pytest --co -q -p no:warnings` collected 1,623 tests:
+The full suite passed with 0 failures on 07-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`), after the voice-intake,
+agent-trace and Firestore audit-seal work was merged: 1,765 tests in 3 min 36 s. By area:
 
 | Area | Tests | Area | Tests |
 |---|---:|---|---:|
 | `tests/verify` | 381 | `tests/domain` | 88 |
-| `tests/graph` | 288 | `tests/synth` | 49 |
-| `tests/ui` | 152 | `tests/audit` | 42 |
-| `tests/draft` | 124 | `tests/pipeline` | 35 |
-| `tests/classify` | 110 | files directly in `tests/` (including `test_sop_annexure_v.py`) | 10 |
-| `tests/search` | 98 | `tests/pitch` | 6 |
-| `tests/gcp` (edition) | 127 | `tests/amd` (edition) | 113 |
+| `tests/graph` | 288 | `tests/intake` (voice intake) | 49 |
+| `tests/ui` | 176 | `tests/synth` | 49 |
+| `tests/draft` | 124 | `tests/audit` | 42 |
+| `tests/classify` | 110 | `tests/pipeline` | 35 |
+| `tests/search` | 98 | files directly in `tests/` (including `test_sop_annexure_v.py` and `test_agenttrace.py`) | 23 |
+| `tests/gcp` (edition) | 178 | `tests/pitch` | 11 |
+| `tests/amd` (edition) | 113 | | |
 
-The core suite with the light install (everything except `tests/gcp` and `tests/amd`) is 1,383 tests. The
+The core suite with the light install (everything except `tests/gcp` and `tests/amd`) is 1,474 tests. The voice
+intake tests run every bundled sample through the offline model on both ledgers they retell (the showcase ledger
+and the demo world) and check each sample's expected matches, statuses and injection flag; the agent-trace tests
+cover the recorder, redaction, summaries, size bounding and the audit round trip; `tests/gcp` adds the ADK voice
+tool and upload plugin, the trace plugin and `/wapsi/traces` scoping, and the Firestore audit chain on an
+in-memory Firestore fake. The
 wall-clock checks `tests/graph/test_graph_property.py::test_performance_20k_transactions` (one per apportionment
 rule, limit 2 s) can exceed their limit on a machine busy with evaluations; re-run on their own, they pass. Tests
 keep being added, so count your own checkout; the edition suites are described in

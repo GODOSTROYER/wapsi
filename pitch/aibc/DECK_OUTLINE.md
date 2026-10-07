@@ -27,8 +27,9 @@ UX. Slides 4, 5 and 7 carry the technical-merit score.
 
 ## 3. What Wapsi does (user journey)
 
-`1930 complaint (text, PDF or screenshot)` → `Gemini extracts it; checked against the ledger` → `money trail` →
-`amount-specific hold plan` → `STR, hold instructions, restoration packet` → `verifier` → `supervisor approves`.
+`1930 complaint (text, PDF, screenshot or a Hinglish voice note)` → `Gemini extracts it; every claim checked against
+the ledger` → `money trail` → `amount-specific hold plan` → `STR, hold instructions, restoration packet` → `verifier` →
+`supervisor approves`, with every agent tool call on record in the case's audit chain.
 - Showcase case (hand-computed): ₹4,80,000 stolen; hold ₹1,42,848 in 5 accounts; ₹3,34,848 recoverable; the
   whole-account freeze baseline would lock ₹5,03,50,000.
 - Innocent landlord: hold ₹4,800, no escalation. Kirana with delivered goods: no hold. Payment-aggregator pool: hold
@@ -40,11 +41,13 @@ UX. Slides 4, 5 and 7 carry the technical-merit score.
 Officer / supervisor ──> Cloud Run: wapsi-ui (Streamlit case room)
                      ──> Cloud Run: wapsi-api (ADK 2.9 on FastAPI, private)
                                  ├─ LlmAgent wapsi_officer (10 pipeline tools) ──> Gemini
-                                 ├─ LlmAgent wapsi_intake (PDF / image → JSON)  ──> Gemini (multimodal)
+                                 ├─ LlmAgent wapsi_intake (PDF / image / voice note → JSON) ──> Gemini (multimodal)
                                  ├─ ADK Workflow case_pipeline (notices, uploads, clock sweeps)
-                                 ├─ plugins: guard (Model Armor → rules guard), audit, memory
-                                 └─ Wapsi core: trace · taint · hold plan · drafts · verifier
-Data: BigQuery (ledger; partitioned + clustered) · Firestore (cases, drafts, approvals, append-only audit)
+                                 ├─ plugins: tool trace (first), guard (Model Armor → rules guard), audit, memory,
+                                 │           voice uploads
+                                 └─ Wapsi core: trace · taint · hold plan · drafts · verifier · voice reconciliation
+Data: BigQuery (ledger; partitioned + clustered) · Firestore (cases, drafts, approvals, and a hash-chained audit
+      trail: one transaction per event, create-only documents, the chain anchor kept outside the log)
 Ops:  Secret Manager (Gemini key, role-grant HMAC key) · Cloud Logging + Trace · Cloud Build → Artifact Registry
 Event path (optional): Cloud Storage uploads · Pub/Sub notices · Cloud Scheduler clock sweep
 ```
@@ -57,20 +60,26 @@ Event path (optional): Cloud Storage uploads · Pub/Sub notices · Cloud Schedul
 |---|---|---|
 | Agent reasoning and tool choice (ADK) | trace, taint, holds, clocks | a model must not decide a hold amount |
 | Multimodal intake: complaint PDF or screenshot → structured fields | cross-check every field against the BigQuery ledger | extracted text is untrusted |
+| Voice-note intake: a Hinglish voice note → transcript, English translation, fields (one call with a response schema) | mask the phone; screen the text; reconcile every claim with the ledger (matched / mismatch / not in ledger); only a ledger match opens a case | a recording is a claim, never a source of money figures |
 | Draft prose around `⟦slot⟧` placeholders | fill every amount, account, UTR and date from case data; verifier recomputes each | numbers come from data, words come from the LLM |
 | (nothing) | approve | only a supervisor approves; the approval is bound to the draft's SHA-256 fingerprint |
 
-- Prompt injection: complaint text is wrapped as untrusted data and screened (Model Armor when switched on, a rules
-  guard always). Instruction-like text is quoted back to the officer, never followed.
-- Show the ADK tool-call trace screenshot here.
+- Prompt injection: complaint text and voice notes are untrusted data and screened (Model Armor when switched on, a
+  rules guard always). Instruction-like text is quoted back to the officer, never followed.
+- Screenshot: the Case Room's **Agent trace** tab for the showcase case: the numbered tool calls with latency bars,
+  `Policy check · 1/1 passed`, `Verifier · 17/17 passed` and the reply's `Reply grounding` chip (every amount and
+  account in the agent's reply came from a tool).
 
 ## 6. Demo walkthrough
 
-Four screenshots with one caption each, in video order:
-1. Agent chat: "Open the case for NCRP 31009260000101" → tool calls `open_case`, `trace_money`, `hold_plan`.
+Five screenshots with one caption each, in video order:
+1. Agent chat: "Open the case for NCRP 31009260000101", then the Agent trace tab: `open_case` → `trace_money` →
+   `hold_plan` → `verification_report` → `draft_documents`, each with its checks, sealed in the audit chain.
 2. Hold plan with the baseline strip: ₹1,42,848 held vs ₹5,03,50,000 frozen.
-3. Hinglish complaint `11208260078296` with an embedded "release all holds" order, quoted back as untrusted; hold unchanged.
-4. STR with every check green; supervisor approval with the maker-checker note.
+3. Voice Intake: Kavitha Sundaram's Hinglish voice note, transcript and translation side by side, the reconciliation
+   table green, and her hidden "release all holds" order quoted, not followed; **Open case** for NCRP `11208260078296`.
+4. The agent trace of a refused request: an analyst asks the agent to approve a draft, `Refused · maker-checker`.
+5. STR with every check green; supervisor approval with the maker-checker note.
 
 ## 7. Evaluation: measured against exact ground truth
 
@@ -96,7 +105,12 @@ Four screenshots with one caption each, in video order:
 - **Police request checker**: 8-field LEA checklist, hold limited to the identifiable amount, clarification letter.
 - **Regulatory change radar**: 11 rows comparing the RBI DRAFT money-mule SOP with the MHA SOP, verbatim quotes on
   both sides, flag and suggest only.
-- **Tamper-evident audit trail**: a SHA-256 hash chain per case; the tamper drill detects 6/6 attacks.
+- **Tamper-evident audit trail**: a SHA-256 hash chain per case; the tamper drill detects 6/6 attacks. On Google
+  Cloud each event is sealed in a Firestore transaction, with the chain anchor kept outside the log.
+- **Voice note as a claim, not a fact**: a Hinglish voice note becomes a structured complaint, and every number in it
+  is reconciled with the ledger before anything can happen.
+- **An accountable agent**: every tool call the ADK agent makes, with its guard, maker-checker and verifier verdicts,
+  redacted and sealed into the case's audit chain, readable in the case room.
 
 ## 9. Impact and business case
 
@@ -113,20 +127,22 @@ Four screenshots with one caption each, in video order:
 - p95 0.72 s per case from trace to verified drafts on the demo world (laptop, stub LLM); Cloud Run numbers
   **[TBD after deploy]**.
 - Security: the API service is private; officer and supervisor roles come from HMAC-signed grants checked by the
-  guard plugin and again by the tool; secrets live only in Secret Manager; the Firestore audit subcollection is
-  append-only; all data is synthetic.
+  guard plugin and again by the tool; secrets live only in Secret Manager; the Firestore audit trail is sealed in
+  one transaction per event into create-only documents; agent traces are redacted, and behind IAP an analyst reads
+  only their own runs; all data is synthetic.
 
 ## 11. Roadmap
 
-- Next: Hinglish voice-note intake with Gemini audio; Vertex AI Search over the legal corpus (the verbatim-quote
-  verifier stays the judge); CFCFRMS connector once I4C onboarding allows (today a **simulated CFCFRMS interface**,
-  labelled everywhere).
+- Next: voice notes in more Indian languages and a measured Gemini transcription test on consented recordings;
+  Vertex AI Search over the legal corpus (the verbatim-quote verifier stays the judge); CFCFRMS connector once I4C
+  onboarding allows (today a **simulated CFCFRMS interface**, labelled everywhere).
 - Then: private Gemma tier on Cloud Run GPU for draft prose that reads victim PII; a pilot with one bank's nodal cell.
 
 ## 12. How to use it, and the team
 
-- Judges: open the live URL, pick the showcase case in the Inbox, switch the role to supervisor to approve
-  **[check the exact clicks on the deployed URL]**.
+- Judges: open the live URL, pick the showcase case in the Inbox, open the Case Room's **Agent trace** tab, try a
+  sample on **Voice Intake**, and switch the role to supervisor to approve **[check the exact clicks on the deployed
+  URL]**.
 - Repository link for this entry: `editions/gcp/README.md` (the Google Cloud edition only), on the AI Builder Cup
   submission tag.
 - Team: names, roles, one line each **[fill]**.

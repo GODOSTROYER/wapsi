@@ -115,7 +115,7 @@ uv run pytest --ignore=tests/gcp --ignore=tests/amd -q  # core suite; should end
 With `uv sync --all-extras` (what CI runs), plain `uv run pytest` runs the edition suites too. Without the `amd`
 extra, always add `--ignore=tests/amd`: several of its modules import PyTorch directly and fail at collection.
 
-On 07-10-2026 the full suite collected **1,623 tests** and passed with 0 failures (`pitch/NUMBERS.md`, row
+On 07-10-2026 the full suite collected **1,765 tests** and passed with 0 failures (`pitch/NUMBERS.md`, row
 `cmd_tests`). The current per-area counts are under [Tests](#tests). Run time depends on the machine and on what
 else is running.
 
@@ -220,19 +220,20 @@ uv run pytest -k escalation                     # by keyword
 uv run pytest --co -q | tail -1                 # count tests without running them
 ```
 
-On 07-10-2026 `uv run pytest --co -q` collected 1,623 tests:
+On 07-10-2026 `uv run pytest --co -q` collected 1,765 tests:
 
 | Area | Tests | Area | Tests |
 |---|---|---|---|
 | `tests/verify` | 381 | `tests/domain` | 88 |
-| `tests/graph` | 288 | `tests/synth` | 49 |
-| `tests/ui` | 152 | `tests/audit` | 42 |
-| `tests/draft` | 124 | `tests/pipeline` | 35 |
-| `tests/classify` | 110 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, ...) | 10 |
-| `tests/search` | 98 | `tests/pitch` | 6 |
-| `tests/gcp` (edition) | 127 | `tests/amd` (edition) | 113 |
+| `tests/graph` | 288 | `tests/intake` (voice intake) | 49 |
+| `tests/ui` | 176 | `tests/synth` | 49 |
+| `tests/draft` | 124 | `tests/audit` | 42 |
+| `tests/classify` | 110 | `tests/pipeline` | 35 |
+| `tests/search` | 98 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, ...) | 23 |
+| `tests/gcp` (edition) | 178 | `tests/pitch` | 11 |
+| `tests/amd` (edition) | 113 | | |
 
-The core suite (everything but `tests/gcp` and `tests/amd`) is 1,383 tests. The suites keep growing, so count
+The core suite (everything but `tests/gcp` and `tests/amd`) is 1,474 tests. The suites keep growing, so count
 your own checkout with `uv run pytest --co -q | tail -1`. `tests/amd` imports PyTorch at collection time: collecting that folder
 alone took 15 to 25 s here. For a fast loop on the core, add `--ignore=tests/gcp --ignore=tests/amd`.
 
@@ -446,9 +447,11 @@ the `ml` extra). On the hard world, a model trained on hard seed 202 reaches dis
 uv run streamlit run ui/app.py
 ```
 
-The UI runs the real pipeline on the showcase world with `FakeLLM`. Pages: Inbox, Case Room, Hold Plan,
-Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs and Audit. Roles: analyst, supervisor and
-auditor.
+The UI runs the real pipeline on the showcase world with `FakeLLM`. Pages: Inbox, Voice Intake, Case Room (with
+its Money trail and Agent trace tabs), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs
+and Audit. Roles: analyst, supervisor and auditor. Voice Intake reads the bundled samples offline; with
+`GEMINI_API_KEY` set it reads any recording with Gemini. The Agent trace tab reads `agent_trace` events from the
+case's audit log, or the recorded offline run for the showcase cases.
 
 | Environment variable | Effect |
 |---|---|
@@ -456,6 +459,10 @@ auditor.
 | `WAPSI_NOW=2026-09-12T10:00:00+05:30` | freeze the UI clock (ISO 8601) so SOP clocks show a fixed state |
 | `WAPSI_EVAL_REPORT=path/to/report.json` | KPI page reads this report instead of `evals/reports/latest.json` |
 | `WAPSI_UI_RAISE=1` | re-raise page errors instead of showing the error panel (debugging) |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Voice Intake transcribes any recording with Gemini (never printed or stored) |
+| `WAPSI_VOICE_OFFLINE=1` | force the offline voice model even when a key is set |
+| `WAPSI_VOICE_MODEL` | the Gemini model for voice notes (default `WAPSI_MODEL`, else `gemini-3.8-flash`) |
+| `WAPSI_VOICE_SAMPLES` | folder of sample voice notes (default `data/samples/voice`) |
 
 Streamlit settings (theme, no usage statistics) are in `.streamlit/config.toml`, with an identical copy in
 `ui/.streamlit/config.toml`: current Streamlit releases also read the config next to the main script, so
@@ -514,6 +521,10 @@ wapsi/
 │   │                          report.py
 │   ├── domain/                calendar.py, clocks.py, regradar.py (read-only radar), holidays_in.json
 │   ├── audit/                 chain.py (hash chain), drill.py (tamper drill), __main__.py (CLI)
+│   ├── intake/                voice.py (voice-note intake, VOICE_SCHEMA), reconcile.py (claims vs ledger),
+│   │                          samples.py (bundled synthetic voice notes)
+│   ├── agenttrace/            model.py, recorder.py (ToolTraceRecorder), redact.py, summarize.py, demo.py,
+│   │                          showcase_recording.json (recorded offline agent run)
 │   ├── search/                sources, fetch, extract, sections, chunk, normalize, bm25, index, build,
 │   │                          check_citations, manifest, radar (radar fetch / verify)
 │   ├── synth/                 world generator, typologies, hard.py (T11-T15), reference.py (independent ground truth),
@@ -526,9 +537,12 @@ wapsi/
 │   ├── docs/                  README, MANIFEST, sources.json, citations.json, facts.json, reg_radar.json
 │   │                          (raw/, index/ ignored)
 │   ├── golden/                showcase/, demo/, full/: cases.jsonl + SUMMARY.md; README.md
+│   ├── samples/voice/         six synthetic Hinglish voice notes (WAV), scripts, expected answers, manifest.json
 │   └── generated/             Parquet worlds (gitignored)
-├── tests/                     one folder per area, plus test_contracts.py, test_sop_annexure_v.py, test_packaging.py
-├── scripts/                   sync_skills.py (skill mirror); capture_screenshots.py (docs screenshots, Playwright)
+├── tests/                     one folder per area (intake/ for voice intake), plus test_contracts.py,
+│                              test_sop_annexure_v.py, test_packaging.py, test_agenttrace.py
+├── scripts/                   sync_skills.py (skill mirror); capture_screenshots.py (docs screenshots, Playwright);
+│                              make_voice_samples.py (voice samples, Windows offline text-to-speech)
 ├── .claude/skills/            six skills (mirrored to .agents/skills/)
 ├── editions/                  gcp/, amd/ (thin platform layers)
 └── docs/                      this documentation

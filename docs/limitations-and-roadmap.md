@@ -10,13 +10,15 @@ Each item names the file or test that shows it. Answers to common questions are 
 
 | Part | Status today |
 |---|---|
-| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,623 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
+| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,765 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
 | Legal corpus (SOP, BNSS, PML Rules, FIU-IND FAQ, RBI Fraud Risk Management Directions 2026) and regulatory radar | Real public texts, downloaded at build time. 121 of 121 checks pass (`wapsi.search.check_citations`, 2026-09-29): 32 citation quotes, 33 facts and 52 radar quotes are found word for word, and 3 judgments are cited by URL only. |
 | Bank data: customers, accounts, transactions, complaints | **Synthetic** (`wapsi.synth`, `wapsi.fixtures.showcase`) |
 | Other banks' transactions ("CFCFRMS responses") | **Simulated** (`Ledger.consortium_transactions`); Wapsi is a simulated CFCFRMS interface and labels every CFCFRMS action so |
 | RBI draft SOP on money-mule accounts (11 Sep 2026) | **DRAFT**, tracked on the regulatory radar, never applied |
 | DoT FRI grades, MuleHunter-style scores, prior NCRP report counts | **Synthetic**, generated from the true labels with noise |
 | LLM in every committed evaluation | **Offline stand-in** (`FakeLLM`) |
+| Voice notes | **Synthetic**: six text-to-speech readings of synthetic scripts. The committed tests use the offline model's expected answers; Gemini's request format is tested with a fake client. Accuracy on real, noisy Hinglish audio is **not measured** |
+| Agent trace | Working code. The local app shows a **recorded offline run** (real ADK app, tools and guards; scripted model). Live Gemini runs are recorded only by the Google Cloud edition, which is not deployed yet. A traced voice-intake step keeps the caller's name in its redacted raw result (name masking is by key) |
 | Placing a lien, posting to CFCFRMS, filing with FIU-IND | **Not built.** Approvals create action *records* only. |
 | Sign-in and identity | **Not in the core.** The role is a string given by the caller. |
 

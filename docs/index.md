@@ -85,6 +85,12 @@ flowchart TB
 9. **Watches the rules.** A read-only regulatory change radar sets new and pending rules (among them the RBI draft
    SOP on money-mule accounts of 11 Sep 2026, a **DRAFT**) against the SOP and shows what each would change for a
    case, for a human to review.
+10. **Takes a victim's voice note.** A Hinglish, Hindi or English voice note becomes a transcript, an English
+    translation and complaint fields. Every number in it is a claim reconciled with the ledger; spoken
+    instructions are quoted, never followed; only a ledger match opens a case ([Voice intake](voice-intake.md)).
+11. **Shows what the AI agent did.** Every tool call the agent made on a case, with the guard and verifier verdicts
+    around it, is recorded, redacted and sealed into the case's audit log, and shown in the Case Room's Agent trace
+    tab ([User guide](user-guide.md#agent-trace-tab)).
 
 ## Showcase case: whole-account freeze vs Wapsi
 
@@ -126,7 +132,7 @@ All results come from synthetic data. [Evaluation](evaluation.md) explains the m
 | Audit log tamper drill | 6 of 6 tampering attempts on a 40-event hash-chained case log detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout (151 texts written without seeing the rules) | precision 0.9661, recall 0.75. The guard is a warning layer: template-bound drafts and the verifier are the real defence | `evals/reports/guard-latest.json` |
 | Speed (demo world, laptop, stub LLM) | p95 0.72 s per case, trace to verified drafts | `evals/reports/demo.json` |
-| Test suite | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Test suite | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
 ## One core, two editions
 

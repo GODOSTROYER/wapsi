@@ -108,11 +108,13 @@ Grievance Redressal* (02.01.2026). "SOP 12(x)" means Para 12, clause (x).
 | Term | Meaning |
 |---|---|
 | **Account-level exception** | The only route to account-level action: an officer's request with at least one reason from the closed `AccountLevelReason` list, approved by a different supervisor. Disposition `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`; the amount-specific hold stays the recoverable figure ([ADR 0009](adr/0009-account-level-hold-as-recorded-exception.md)). |
-| **Anchor** | A checkpoint of a case's audit log (event count and head hash) kept outside the log, so truncation and wholesale re-hashing are detectable (`wapsi.audit.ChainAnchor`). |
+| **Agent trace** | The record of one AI agent run: the officer's message, every model turn and every tool call in order, with redacted arguments, a result summary taken from the tool's own result, latency, status and the guard and verifier verdicts around it, plus reply grounding. Stored as an `agent_trace` audit event on each case the run touched and shown in the Case Room's Agent trace tab (`wapsi.agenttrace`). |
+| **Anchor** | A checkpoint of a case's audit log (event count and head hash) kept outside the log, so truncation and wholesale re-hashing are detectable (`wapsi.audit.ChainAnchor`). In the Google Cloud edition it is the Firestore document `audit_anchors/{case_id}`, advanced in the same transaction as each new event. |
 | **Audit event** | A record of each step (case opened, draft verified, approved, action taken) with actor, role and time (`AuditEvent`), sealed into the case's hash chain. |
 | **Baseline freeze** | The whole-account freeze baseline: the total balance of every home-bank account that received victim money. It is what freezing them all would lock up (`HoldPlan.baseline_freeze_amount`), shown next to Wapsi's hold for comparison, never as a recommendation. |
 | **Case** | One or more complaints traced together. Complaints join one case when their money credits the same account, or when one victim's account received another complaint's money (`group_complaints()`). |
 | **Cash-out / exit** | Money leaving the banking system through an ATM or to a crypto exchange (`TerminalKind.ATM_CASH_OUT`, `CRYPTO_EXIT`). Nothing is left to hold. Disposition `CASHED_OUT`. |
+| **Claim (voice intake)** | Anything a victim says in a voice note: an amount, a UTR, a date, account digits, a phone, a name. A claim is shown with its confidence and reconciled with the ledger; it never supplies a figure to a hold or a draft (`wapsi.intake`). |
 | **Clock** | A deadline Wapsi tracks for a case, such as `STR_DUE`, `HOLD_LAPSE` or `FORWARD_HOLD_REVIEW`, with status `OPEN`, `WARNING`, `OVERDUE` or `DONE` (`src/wapsi/domain/clocks.py`). `Clock.notes` says how it was counted. |
 | **Consortium follow** | Following money into other banks' accounts through simulated CFCFRMS responses (`TraceConfig.follow_consortium`). |
 | **Disposition** | Wapsi's decision for one account: `HOLD_AMOUNT`, `HOLD_AMOUNT_NO_ESCALATION`, `HOLD_AMOUNT_INTERMEDIARY`, `HOLD_IN_POOL`, `FORWARD_HOLD`, `NO_HOLD_UPDATE_ONLY`, `OUTBOUND_CFCFRMS_REQUEST`, `CASHED_OUT` or `NO_ACTION`, plus `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD` after an approved exception. `ESCALATE_S106_CANDIDATE` is reserved and never emitted. |
@@ -122,6 +124,7 @@ Grievance Redressal* (02.01.2026). "SOP 12(x)" means Para 12, clause (x).
 | **Golden set** | Synthetic cases with known right answers, produced by an independent reference implementation (`src/wapsi/synth/reference.py`), used by `evals/harness.py`. |
 | **Hard world** | A demo-sized synthetic world with five realistic confounders (sleeper mules, task-scam victim chains, a salary pool, a festival seller, same-second relays) and hard-mode noise on every typology (`uv run python -m wapsi.synth --size hard`). |
 | **Hash chain** | The case's audit log as linked SHA-256 hashes: each event's hash covers its position, time, actor, role, type, case, a digest of its content and the previous hash (`wapsi.audit`). Editing, deleting or reordering an event breaks the chain. |
+| **Hinglish** | Hindi and English mixed in one sentence, as many victims speak ("maine IMPS se chaar lakh assi hazaar rupaye bhej diye"). Voice intake transcribes it in Roman script as spoken and translates it to English (language code `hi-en`). |
 | **Holdable** | Victim money still sitting in home-bank accounts, other than nodal / pool / escrow accounts (counted as `intermediary`) and merchant money that paid for delivered goods (counted as `merchant_settled`) (`TraceTotals.holdable`). In Showcase 1 it is ₹1,23,648.00. |
 | **Home bank** | The bank running Wapsi. In the synthetic data it is `HB01`. |
 | **Identifiable amount** | For a police / LEA hold request: `min(plan hold for the account, victim money carried by the cited credits, amount requested)`, the most Wapsi will hold on it (`wapsi.verify.lea_request`). |
@@ -132,8 +135,10 @@ Grievance Redressal* (02.01.2026). "SOP 12(x)" means Para 12, clause (x).
 | **Over-hold** | Any amount held beyond the victim money in the account. It must be ₹0.00 (`HoldPlan.over_hold_amount`; verifier check `over_hold`). |
 | **Pro-rata / FIFO / LIFO** | Ways to decide whose money leaves a mixed account. Pro-rata: in proportion to each victim's share (SOP 5(xiii), the default). FIFO: first in, first out. LIFO: last in, first out (`ApportionmentRule`). |
 | **Reason code** | A machine-readable tag on a decision, such as `FORWARD_HOLD_FIRST_LAYER`, `ESCALATE_S106_CANDIDATE`, `HOLD_CAPPED_AT_BALANCE`, `NO_SUSPENSION_OR_SEIZURE`, `ROLE_UNKNOWN`, `VICTIM_ACCOUNT_ON_TRAIL`, `UNWITTING_CONDUIT`, `STR_RECOMMENDED_OFFICER_DECISION`, `OFFICER_REQUESTED_EXCEPTION` or `SUPERVISOR_APPROVED_EXCEPTION`. |
+| **Reconciliation (voice intake)** | Checking each claim in a voice note against the ledger: `MATCHED`, `MISMATCH` (the ledger value is shown and is the one used) or `NOT_FOUND` (verify before acting). A claimed UTR on a reported transfer identifies the complaint; otherwise three independent agreements and a single best complaint are needed, and an amount alone never identifies one (`wapsi.intake.reconcile`). |
 | **Recoverable** | Money that can go back to victims: home-bank holds plus outbound request amounts (`total_recoverable`, `per_victim_recoverable`). Forward holds are excluded. |
 | **Regulatory radar** | A curated, read-only diff between the SOP Wapsi follows and new or pending rules, with verbatim quotes and per-case findings for a human to review (`data/docs/reg_radar.json`, `wapsi.domain.regradar`, the Regulatory Radar page). It never edits a plan, clock, draft or citation. |
+| **Reply grounding** | The agent-trace check that every rupee amount and account number in the agent's reply appears in a tool result (`wapsi.agenttrace.summarize.reply_grounding`). |
 | **requires_human** | A flag on a decision that a person must review it before anything is done: escalation flags, unknown roles, victim accounts on the trail, unwitting conduits and approved account-level exceptions. |
 | **Showcase** | Two hand-computed synthetic cases in `src/wapsi/fixtures/showcase.py`. Every module must reproduce their numbers. |
 | **Simulated CFCFRMS interface** | What Wapsi is towards CFCFRMS: it prepares updates and requests and records them, but sends nothing to the portal; the nodal officer submits there. Every view and draft that shows a CFCFRMS action says so. |
@@ -145,6 +150,7 @@ Grievance Redressal* (02.01.2026). "SOP 12(x)" means Para 12, clause (x).
 | **Typology** | A fraud pattern in the synthetic world: `T1_FANOUT_CASHOUT` to `T10_NODAL_POOL` in every world, plus `T11_SLEEPER_MULE` to `T15_INSTANT_RELAY` in the hard world. |
 | **Unlocated** | Victim money the trace could not place. In the showcase it is ₹0.00 (`TraceTotals.unlocated`). |
 | **Verifier** | The checks every draft must pass before approval: numbers, citations, policy rules and untrusted-text screening (`src/wapsi/verify/`). |
+| **Voice intake** | Turning a victim's voice note (WAV, MP3, M4A, OGG / Opus or WebM, up to 15 MB) into a transcript, an English translation and complaint fields with one schema-bound multimodal call, then masking the phone, screening the text and reconciling every claim with the ledger. Only a ledger match can open a case (`wapsi.intake.intake_voice_note`; the Voice Intake page). |
 
 ## Platforms and events
 
@@ -154,4 +160,8 @@ Wapsi ships one portable core and two platform editions. See [Editions](editions
 |---|---|
 | **ADK** | Google's Agent Development Kit. The Google Cloud edition runs ADK agents on Cloud Run (`editions/gcp/README.md`). |
 | **AMD Instinct MI300X / ROCm** | AMD's data-centre GPU and its open GPU software stack. The AMD edition serves open models with vLLM on ROCm on a single MI300X (`editions/amd/README.md`). |
+| **Firestore** | Google Cloud's document database. The Google Cloud edition stores cases there (`FirestoreCaseStore`), with each audit event a create-only document sealed in a transaction. |
+| **Gemini** | Google's multimodal model family. In the Google Cloud edition it drives the ADK agent, reads voice notes and complaint documents, and writes draft prose around slot placeholders; it never supplies a number. |
+| **IAP** | Identity-Aware Proxy: Google Cloud's sign-in layer in front of Cloud Run. Its `X-Goog-Authenticated-User-Email` header names the user, which sets the role and scopes who may read agent traces. |
+| **Model Armor** | Google Cloud's prompt and response screening service. Optional in the Google Cloud edition (`ModelArmorGuard`), always combined with `RulesGuard`, which takes over if Model Armor fails. |
 | **Streamlit** | The Python web framework used for Wapsi's officer UI (`ui/app.py`), shared by both editions. |
