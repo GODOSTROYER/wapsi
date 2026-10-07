@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from ui.data_source import Outcome, ShowcaseDataSource, build_showcase_bundles, doc_search
-from wapsi.audit.chain import append_event, chain_extend
+from wapsi.audit.chain import ChainReport, append_event, chain_extend
 from wapsi.models import ApprovalDecision, AuditEvent, CaseBundle
 from wapsi.timeutil import utcnow
 
@@ -61,14 +61,42 @@ class CaseStoreDataSource(ShowcaseDataSource):
     def append_audit(self, case_id: str | None, event: AuditEvent) -> None:
         super().append_audit(case_id, event)
         if case_id and case_id in self._bundles:
-            # store the link just sealed into the session's chain, not the unsealed original: a store that keeps
-            # events as given (Firestore) would otherwise hold an unsealed event (the chain reads as broken) and,
-            # on the next put_bundle, a second, sealed copy of it
-            sealed = self._bundles[case_id].audit[-1].model_copy(deep=True)
+            # hand the store the link just sealed into the session's chain; the store seals it onto its own head
+            # (Firestore and the in-memory store both do) and stamps it with the seal it recorded (the receipt)
+            local = self._bundles[case_id].audit[-1]
+            sealed = local.model_copy(deep=True)
             try:
                 self.services.store.append_audit(case_id, sealed)
             except Exception:  # noqa: BLE001
                 log.exception("could not append audit for %s", case_id)
+                return
+            if (sealed.seq, sealed.hash) != (local.seq, local.hash):
+                # the store holds events this session has not seen (agents, the Pub/Sub pipeline): catch up, so
+                # the page shows the store's chain
+                self._catch_up(case_id)
+
+    def _catch_up(self, case_id: str) -> None:
+        try:
+            fresh = self.services.store.get_bundle(case_id)
+        except Exception:  # noqa: BLE001
+            log.exception("could not re-read case %s", case_id)
+            return
+        if fresh is not None:
+            self._bundles[case_id] = fresh
+
+    def verify_audit(self, case_id: str | None) -> ChainReport:
+        """A case's chain as the case store holds it, checked against the store's anchor (Firestore:
+        ``audit_anchors/{case_id}``), so the audit page's badge reports what is in production, not the session's
+        copy. Session-level events (``None``) and cases the store does not hold are verified in the session."""
+        verify = getattr(self.services.store, "verify_audit", None)
+        if case_id is not None and callable(verify):
+            try:
+                return verify(case_id)
+            except KeyError:
+                pass  # not in the store (yet)
+            except Exception:  # noqa: BLE001 - the page falls back to the session's copy; log for the operator
+                log.exception("could not verify the stored audit chain of %s", case_id)
+        return super().verify_audit(case_id)
 
     def run_pipeline(self, case_id: str, *, actor: str, role: str) -> Outcome:
         """Re-run the pipeline with the edition's LLM (Gemini / Gemma) and guard, then persist."""

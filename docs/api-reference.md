@@ -1284,7 +1284,9 @@ wapsi.adapters.memory.RecordingActionSink()
 `src/wapsi/adapters/` also contains `BigQueryLedger` (`bigquery_ledger.py`), `FirestoreCaseStore`
 (`firestore_store.py`), `GeminiLLM` (`gemini_llm.py`) and `ModelArmorGuard` (`model_armor_guard.py`). They need
 the `gcp` extra and are documented with the edition in [`editions/gcp/README.md`](../editions/gcp/README.md).
-`FirestoreCaseStore` does not seal the audit chain yet.
+`FirestoreCaseStore` seals the audit chain like `InMemoryCaseStore`: each append is one Firestore transaction that
+reads the case's anchor (`audit_anchors/{case_id}`, outside the log), creates `cases/{case_id}/audit/{seq:010d}`
+and advances the anchor; `audit_anchor(case_id)` and `verify_audit(case_id)` work as above.
 
 ### Snowflake adapters
 

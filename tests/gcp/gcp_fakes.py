@@ -3,15 +3,19 @@
 ``SqliteBigQuery``   executes the adapter's BigQuery SQL on SQLite after a small, explicit dialect translation
                      (table names, ``IN UNNEST(@p)``, ``STRPOS``, ``@p``) using the *real* query parameter objects
                      from ``google.cloud.bigquery``, so SQL logic and visibility semantics are really exercised.
-``FakeFirestore``    in-memory documents/collections/batches with Firestore's 1 MiB document and 500-write limits.
+``FakeFirestore``    in-memory documents/collections/batches with Firestore's 1 MiB document and 500-write limits,
+                     and serializable transactions driven by the real ``google.cloud.firestore.transactional``.
 """
 
 from __future__ import annotations
 
 import copy
+import itertools
 import json
 import re
 import sqlite3
+import threading
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -121,6 +125,7 @@ def load_ledger_into(fake: SqliteBigQuery, ledger: Any) -> None:
 # --------------------------------------------------------------------------- Firestore
 
 MAX_DOC_BYTES = 1_048_576
+MAX_COMMIT_WRITES = 500
 
 
 def doc_size(value: Any) -> int:
@@ -156,15 +161,20 @@ class FakeDocRef:
         self.path = path
         self.id = path.rsplit("/", 1)[-1]
 
-    def get(self) -> FakeSnapshot:
-        self._client.reads += 1
-        return FakeSnapshot(self.id, self._client.docs.get(self.path))
+    def get(self, field_paths: Any = None, transaction: FakeTransaction | None = None) -> FakeSnapshot:
+        if transaction is not None:
+            return FakeSnapshot(self.id, transaction._read_doc(self.path))
+        with self._client.lock:
+            self._client.reads += 1
+            return FakeSnapshot(self.id, copy.deepcopy(self._client.docs.get(self.path)))
 
     def set(self, data: dict[str, Any]) -> None:
-        self._client._write(self.path, data)
+        with self._client.lock:
+            self._client._write(self.path, data)
 
     def delete(self) -> None:
-        self._client.docs.pop(self.path, None)
+        with self._client.lock:
+            self._client._delete(self.path)
 
     def collection(self, name: str) -> FakeCollection:
         return FakeCollection(self._client, f"{self.path}/{name}")
@@ -178,10 +188,16 @@ class FakeCollection:
     def document(self, doc_id: str) -> FakeDocRef:
         return FakeDocRef(self._client, f"{self.path}/{doc_id}")
 
-    def stream(self) -> list[FakeSnapshot]:
+    def stream(self, transaction: FakeTransaction | None = None) -> list[FakeSnapshot]:
+        """Direct children in document-id order (Firestore's default order)."""
+        if transaction is not None:
+            rows = transaction._read_collection(self.path)
+        else:
+            with self._client.lock:
+                rows = self._client._children(self.path)
+                self._client.reads += max(len(rows), 1)
         prefix = self.path + "/"
-        return [FakeSnapshot(p[len(prefix):], copy.deepcopy(d)) for p, d in sorted(self._client.docs.items())
-                if p.startswith(prefix) and "/" not in p[len(prefix):]]
+        return [FakeSnapshot(p[len(prefix):], d) for p, d in rows]
 
 
 class FakeBatch:
@@ -196,33 +212,187 @@ class FakeBatch:
         self._ops.append(("delete", ref.path, None))
 
     def commit(self) -> None:
-        if len(self._ops) > 500:
+        if len(self._ops) > MAX_COMMIT_WRITES:
             raise ValueError("a batch can contain at most 500 writes")
-        for op, path, data in self._ops:
-            if op == "set":
-                self._client._write(path, data)
-            else:
-                self._client.docs.pop(path, None)
-        self._client.commits += 1
+        with self._client.lock:
+            self._client._apply(self._ops)
+            self._client.commits += 1
         self._ops = []
+
+
+class FakeTransaction:
+    """A Firestore transaction with the surface ``google.cloud.firestore.transactional`` drives (``_begin``,
+    ``_commit``, ``_rollback``, ``_clean_up``, ``_max_attempts``, ``_read_only``), so the store runs under the
+    real decorator and its real retry loop.
+
+    Serializable, optimistic concurrency: ``_commit`` raises ``google.api_core.exceptions.Aborted`` (which the
+    decorator retries) when any document or collection the transaction read has changed since it was read, and
+    ``AlreadyExists`` (not retried) when ``create`` targets an existing document. Writes are buffered and applied
+    atomically; reads after a write raise, as in the real client. Hooks on the client let tests interleave a
+    competing commit (``before_commit``) or lose the response of a commit that went through (``after_commit``).
+    """
+
+    _ids = itertools.count(1)
+
+    def __init__(self, client: FakeFirestore, max_attempts: int = 5, read_only: bool = False) -> None:
+        self._client = client
+        self._max_attempts = max_attempts
+        self._read_only = read_only
+        self._id: bytes | None = None
+        self._write_pbs: list[tuple[str, str, Any]] = []
+        self._doc_reads: dict[str, int] = {}
+        self._coll_reads: dict[str, frozenset[tuple[str, int]]] = {}
+
+    @property
+    def in_progress(self) -> bool:
+        return self._id is not None
+
+    @property
+    def id(self) -> bytes | None:
+        return self._id
+
+    def _clean_up(self) -> None:
+        self._write_pbs = []
+        self._doc_reads = {}
+        self._coll_reads = {}
+        self._id = None
+
+    def _begin(self, retry_id: bytes | None = None) -> None:
+        if self.in_progress:
+            raise ValueError(f"The transaction has already begun. Current transaction ID: {self._id!r}.")
+        self._id = f"txn-{next(self._ids)}".encode()
+        with self._client.lock:
+            self._client.txn_begins += 1
+
+    def _check_read(self) -> None:
+        if not self.in_progress:
+            raise ValueError("read in a transaction that has not begun")
+        if self._write_pbs:
+            raise ValueError("Attempted read after write in a transaction.")
+
+    def _read_doc(self, path: str) -> dict[str, Any] | None:
+        self._check_read()
+        with self._client.lock:
+            self._client.reads += 1
+            self._doc_reads.setdefault(path, self._client.versions.get(path, 0))
+            return copy.deepcopy(self._client.docs.get(path))
+
+    def _read_collection(self, path: str) -> list[tuple[str, dict[str, Any]]]:
+        self._check_read()
+        with self._client.lock:
+            rows = self._client._children(path)
+            self._client.reads += max(len(rows), 1)
+            self._coll_reads.setdefault(path, self._client._signature(path))
+            return rows
+
+    def _buffer(self, op: str, ref: FakeDocRef, data: Any) -> None:
+        if self._read_only:
+            raise ValueError("Cannot perform write operation in read-only transaction.")
+        self._write_pbs.append((op, ref.path, copy.deepcopy(data)))
+
+    def create(self, ref: FakeDocRef, data: dict[str, Any]) -> None:
+        self._buffer("create", ref, data)
+
+    def set(self, ref: FakeDocRef, data: dict[str, Any], merge: bool = False) -> None:
+        if merge:
+            raise NotImplementedError("merge writes are not used by Wapsi")
+        self._buffer("set", ref, data)
+
+    def delete(self, ref: FakeDocRef) -> None:
+        self._buffer("delete", ref, None)
+
+    def _commit(self) -> list[Any]:
+        from google.api_core import exceptions
+
+        if not self.in_progress:
+            raise ValueError("The transaction has no transaction ID, so it cannot be committed.")
+        hook = self._client.before_commit
+        if hook is not None:
+            hook(self)  # outside the lock: the hook may commit a competing transaction
+        with self._client.lock:
+            if len(self._write_pbs) > MAX_COMMIT_WRITES:
+                raise exceptions.InvalidArgument("a transaction can contain at most 500 writes")
+            changed = [p for p, v in self._doc_reads.items() if self._client.versions.get(p, 0) != v]
+            changed += [p for p, sig in self._coll_reads.items() if self._client._signature(p) != sig]
+            if changed:
+                self._client.aborts += 1
+                raise exceptions.Aborted(f"Transaction contention on {changed[0]}; retry the transaction")
+            for op, path, _ in self._write_pbs:
+                if op == "create" and path in self._client.docs:
+                    raise exceptions.AlreadyExists(f"Document already exists: {path}")
+            self._client._apply(self._write_pbs)
+            self._client.commits += 1
+            self._client.txn_commits += 1
+        lost = self._client.after_commit
+        if lost is not None:
+            lost(self)  # e.g. raise ServiceUnavailable: the writes went through, the caller never heard back
+        self._clean_up()
+        return []
+
+    def _rollback(self) -> None:
+        if not self.in_progress:
+            raise ValueError("The transaction has no transaction ID, so it cannot be rolled back.")
+        with self._client.lock:
+            self._client.rollbacks += 1
+        self._clean_up()
 
 
 class FakeFirestore:
     def __init__(self) -> None:
         self.docs: dict[str, dict[str, Any]] = {}
+        self.versions: dict[str, int] = {}  # path -> version of its last write (deletes bump it too)
+        self.lock = threading.RLock()
         self.commits = 0
+        self.txn_begins = 0
+        self.txn_commits = 0
+        self.aborts = 0
+        self.rollbacks = 0
         self.reads = 0
         self.max_doc_bytes_seen = 0
+        self.before_commit: Callable[[FakeTransaction], None] | None = None
+        self.after_commit: Callable[[FakeTransaction], None] | None = None
+        self._clock = itertools.count(1)
 
+    # -- storage (callers hold self.lock)
     def _write(self, path: str, data: dict[str, Any]) -> None:
         size = doc_size(data) + len(path.encode("utf-8")) + 16
         if size > MAX_DOC_BYTES:
             raise ValueError(f"document {path} is {size} bytes (> 1 MiB)")
         self.max_doc_bytes_seen = max(self.max_doc_bytes_seen, size)
         self.docs[path] = copy.deepcopy(data)
+        self.versions[path] = next(self._clock)
 
+    def _delete(self, path: str) -> None:
+        if self.docs.pop(path, None) is not None:
+            self.versions[path] = next(self._clock)
+
+    def _apply(self, ops: list[tuple[str, str, Any]]) -> None:
+        """All or nothing: validate every write first, then apply."""
+        for op, path, data in ops:
+            if op != "delete" and doc_size(data) + len(path.encode("utf-8")) + 16 > MAX_DOC_BYTES:
+                raise ValueError(f"document {path} is larger than 1 MiB")
+        for op, path, data in ops:
+            if op == "delete":
+                self._delete(path)
+            else:
+                self._write(path, data)
+
+    def _children(self, path: str) -> list[tuple[str, dict[str, Any]]]:
+        prefix = path + "/"
+        return [(p, copy.deepcopy(d)) for p, d in sorted(self.docs.items())
+                if p.startswith(prefix) and "/" not in p[len(prefix):]]
+
+    def _signature(self, path: str) -> frozenset[tuple[str, int]]:
+        prefix = path + "/"
+        return frozenset((p, self.versions.get(p, 0)) for p in self.docs
+                         if p.startswith(prefix) and "/" not in p[len(prefix):])
+
+    # -- client surface
     def collection(self, name: str) -> FakeCollection:
         return FakeCollection(self, name)
 
     def batch(self) -> FakeBatch:
         return FakeBatch(self)
+
+    def transaction(self, max_attempts: int = 5, read_only: bool = False) -> FakeTransaction:
+        return FakeTransaction(self, max_attempts=max_attempts, read_only=read_only)

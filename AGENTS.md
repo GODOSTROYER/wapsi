@@ -166,8 +166,9 @@ uv run streamlit run ui/app.py             # local UI
   `wapsi.audit.chain_extend(old, new, case_id=)` (merge a re-run's events after the history),
   `wapsi.audit.extend_stored(stored, incoming, case_id=)` (a store's append-only `put_bundle` rule: recorded
   events are never dropped, changed or reordered). Hash = SHA-256 over canonical JSON of (seq, ts, actor, role,
-  event_type, case_id, payload_digest, prev_hash); `GENESIS_HASH` starts every chain. `InMemoryCaseStore` and the
-  AMD `FileCaseStore` chain on write; Firestore / Snowflake stores do not seal yet (their logs verify as "not chained").
+  event_type, case_id, payload_digest, prev_hash); `GENESIS_HASH` starts every chain. `InMemoryCaseStore`,
+  `FirestoreCaseStore` (one Firestore transaction per append; anchor in `audit_anchors/{case_id}`; `verify_audit`)
+  and the AMD `FileCaseStore` chain on write; the Snowflake store does not seal yet (its logs verify as "not chained").
 
 ## Originality and event boundaries
 - AI Builder Cup: only work created on or after 2026-09-01 (repo created 2026-09-16).

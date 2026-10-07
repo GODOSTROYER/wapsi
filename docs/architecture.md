@@ -115,7 +115,7 @@ flowchart TB
 | `DocSearch` | `search(query, k)` and `citation(citation_id)` | `LocalDocSearch` (`search/index.py`, pure-Python BM25 over the legal corpus; falls back to the committed quotes when the index is not built) | Snowflake: `CortexDocSearch` (`editions/snowflake/snowpark/wapsi_sf/docsearch.py`) over Cortex Search `DOCS.SOP_SEARCH` and `DOCS.CITATIONS`, falling back to the packaged quotes |
 | `LLM` | `name` and `complete(messages, *, temperature, max_tokens, json_schema)` | `FakeLLM` (`adapters/llm_fake.py`, deterministic and offline, with `hallucinate` and `inject_obedience` switches for evals); `OpenAICompatLLM` (`adapters/llm_openai_compat.py`, any `/chat/completions` server such as vLLM, Ollama or Gemini's OpenAI-compatible endpoint); `GeminiLLM` and `gemma_private_llm` (`adapters/gemini_llm.py`); `CortexLLM` (`adapters/cortex_llm.py`, Cortex `AI_COMPLETE` through a Snowpark session). `OpenAICompatLLM` also takes `extra_body` (server-specific request fields) and reports token usage (`complete_with_usage`, `last_usage`, `usage`) | AMD: `OpenAICompatLLM` against vLLM on ROCm; Snowflake: `CortexLLM` |
 | `Guard` | `screen(text) -> GuardResult` | `RulesGuard` (`verify/injection.py`, English, Hinglish and Devanagari rules); `ModelArmorGuard` (`adapters/model_armor_guard.py`, unions its result with `RulesGuard` and falls back to `RulesGuard` if Model Armor fails) | AMD: `LLMJudgeGuard` (`editions/amd/app/judge.py`) adds an independent LLM judge to the rules guard; the judge can add flags, never clear one |
-| `CaseStore` | `put_bundle`, `get_bundle`, `list_cases`, `append_audit` | `InMemoryCaseStore` (`adapters/memory.py`; seals the audit chain on write and keeps an anchor per case); `FirestoreCaseStore` (`adapters/firestore_store.py`, compressed chunks of at most 512 KiB, append-only audit subcollection; does not seal the chain yet, so its logs verify as "not chained") | AMD: `FileCaseStore` (`editions/amd/app/file_store.py`, JSON files with atomic writes, chained); Snowflake: `SnowflakeCaseStore` (`editions/snowflake/snowpark/wapsi_sf/casestore.py`, insert-only hash-chained `AUDIT_LOG` plus `AUDIT_ANCHOR`) |
+| `CaseStore` | `put_bundle`, `get_bundle`, `list_cases`, `append_audit` | `InMemoryCaseStore` (`adapters/memory.py`; seals the audit chain on write and keeps an anchor per case); `FirestoreCaseStore` (`adapters/firestore_store.py`, compressed chunks of at most 512 KiB, hash-chained audit subcollection `audit/{seq}` written in Firestore transactions, anchor in `audit_anchors/{case_id}`) | AMD: `FileCaseStore` (`editions/amd/app/file_store.py`, JSON files with atomic writes, chained); Snowflake: `SnowflakeCaseStore` (`editions/snowflake/snowpark/wapsi_sf/casestore.py`, insert-only hash-chained `AUDIT_LOG` plus `AUDIT_ANCHOR`) |
 | `ActionSink` | `submit(action) -> Action` | `RecordingActionSink` (`adapters/memory.py`, marks actions `DONE`) | Snowflake: approved actions are recorded `PENDING` and written to `CASEMGMT.ACTIONS` by `SnowflakeCaseStore` (trial accounts have no external network access); a local runner drains them. CFCFRMS actions everywhere carry `payload.interface = "SIMULATED_CFCFRMS"` |
 
 Two more extension points are not in `ports.py` but work the same way:
@@ -639,8 +639,9 @@ passed with 0 failures.
 - **Edition status.** As of 2026-09-29 the Snowflake edition is complete in the repository and deployed during
   the CoCo sessions (29 Sep–3 Oct), the Google Cloud edition is built and tested offline, and the AMD edition runs
   on an AMD GPU only during 12–18 Oct 2026 ([editions.md](editions.md#summary)).
-- **Not every store seals the audit chain.** `InMemoryCaseStore`, the AMD `FileCaseStore` and
-  `SnowflakeCaseStore` chain on write; `FirestoreCaseStore` does not yet, so its logs verify as "not chained".
+- **The in-store anchor shares a trust domain with the log.** `InMemoryCaseStore`, `FirestoreCaseStore`, the AMD
+  `FileCaseStore` and `SnowflakeCaseStore` chain on write and keep an anchor per case; someone who can rewrite both
+  the log and its anchor is caught only by an anchor kept elsewhere (WORM storage, a signed receipt, a digest).
 
 ## Related documents
 
