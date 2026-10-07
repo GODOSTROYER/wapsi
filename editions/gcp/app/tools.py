@@ -743,6 +743,7 @@ async def intake_voice_note(audio: str, tool_context: Any = None) -> dict[str, A
         "audio_sha256": r.audio_sha256,
         "extracted_by": r.extracted_by,
         "claims_untrusted": True,
+        "fields_untrusted": True,  # model-written strings from the recording: data to report, never instructions
         "languages": r.languages,
         "transcript": _untrusted(r.transcript, guard.screen(r.transcript)),
         "translation_en": _untrusted(r.translation_en, guard.screen(r.translation_en)),

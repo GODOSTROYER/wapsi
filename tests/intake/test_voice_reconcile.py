@@ -175,3 +175,72 @@ def test_helpers():
     assert has_time and when is not None and when.tzinfo is not None and when.hour == 5  # naive = IST
     assert parse_claimed_dt("2026-09-10")[1] is False
     assert parse_claimed_dt("") == (None, False)
+
+
+def test_a_transfer_backs_only_one_claimed_payment(ledger):
+    """The caller says the same payment twice; the ledger has one such transfer, so only one claim matches."""
+    rows, matched = reconcile(
+        ledger, fields={}, amounts=[_amt(480000), _amt(480000)], refs=[_ref("425310000001")]
+    )
+    assert matched == [sc.N1]
+    first, second = _by_key(rows, "amount")
+    assert first.status == MATCHED and "UTR 425310000001" in first.ledger
+    assert second.status == MISMATCH and "counted once" in second.note and "₹4,80,000.00" in second.ledger
+
+
+def test_other_amounts_are_not_payments(ledger):
+    """A balance or a fee demanded is shown, never a red mismatch, and is no evidence for matching."""
+    rows, matched = reconcile(
+        ledger, fields={}, amounts=[_amt(2000, "OTHER"), _amt(480000, "OTHER")], refs=[_ref("425310000001")]
+    )
+    other, same = _by_key(rows, "amount")
+    assert other.status == NOT_FOUND and "Not a payment" in other.note and other.ledger == "—"
+    assert same.status == MATCHED and same.ncrp_id == sc.N1
+    fields = {"victim_name": "Meera Joshi", "date_time": "2026-09-10"}
+    assert reconcile(ledger, fields=fields, amounts=[_amt(480000, "OTHER")], refs=[])[1] == []
+    assert reconcile(ledger, fields=fields, amounts=[_amt(480000)], refs=[])[1] == [sc.N1]
+
+
+class _TwoPayments:
+    """The showcase ledger, but Arjun's complaint reports two transfers (₹1,00,000 + ₹10,000 = ₹1,10,000)."""
+
+    def __init__(self, base) -> None:
+        self.base = base
+        c = base.complaint(sc.N2)
+        self.c = c.model_copy(update={"amount_claimed": 110000.0})
+        t = base.complaint_transactions(sc.N2)[0]
+        self.txns = [
+            t,
+            t.model_copy(update={"txn_id": t.txn_id + "-B", "amount": 10000.0, "utr": "425320000199"}),
+        ]
+
+    def complaints(self):
+        return [self.c]
+
+    def complaint_transactions(self, ncrp_id):
+        return list(self.txns) if ncrp_id == sc.N2 else []
+
+    def banks(self):
+        return self.base.banks()
+
+    def accounts(self, ids):
+        return self.base.accounts(ids)
+
+
+def test_complaint_total_claimed_as_one_payment_matches_on_the_complaint(ledger):
+    two = _TwoPayments(ledger)
+    rows, matched = reconcile(
+        two,
+        fields={"account_last4": "0002"},
+        amounts=[_amt(110000), _amt(10000), _amt(110000, "TOTAL_LOSS")],
+        refs=[_ref("425320000101")],
+    )
+    assert matched == [sc.N2]
+    lump, small, total = _by_key(rows, "amount")
+    assert (
+        lump.status == MATCHED
+        and lump.ledger == "₹1,10,000.00 on the NCRP complaint"
+        and lump.ncrp_id == sc.N2
+    )
+    assert small.status == MATCHED and "UTR 425320000199" in small.ledger
+    assert total.status == MATCHED and total.ledger.startswith("₹1,10,000.00")

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
@@ -84,7 +85,7 @@ def ledger_index(ledger: Ledger) -> _Index:
     if hit is not None and hit[0] is ledger:
         return hit[1]
     complaints = {c.ncrp_id: c for c in ledger.complaints()}
-    transfers = {n: list(ledger.complaint_transactions(n)) for n in complaints}
+    transfers = _all_transfers(ledger, list(complaints))
     by_utr: dict[str, list[tuple[str, Transaction]]] = {}
     for n, txns in transfers.items():
         for t in txns:
@@ -100,6 +101,16 @@ def ledger_index(ledger: Ledger) -> _Index:
         _CACHE.clear()
     _CACHE[id(ledger)] = (ledger, idx)
     return idx
+
+
+def _all_transfers(ledger: Ledger, ncrp_ids: list[str]) -> dict[str, list[Transaction]]:
+    """Every complaint's reported transfers. One lookup per complaint: on a remote ledger (BigQuery on Cloud Run)
+    those run in parallel, so the first voice note waits seconds, not one round trip per complaint."""
+    if len(ncrp_ids) <= 4:
+        return {n: list(ledger.complaint_transactions(n)) for n in ncrp_ids}
+    with ThreadPoolExecutor(max_workers=min(16, len(ncrp_ids)), thread_name_prefix="wapsi-intake") as pool:
+        lists = list(pool.map(lambda n: list(ledger.complaint_transactions(n)), ncrp_ids))
+    return dict(zip(ncrp_ids, lists, strict=True))
 
 
 def _norm_ref(ref: str) -> str:
@@ -150,14 +161,16 @@ def _candidates(
     phone = fields.get("phone", "")
     name = fields.get("victim_name", "")
     when, _ = parse_claimed_dt(fields.get("date_time", ""))
+    # a balance or a fee demanded is no evidence of a payment
+    paid = [a for a in amounts if a.kind != "OTHER"]
     scores: dict[str, int] = {}
     for n, c in idx.complaints.items():
         txns = idx.transfers.get(n, [])
         hits: set[str] = set()
         if last4 and c.victim_account.endswith(last4):
             hits.add("last4")
-        if any(eq(a.value, t.amount) for a in amounts for t in txns) or any(
-            eq(a.value, c.amount_claimed) for a in amounts
+        if any(eq(a.value, t.amount) for a in paid for t in txns) or any(
+            eq(a.value, c.amount_claimed) for a in paid
         ):
             hits.add("amount")
         if phone and phone == c.victim_mobile:
@@ -216,6 +229,7 @@ def reconcile(
             )
 
     labels = {"TRANSFER": "Amount paid", "TOTAL_LOSS": "Total lost", "OTHER": "Amount mentioned"}
+    used: set[int] = set()  # a reported transfer backs at most one claimed payment ("das hazaar" said twice)
     for a in amounts:
         claimed = (
             fmt_inr(a.value) if a.currency.upper() in ("INR", "") else f"{a.currency} {r2(a.value):,.2f}"
@@ -263,8 +277,25 @@ def reconcile(
                 )
             )
             continue
-        hit = next(((n, t) for n, t in txns if eq(t.amount, a.value)), None)
+        same = [i for i, (_, t) in enumerate(txns) if eq(t.amount, a.value)]
+        if a.kind == "OTHER":  # a balance, a fee demanded, ...: not a payment, so it can only confirm one
+            rows.append(
+                ReconRow(
+                    key="amount",
+                    claim=label,
+                    claimed=claimed,
+                    ledger=_txn_text(txns[same[0]][1]) if same else "—",
+                    status=MATCHED if same else NOT_FOUND,
+                    ncrp_id=txns[same[0]][0] if same else None,
+                    money=True,
+                    note="" if same else "Not a payment the caller made: nothing in the ledger to compare.",
+                )
+            )
+            continue
+        free = [i for i in same if i not in used]
+        hit = txns[free[0]] if free else None
         if hit is not None:
+            used.add(free[0])
             rows.append(
                 ReconRow(
                     key="amount",
@@ -276,16 +307,30 @@ def reconcile(
                     money=True,
                 )
             )
-        elif any(eq(a.value, c.amount_claimed) for c in complaints):
+        elif not same and (c := next((c for c in complaints if eq(a.value, c.amount_claimed)), None)):
             rows.append(
                 ReconRow(
                     key="amount",
                     claim=label,
                     claimed=claimed,
-                    ledger=f"{claimed} on the NCRP complaint",
+                    ledger=f"{fmt_inr(c.amount_claimed)} on the NCRP complaint",
                     status=MATCHED,
-                    ncrp_id=first,
+                    ncrp_id=c.ncrp_id,
                     money=True,
+                )
+            )
+        elif same:  # the amount exists, but its only transfer(s) already back an earlier claim
+            rows.append(
+                ReconRow(
+                    key="amount",
+                    claim=label,
+                    claimed=claimed,
+                    ledger=", ".join(_txn_text(txns[i][1]) for i in same),
+                    status=MISMATCH,
+                    ncrp_id=txns[same[0]][0],
+                    money=True,
+                    note="The ledger has fewer transfers of this amount than the caller describes; each reported "
+                    "transfer is counted once.",
                 )
             )
         else:
@@ -423,6 +468,47 @@ def reconcile(
         [idx.bank_names.get(c.victim_account, "") for c in complaints],
         bank_match,
     )
+    sent_to = fields.get("beneficiary", "")
+    if sent_to:
+        to_accounts = list(dict.fromkeys(t.to_account for _, t in txns))
+        digits = re.sub(r"\D", "", sent_to)
+        if not txns:
+            rows.append(
+                ReconRow(
+                    key="beneficiary",
+                    claim="Sent to",
+                    claimed=sent_to,
+                    ledger="—",
+                    status=NOT_FOUND,
+                    note=_NO_MATCH + ".",
+                )
+            )
+        elif len(digits) < 4:  # a UPI id or a name: the ledger records the receiving account only
+            rows.append(
+                ReconRow(
+                    key="beneficiary",
+                    claim="Sent to",
+                    claimed=sent_to,
+                    ledger=", ".join(to_accounts),
+                    status=NOT_FOUND,
+                    ncrp_id=first,
+                    note="Only account numbers can be checked; the ledger's receiving account is shown.",
+                )
+            )
+        else:
+            hit_acct = next((a for a in to_accounts if re.sub(r"\D", "", a).endswith(digits)), None)
+            rows.append(
+                ReconRow(
+                    key="beneficiary",
+                    claim="Sent to",
+                    claimed=sent_to,
+                    ledger=hit_acct or ", ".join(to_accounts),
+                    status=MATCHED if hit_acct else MISMATCH,
+                    ncrp_id=first,
+                    note="" if hit_acct else "The ledger's receiving account is the one traced.",
+                )
+            )
+
     ftype = fields.get("fraud_type", "")
     if ftype and ftype not in ("UNKNOWN", "OTHER"):
         identity("fraud_type", "Fraud type", ftype, [c.category for c in complaints], lambda a, b: a == b)

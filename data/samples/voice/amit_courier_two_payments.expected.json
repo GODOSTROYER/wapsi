@@ -1,0 +1,25 @@
+{
+  "transcript": "Namaste, main Amit Gupta. Paanch August ko courier wala call aaya, bola parcel customs mein pakda gaya. Maine IMPS se do baar paisa bheja. Dopahar baarah baj kar aath minute par ek lakh gyarah hazaar, phir saade baarah baje ek lakh saintalis hazaar. Pehle wale ka UTR 6217 1205 9323. Total do lakh saath hazaar gaya. Account Sahyadri Co-operative Bank mein hai, last four 3358.",
+  "translation_en": "Hello, this is Amit Gupta. On 5 August a courier company called and said my parcel had been seized at customs. I sent money twice by IMPS: one lakh eleven thousand at 12:08 in the afternoon, then one lakh forty-seven thousand at half past twelve. The first one's UTR is 6217 1205 9323. In total two lakh sixty thousand is gone. My account is with Sahyadri Co-operative Bank, last four 3358.",
+  "languages": ["hi-en"],
+  "fields": {
+    "victim_name": {"value": "Amit Gupta", "confidence": 0.96},
+    "phone": {"value": "", "confidence": 0.0},
+    "bank": {"value": "Sahyadri Co-operative Bank", "confidence": 0.91},
+    "account_last4": {"value": "3358", "confidence": 0.87},
+    "date_time": {"value": "2026-08-05T12:08:00+05:30", "confidence": 0.86},
+    "payment_mode": {"value": "IMPS", "confidence": 0.95},
+    "fraud_type": {"value": "COURIER_SCAM", "confidence": 0.92},
+    "beneficiary": {"value": "", "confidence": 0.0},
+    "narrative": {"value": "A caller posing as a courier company said his parcel was held at customs; he paid twice by IMPS.", "confidence": 0.89}
+  },
+  "amounts": [
+    {"value": 111000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "ek lakh gyarah hazaar", "confidence": 0.93},
+    {"value": 147000, "currency": "INR", "kind": "TRANSFER", "spoken_as": "ek lakh saintalis hazaar", "confidence": 0.9},
+    {"value": 260000, "currency": "INR", "kind": "TOTAL_LOSS", "spoken_as": "do lakh saath hazaar", "confidence": 0.9}
+  ],
+  "txn_refs": [
+    {"ref": "621712059323", "kind": "UTR", "confidence": 0.9}
+  ],
+  "instruction_like": []
+}

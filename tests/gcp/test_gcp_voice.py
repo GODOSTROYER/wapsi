@@ -62,7 +62,7 @@ def test_tool_is_registered_on_the_intake_agent_with_a_clean_declaration(demo_se
 
 def test_demo_sample_is_read_reconciled_and_the_injection_quoted(demo_services, ctx_factory):
     r = _call(FATIMA, ctx_factory())
-    assert r["status"] == "ok" and r["claims_untrusted"] is True
+    assert r["status"] == "ok" and r["claims_untrusted"] is True and r["fields_untrusted"] is True
     assert r["matched_ncrp_ids"] == [sc.N3] and r["counts"] == {"MATCHED": 8, "MISMATCH": 0, "NOT_FOUND": 0}
     assert r["extracted_by"].startswith("fake-llm")
     inj = r["instruction_like"]

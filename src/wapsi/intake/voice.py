@@ -40,6 +40,9 @@ from wapsi.timeutil import IST, ensure_utc, fmt_ist, utcnow
 
 MAX_AUDIO_BYTES = 15 * 1024 * 1024  # Gemini inline requests are capped at 20 MB in total
 MAX_TRANSCRIPT_CHARS = 20_000
+# transcript + translation + fields for a 1-2 minute note, with room for a thinking model's reasoning tokens
+# (Gemini counts those against max_output_tokens; a truncated answer is invalid JSON and is retried)
+MAX_OUTPUT_TOKENS = 8192
 
 AUDIO_EXTENSIONS: dict[str, str] = {
     ".wav": "audio/wav",
@@ -61,6 +64,7 @@ FRAUD_TYPES = [
     "DIGITAL_ARREST",
     "INVESTMENT_SCAM",
     "TASK_SCAM",
+    "UTILITY_BILL_SCAM",
     "ONLINE_SHOPPING",
     "LOAN_APP",
     "SEXTORTION",
@@ -374,6 +378,8 @@ def mask_phone(raw: str) -> str:
     digits = re.sub(r"\D", "", raw or "")
     if len(digits) > 10 and digits.startswith("91"):
         digits = digits[-10:]
+    elif len(digits) == 11 and digits.startswith("0"):  # trunk prefix: 09812345621
+        digits = digits[1:]
     if not digits:
         return ""
     if len(digits) < 6:
@@ -464,7 +470,10 @@ class VoiceIntakeResult(BaseModel):
 _CLAIMED_KEYS = {"phone", "account_last4", "date_time", "beneficiary"}
 
 
-def _field_views(ext: VoiceExtraction) -> list[FieldView]:
+_FREE_TEXT_KEYS = ("victim_name", "bank", "beneficiary", "narrative")
+
+
+def _field_views(ext: VoiceExtraction, raw_phone: str = "") -> list[FieldView]:
     out: list[FieldView] = []
     for key, (label, _) in FIELD_SPECS.items():
         f: TextField = getattr(ext.fields, key)
@@ -473,6 +482,8 @@ def _field_views(ext: VoiceExtraction) -> list[FieldView]:
             value = mask_phone(value)
         elif key == "account_last4":
             value = re.sub(r"\D", "", value)[-4:]
+        elif key in _FREE_TEXT_KEYS:  # the caller's own number never leaks through a free-text field
+            value = _mask_in_text(value, raw_phone)
         if not value:
             continue
         display = value
@@ -578,7 +589,7 @@ def intake_voice_note(
         prompt=build_prompt(received),
         json_schema=VOICE_SCHEMA,
         temperature=0.0,
-        max_tokens=4096,
+        max_tokens=MAX_OUTPUT_TOKENS,
     )
     ext = validate_extraction(raw)
     elapsed = int((time.perf_counter() - t0) * 1000)
@@ -595,10 +606,13 @@ def intake_voice_note(
     ]
     amounts = [a for a in ext.amounts if a.value > 0]
 
-    guard_result = _screen(guard, [transcript, translation, narrative])
+    fields = _field_views(ext, raw_phone)
+    # every model-written string is untrusted: the transcript first (its sanitized text is what tools return),
+    # then the translation, the narrative and the other free-text fields (a name or bank can carry an order too)
+    field_text = [f.value for f in fields if f.key in _FREE_TEXT_KEYS and f.key != "narrative"]
+    guard_result = _screen(guard, [transcript, translation, narrative, *field_text])
     flagged_spans = _dedupe(guard_result.quoted_spans + instruction_like)
 
-    fields = _field_views(ext)
     rows, matched = reconcile(ledger, fields={f.key: f.value for f in fields}, amounts=amounts, refs=refs)
     return VoiceIntakeResult(
         filename=filename,

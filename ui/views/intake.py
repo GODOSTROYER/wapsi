@@ -65,6 +65,51 @@ def _human(code: str) -> str:
     return human_code(code) if code and code != "—" else code
 
 
+WORLD_LABELS = {"showcase": "showcase ledger", "demo": "demo world (synth seed 7)"}
+_IDS: dict[int, tuple[Any, frozenset[str]]] = {}
+
+
+def _ledger_ncrp_ids(ds: Any) -> frozenset[str] | None:
+    """NCRP ids in the active ledger (one lookup per ledger object, cached), or None when unknown."""
+    try:
+        ledger = ds.ledger() if ds is not None else None
+        if ledger is None:
+            return None
+        hit = _IDS.get(id(ledger))
+        if hit is None or hit[0] is not ledger:
+            hit = (ledger, frozenset(c.ncrp_id for c in ledger.complaints()))
+            if len(_IDS) > 8:
+                _IDS.clear()
+            _IDS[id(ledger)] = hit
+        return hit[1]
+    except Exception:  # noqa: BLE001 - ordering the samples is a nicety; never break the page over it
+        log.warning("could not list the ledger's complaints", exc_info=True)
+        return None
+
+
+# what the browser's <audio> element is told (Gemini gets the sniffed type itself)
+_PLAYBACK = {"audio/mp3": "audio/mpeg"}
+
+
+def _playback_mime(data: bytes, filename: str) -> tuple[str | None, str]:
+    """(MIME type for st.audio, error). The type comes from the bytes, never the name: st.audio needs a real type
+    for MP3 / OGG / M4A / WebM uploads, and a file that is not audio is refused before anything plays."""
+    from wapsi.intake.voice import MAX_AUDIO_BYTES, VoiceIntakeError, sniff_audio
+
+    if not data:
+        return None, "The recording is empty."
+    if len(data) > MAX_AUDIO_BYTES:
+        return (
+            None,
+            f"The recording is larger than {MAX_AUDIO_BYTES // (1024 * 1024)} MB; send a shorter one.",
+        )
+    try:
+        mime = sniff_audio(data, filename)
+    except VoiceIntakeError as exc:
+        return None, f"This file can't be used: {exc}."
+    return _PLAYBACK.get(mime, mime), ""
+
+
 def _model_label(llm: Any) -> tuple[str, str]:
     name = str(getattr(llm, "name", type(llm).__name__))
     if name.startswith(("gemini-api:", "vertex:")):
@@ -72,7 +117,7 @@ def _model_label(llm: Any) -> tuple[str, str]:
     return "Offline demo model · knows the bundled samples", "gray"
 
 
-def _audio_input(viewer: Any) -> tuple[bytes, str, str | None] | None:
+def _audio_input(viewer: Any, ctx_ds: Any = None) -> tuple[bytes, str, str | None] | None:
     """(audio bytes, file name, sample id) from the chosen source, or None while nothing is chosen."""
     from wapsi.intake.samples import load_samples
 
@@ -93,15 +138,31 @@ def _audio_input(viewer: Any) -> tuple[bytes, str, str | None] | None:
             value = ((samples[i].expected.get("fields") or {}).get("victim_name") or {}).get("value") or ""
             return [value] if value else []
 
+        known = _ledger_ncrp_ids(ctx_ds)
+        here = {i: known is None or set(s.ncrp_ids) <= known for i, s in samples.items()}
+
+        def label(i: str) -> str:
+            title = viewer.text(samples[i].title, names(i))
+            return title if here[i] else f"{title} · not in this ledger"
+
         sid = st.selectbox(
             "Sample voice note",
-            list(samples),
+            sorted(samples, key=lambda i: not here[i]),  # the ones this ledger can reconcile first
             key=K_SAMPLE,
-            format_func=lambda i: viewer.text(samples[i].title, names(i)),
-            help="Synthetic Hinglish voice notes read by an offline Windows voice. Each retells a "
-            "showcase complaint.",
+            format_func=label,
+            help="Synthetic Hinglish voice notes read by an offline Windows voice. Each retells a synthetic "
+            "complaint: from the showcase ledger or from the demo world the cloud deployment loads.",
         )
         s = samples[sid]
+        if not here[sid]:
+            md(
+                h.callout(
+                    f"This sample retells NCRP {', '.join(s.ncrp_ids)} from the {WORLD_LABELS.get(s.world, s.world)}, "
+                    "which this ledger does not hold, so none of its claims can match. Pick a sample listed "
+                    "first, or upload a note about a complaint in this ledger.",
+                    "warn",
+                )
+            )
         note = f"{s.duration_s:.0f} s · " if s.duration_s else ""
         md(f'<div class="wp-note">{h.esc(note)}{h.esc(viewer.text(s.notes, names(sid)))}</div>')
         with st.expander("What the recording says (synthetic script)"):
@@ -314,6 +375,8 @@ def _results(ctx: Ctx, r: Any) -> None:
             said, ledger = row.claimed, row.ledger
             if row.key == "victim_name":
                 said, ledger = v.name(said), (v.name(ledger) if ledger != "—" else ledger)
+            elif row.key == "phone":  # already masked in code; auditors see the last two digits only
+                said, ledger = v.mobile(said), (v.mobile(ledger) if ledger != "—" else ledger)
             elif row.key == "fraud_type":
                 said, ledger = _human(said), _human(ledger)
             sub = f'<span class="wp-note">{h.esc(row.note)}</span>' if row.note else None
@@ -420,12 +483,16 @@ def render(ctx: Ctx) -> None:
         )
     )
 
-    picked = _audio_input(ctx.viewer)
+    picked = _audio_input(ctx.viewer, ctx.ds)
     if picked is None:
         return
     data, filename, sample_id = picked
+    mime, problem = _playback_mime(data, filename)
+    if mime is None:
+        st.error(problem)
+        return
     digest = sha256_hex(data)
-    st.audio(data, format="audio/wav" if filename.lower().endswith(".wav") else None)
+    st.audio(data, format=mime)
     if st.button(
         "Transcribe and check",
         key="voice_run",

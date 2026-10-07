@@ -149,3 +149,66 @@ def test_voice_llm_switches_to_gemini_only_with_a_key(monkeypatch):
     assert llm.name.startswith("gemini-api:") and "test-key" not in repr(llm)
     monkeypatch.setenv("WAPSI_VOICE_OFFLINE", "1")
     assert voice_llm().name == "offline demo model"
+
+
+def test_playback_type_comes_from_the_bytes():
+    wav = (Path(__file__).resolve().parents[2] / "data/samples/voice/meera_impersonation.wav").read_bytes()
+    assert intake._playback_mime(wav, "x.ogg") == ("audio/wav", "")
+    assert intake._playback_mime(b"OggS\x00\x02" + b"\x00" * 60, "note.opus") == ("audio/ogg", "")
+    assert intake._playback_mime(b"ID3\x04" + b"\x00" * 60, "note.mp3") == ("audio/mpeg", "")
+    assert intake._playback_mime(b"\x00\x00\x00\x20ftypM4A " + b"\x00" * 60, "n.m4a") == ("audio/mp4", "")
+    assert intake._playback_mime(b"\x1a\x45\xdf\xa3" + b"\x00" * 60, "rec.webm") == ("audio/webm", "")
+    mime, err = intake._playback_mime(b"%PDF-1.7 not audio", "notice.wav")
+    assert mime is None and "not a supported audio file" in err and "content does not" in err
+    assert intake._playback_mime(b"", "x.wav") == (None, "The recording is empty.")
+
+
+def _uploaded(monkeypatch, data: bytes, name: str) -> AppTest:
+    """A file 'uploaded' through the page (AppTest cannot drive st.file_uploader, so the picker is stubbed)."""
+    monkeypatch.setattr(intake, "_audio_input", lambda viewer, ds=None: (data, name, None))
+    return _app()
+
+
+def test_whatsapp_ogg_upload_plays_and_is_read_offline_as_unknown(monkeypatch):
+    """Regression: st.audio(format=None) crashed the page for every non-WAV upload."""
+    at = _uploaded(monkeypatch, b"OggS\x00\x02" + bytes(range(256)) * 4, "PTT-20260911-WA0007.opus")
+    _ok(at)
+    assert len(at.get("audio")) == 1 and not at.error
+    at.button(key="voice_run").click().run()
+    _ok(at)
+    assert "only recognises the bundled sample voice notes" in _text(at)
+
+
+def test_a_file_that_is_not_audio_is_refused_before_playback(monkeypatch):
+    at = _uploaded(monkeypatch, b"%PDF-1.7 a complaint form", "complaint.wav")
+    _ok(at)
+    assert at.error and "not a supported audio file" in at.error[0].value
+    assert not at.get("audio")  # nothing to play, nothing to transcribe
+    assert "Transcribe and check" not in _text(at)
+
+
+def test_auditor_sees_the_phone_as_last_two_digits_in_every_table():
+    at = _transcribe(_app("auditor"), "meera-impersonation")
+    text = _text(at)
+    assert "98XXXXXX21" not in text and "••••••••21" in text
+
+
+def test_samples_this_ledger_holds_come_first_and_the_others_say_so(monkeypatch):
+    """On the cloud deployment (demo world in BigQuery) the demo-world samples lead; showcase ones are labelled."""
+    demo_ids = frozenset({"20508260078289", "20508260078290", "11208260078296"})
+    monkeypatch.setattr(intake, "_ledger_ncrp_ids", lambda ds: demo_ids)
+    at = _app()
+    _ok(at)
+    box = at.selectbox(key=intake.K_SAMPLE)
+    assert box.value == "swati-task-scam"
+    labels = [str(o) for o in box.options]
+    assert labels[0].startswith("Swati More") and not labels[0].endswith("not in this ledger")
+    assert labels[-1].endswith("· not in this ledger")
+    box.set_value("meera-impersonation").run()
+    assert "does not hold, so none of its claims can match" in _text(at)
+
+
+def test_ledger_ncrp_ids_lists_the_active_ledger():
+    ds = ShowcaseDataSource(live=False)
+    assert intake._ledger_ncrp_ids(ds) == frozenset({sc.N1, sc.N2, sc.N3})
+    assert intake._ledger_ncrp_ids(None) is None

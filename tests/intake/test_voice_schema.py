@@ -73,7 +73,7 @@ def test_schema_is_plain_json_without_refs():
 
 def test_every_sample_expectation_validates():
     samples = load_samples()
-    assert len(samples) == 3
+    assert len(samples) == 6 and {s.world for s in samples} == {"showcase", "demo"}
     for s in samples:
         out = validate_extraction(s.expected)
         assert out.transcript and out.translation_en and out.languages
@@ -169,3 +169,8 @@ def test_human_code_keeps_acronyms():
     assert v.human_code("COURIER_SCAM") == "Courier scam"
     assert v.human_code("UPI_FRAUD") == "UPI fraud"
     assert v.human_code("") == ""
+
+
+def test_phone_mask_accepts_country_and_trunk_prefixes():
+    for raw in ("9812345621", "+91 98123 45621", "919812345621", "09812345621", "098123-45621"):
+        assert v.mask_phone(raw) == "98XXXXXX21", raw

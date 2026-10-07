@@ -35,6 +35,7 @@ class VoiceSample:
     voice: str = ""
     notes: str = ""
     duration_s: float | None = None
+    world: str = "showcase"  # the synthetic ledger it retells: "showcase" (fixture) or "demo" (synth seed 7)
 
     @property
     def filename(self) -> str:
@@ -72,6 +73,7 @@ def _load(directory: str) -> tuple[VoiceSample, ...]:
                 voice=s.get("voice", ""),
                 notes=s.get("notes", ""),
                 duration_s=s.get("duration_s"),
+                world=s.get("world", "showcase"),
             )
         )
     return tuple(out)
