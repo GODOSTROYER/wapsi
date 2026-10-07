@@ -58,8 +58,8 @@ def _index(values: pa.ChunkedArray | pa.Array) -> dict[str, int]:
 
 
 class LedgerMeta(dict[str, str]):
-    """``ParquetLedger.meta``: a plain ``dict`` that can also be called, so the older ``ledger.meta()`` call (the
-    form ``SnowflakeLedger`` offers) keeps working and returns a copy."""
+    """``ParquetLedger.meta``: a plain ``dict`` that can also be called, so the older ``ledger.meta()`` call keeps
+    working and returns a copy."""
 
     def __call__(self) -> dict[str, str]:
         return dict(self)

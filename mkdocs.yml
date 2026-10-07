@@ -96,7 +96,7 @@ nav:
       - "0002 Pro-rata apportionment": adr/0002-pro-rata-apportionment.md
       - "0003 Numbers from data, words from the LLM": adr/0003-numbers-from-data-words-from-llm.md
       - "0004 Intermediary accounts (SOP 9.1(iii))": adr/0004-intermediary-accounts-sop-9-1-iii.md
-      - "0005 One core, three editions": adr/0005-one-core-three-editions.md
+      - "0005 One core, two editions": adr/0005-one-core-two-editions.md
       - "0006 Heuristic classifier by default": adr/0006-transparent-heuristic-classifier-default.md
       - "0007 Synthetic data only": adr/0007-synthetic-data-only.md
       - "0008 Verifier independent of planner": adr/0008-verifier-independent-of-planner.md

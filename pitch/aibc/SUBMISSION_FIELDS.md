@@ -2,7 +2,7 @@
 
 Paste-ready text for the Hack2Skill form. The form's own limits were not published when this was written, so each
 block has a **target** limit that `uv run python pitch/check_numbers.py` enforces; if the form allows less, cut from
-the end of the block. Google Cloud only: no Snowflake, AMD or other clouds in any field. Every number is a row in
+the end of the block. Google Cloud only: no AMD or other clouds in any field. Every number is a row in
 [`../NUMBERS.md`](../NUMBERS.md).
 
 ## Project name

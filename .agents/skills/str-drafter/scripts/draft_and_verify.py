@@ -4,7 +4,7 @@ Part of the `str-drafter` skill. Run from the repo root.
 
     uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory
     uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py <ncrp_id> --world demo --group --kind ALL
-    # demo of the verifier catching a hand edit (finale step 6)
+    # demo of the verifier catching a hand edit
     uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory \
         --tamper "₹43,200.00" "₹45,000.00"
     # baseline: an LLM that writes wrong numbers

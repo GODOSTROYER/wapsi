@@ -1,6 +1,6 @@
 # AI Builder Cup video: 2:45 (hard limit under 3:00)
 
-**Rule for this cut:** Google Cloud only. No Snowflake, no AMD, no other clouds on screen or in the voice-over.
+**Rule for this cut:** Google Cloud only. No AMD, no other clouds on screen or in the voice-over.
 **Screen:** the live Cloud Run URL (the judged deployment), the ADK tool-call trace, one architecture slide.
 **Voice:** one narrator, about 330 words. Every number is a row in [`../NUMBERS.md`](../NUMBERS.md).
 

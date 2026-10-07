@@ -612,9 +612,8 @@ uv run python -m wapsi.audit drill     # 40-event showcase log: 6/6 tampering at
 | drop the last two events | #38 | `TRUNCATED` | no (anchor needed) |
 | edit the approval and recompute every later hash | #39 | `HEAD` | no (anchor needed) |
 
-An edit made inside the store itself is detected too. `InMemoryCaseStore`, the AMD `FileCaseStore` and the
-Snowflake `SnowflakeCaseStore` (insert-only `AUDIT_LOG` plus `AUDIT_ANCHOR`) chain on write; `FirestoreCaseStore`
-does not seal yet, and its logs verify as "not chained". The Audit page shows each chain's status and a **Verify
+An edit made inside the store itself is detected too. `InMemoryCaseStore` and the AMD `FileCaseStore` chain on
+write; `FirestoreCaseStore` does not seal yet, and its logs verify as "not chained". The Audit page shows each chain's status and a **Verify
 chain** button; Approvals shows the case's chain chip next to every decision.
 
 | Event | Written by | Details |
@@ -632,9 +631,7 @@ chain** button; Approvals shows the case's chain chip next to every decision.
 | `viewed`, `role_switched`, `plan_approved`, `plan_rejected`, `plan_changes_requested`, `pipeline_run`, `audit_chain_verified` | UI | page, role change, reason code, draft count, chain result |
 
 The UI's Audit page lists these events and exports them as CSV. Auditors see the masked version (section 11).
-Persistence is the edition's job, through the `CaseStore` port. In the Snowflake edition, a Cortex Code hook
-blocks any `DELETE`, `UPDATE`, `TRUNCATE` or `DROP` on the audit and approvals tables during CoCo sessions (see
-[editions/snowflake/README.md](../editions/snowflake/README.md)).
+Persistence is the edition's job, through the `CaseStore` port.
 
 ## 11. Data protection
 
@@ -673,7 +670,7 @@ blocks any `DELETE`, `UPDATE`, `TRUNCATE` or `DROP` on the audit and approvals t
 | 12 | An innocent holder is named in the STR | Innocent holders (bona fide recipients and unwitting conduits) at any bank are described, not identified; `innocent_in_str` checks body, payload and slot keys; no automatic STR on either | Depends on classification. An innocent holder misclassified as a mule would be named. The EDD memo and human review are the checks |
 | 13 | Personal data reaches an LLM provider | Fact sheet without names, mobiles or PAN | Narratives go verbatim. With real data, use a self-hosted model endpoint (the AMD edition serves its model with vLLM on ROCm) |
 | 14 | Auditors see personal data | Role-based masking in every UI view, CSV and download | Masking is for display. It covers names and mobile-shaped strings, not account numbers or other free-text identifiers |
-| 15 | Audit records are altered | Per-case SHA-256 hash chain (`wapsi.audit`) with an external anchor; append-only stores (`extend_stored`); the Snowflake edition's CoCo hook blocks edits to audit and approvals tables | The anchor must live in a separate trust domain in production (WORM storage, a signed receipt, a daily digest). `FirestoreCaseStore` does not seal the chain yet |
+| 15 | Audit records are altered | Per-case SHA-256 hash chain (`wapsi.audit`) with an external anchor; append-only stores (`extend_stored`) | The anchor must live in a separate trust domain in production (WORM storage, a signed receipt, a daily digest). `FirestoreCaseStore` does not seal the chain yet |
 | 20 | A whole-account hold slips back in | The planner never emits `EXCEPTIONAL_ACCOUNT_LEVEL_HOLD`; the request needs recorded reasons and a different supervisor; the verifier fails any unapproved or unreasoned exception | Two colluding people can still approve an unwarranted exception; the reasons and both names are in the audit chain for review |
 | 21 | A police request asks for more than the trail supports | Identifiable amount, 8-field checklist, clarification letter; the plan never changes | The letter is only as good as the case data; a request naming credits the trace never saw gets them listed as unmatched |
 | 22 | A pending rule is applied as if in force | The radar is read-only and labels the RBI draft DRAFT; rows wait for human review | A supervisor may still act on a draft; the radar records that it is one |

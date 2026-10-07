@@ -1,6 +1,6 @@
 ---
 name: wapsi-eval
-description: Run the Wapsi golden-set evaluation (traced-amount recall, over-hold, false freezes, innocent-holder and merchant precision/recall, STR numeric accuracy, citation validity, injection resistance, p95 time to hold plan), compare it with the previous report and the build-plan targets, and post a KPI summary (session, WAPSI.APP.EVAL_RUNS, optional Slack notice via the ACTIONS table). Use for "eval", "KPIs", "golden set", "did we regress", "scorecard", nightly runs and before any demo or submission.
+description: Run the Wapsi golden-set evaluation (traced-amount recall, over-hold, false freezes, innocent-holder and merchant precision/recall, STR numeric accuracy, citation validity, injection resistance, p95 time to hold plan), compare it with the previous report and the build-plan targets, and report a KPI summary in the session. Use for "eval", "KPIs", "golden set", "did we regress", "scorecard", nightly runs and before any demo or submission.
 ---
 
 # wapsi-eval
@@ -17,7 +17,6 @@ code, fixtures or golden files to make a number pass.
 ## Outputs
 - `evals/reports/<world>-<timestamp>.json/.md` and `evals/reports/latest.json` (written by the harness).
 - A KPI table: value, target, met / MISSED, delta vs the previous report for the same world.
-- Optional: one row in `WAPSI.APP.EVAL_RUNS` (KPI page in the Streamlit app) and a `SLACK_NOTICE` action row.
 
 ## Steps
 1. Make sure the world and golden set exist (else use `$synth-fraud-ledger`):
@@ -35,18 +34,11 @@ code, fixtures or golden files to make a number pass.
    ```
    Hallucination baseline for the deck: `uv run python -m evals.harness --world demo --llm fake-hallucinate`
    (write it to a separate folder with `--out evals/reports/baseline` so it is not compared as a regression).
-3. Post the summary:
-   - Always: paste the KPI table into the session.
-   - Snowflake (KPI page): `uv run python .claude/skills/wapsi-eval/scripts/kpi_summary.py --sql` prints an
-     `INSERT INTO WAPSI.APP.EVAL_RUNS ...` statement; run it with your SQL tool.
-   - Slack: do **not** call Slack directly from Snowflake. Stage a notice for the drain automation:
-     ```sql
-     INSERT INTO WAPSI.CASEMGMT.ACTIONS (action_id, case_id, kind, payload, status, created_at)
-     SELECT 'ACT-EVAL-' || TO_VARCHAR(CURRENT_TIMESTAMP(), 'YYYYMMDDHH24MISS'), 'SYSTEM', 'SLACK_NOTICE',
-            OBJECT_CONSTRUCT('channel', '#wapsi-ops', 'text', '<paste the --brief line>'), 'PENDING', CURRENT_TIMESTAMP();
-     ```
+3. Post the summary: paste the KPI table into the session. `--brief` prints one line (for hooks and status
+   messages).
 4. Compare: the script picks the second-newest `<world>-*.json` automatically; use `--previous <file>` to pin a
-   baseline (e.g. the G1 report). `--fail-on-regression` turns any worse metric into exit 1 (use in CI/automations).
+   baseline (e.g. a committed report such as `evals/reports/demo.json`). `--fail-on-regression` turns any worse
+   metric into exit 1 (use in CI/automations).
 
 ## Targets (WAPSI_BUILD_PLAN §5)
 | KPI | Target |
@@ -72,11 +64,10 @@ without a hard target.
 ## Guardrails
 - Never edit `src/wapsi/fixtures/showcase.py`, `data/golden/**` or the harness to change a result. If you think
   the golden set is wrong, say so and stop.
-- Ground truth lives in `data/golden` locally and `WAPSI.ML` in Snowflake; only this skill and training read it,
-  under the build role, never under app roles.
+- Ground truth lives in `data/golden/` and in each generated world's `labels_*.parquet` and `golden/`; only this
+  skill, the harness and training code read it, never product code (ledgers, pipeline, UI).
 - The `--brief` mode never fails, so it is safe in a SessionStart hook.
 
 ## How to verify
 - `kpi_summary.py` exits 0 when all targets are met, 1 when any is missed, 2 when no report exists.
 - `evals/reports/latest.json` has a fresh `generated_at` after `--run`.
-- In Snowflake: `SELECT world, generated_at, report:metrics:traced_amount_recall FROM WAPSI.APP.EVAL_RUNS ORDER BY generated_at DESC LIMIT 2;`

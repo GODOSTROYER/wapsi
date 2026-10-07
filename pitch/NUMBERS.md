@@ -202,14 +202,7 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | radar_sources | 10 radar sources | 10 | data/docs/reg_radar.json | `len:sources` |
 | lea_fields | 8-field police / LEA request checklist | 8 | src/wapsi/verify/lea_request.py | `py:len(LeaField)` |
 | account_level_reasons | 4 recorded reasons for an account-level exception | 4 | src/wapsi/models.py | `py:len(AccountLevelReason)` |
-| skills_n | 6 CoCo / Claude Code skills | 6 | .claude/skills | `glob:.claude/skills/*/SKILL.md` |
-
-## Snowflake edition: CoCo budget (`editions/snowflake/COCO_SPRINT.md`)
-
-| ID | Pitched as | Value | Source | Locator |
-|---|---|---|---|---|
-| coco_budget_target | CoCo credit target $10 | 10 | editions/snowflake/COCO_SPRINT.md | `text:target ≤ $10 of CoCo credit` |
-| coco_budget_stop | hard stop at $15 | 15 | editions/snowflake/COCO_SPRINT.md | `text:hard stop $15` |
+| skills_n | 6 Claude Code skills | 6 | .claude/skills | `glob:.claude/skills/*/SKILL.md` |
 
 ## Google Cloud edition (`editions/gcp/`)
 
@@ -245,5 +238,4 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | cmd_drill | 6/6 tampering attempts detected (plus an in-store edit), 40-event chain | 6 | src/wapsi/audit/drill.py | `cmd:uv run python -m wapsi.audit drill` |
 | cmd_policy | 48/48 policy re-checks pass on showcase case 1 | 48 | .claude/skills/lien-calculator/scripts/hold_plan.py | `cmd:uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101 --world showcase-memory` |
 | cmd_str_slots | 78 numbers in the STR recomputed by the verifier | 78 | .claude/skills/str-drafter/scripts/draft_and_verify.py | `cmd:uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory` |
-| cmd_guard_exit | SQL guard blocks DROP SCHEMA with exit code 2 | 2 | editions/snowflake/hooks/pre_sql_guard.py | `cmd:pipe a snowflake_sql_execute event with DROP SCHEMA WAPSI.CASEMGMT into the hook (see START_HERE step 5)` |
-| cmd_tests | 1,707 tests pass, 0 fail (full suite, 29-09-2026) | 1707 | pyproject.toml | `cmd:uv run pytest -q` |
+| cmd_tests | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | 1623 | pyproject.toml | `cmd:uv run pytest -q` |

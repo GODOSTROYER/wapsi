@@ -100,7 +100,7 @@ the method; every figure here is also in [pitch/NUMBERS.md](pitch/NUMBERS.md).
 | Tamper-evident audit log | 6 of 6 tampering attempts on a 40-event case log detected (edit, re-hash one event, delete, reorder, truncate, re-hash the whole tail), plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout of 151 texts | precision 0.9661, recall 0.75 | `evals/reports/guard-latest.json` |
 | Speed, demo world, stub LLM | p95 0.72 s per case, trace to verified drafts (laptop) | `evals/reports/demo.json` |
-| Test suite | 1,707 tests pass, 0 fail (full suite, 29-09-2026) | `uv run pytest -q` |
+| Test suite | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
 **Every miss is a label, never money.** The hard world adds sleeper mules, task-scam victim chains, a labour
 contractor's salary pool, a festival-season home seller and same-second relays. Dispositions drop to 0.9198, but
@@ -168,20 +168,19 @@ flowchart TB
 | `src/wapsi/pipeline` | end-to-end case processing, maker-checker approval, account-level requests, LEA checks |
 | `ui/` | Streamlit officer app: Inbox, Case Room (money trail and agent trace), Hold Plan, Drafts & Verification, Approvals, Clocks, Regulatory Radar, KPIs, Audit |
 | `evals/` | golden-set harness (`--scorer`, `--world-dir`, `--report-name`), guard corpus and reports |
-| `editions/` | the three platform editions (below) |
-| `.claude/skills` | 6 skills shared by Snowflake CoCo, Claude Code and Gemini CLI (mirrored to `.agents/skills`) |
+| `editions/` | the two platform editions (below) |
+| `.claude/skills` | 6 skills shared by Claude Code and Gemini CLI (mirrored to `.agents/skills`) |
 
 More: [Architecture](docs/architecture.md) and the [decision records](docs/adr/README.md).
 
-## One core, three editions
+## One core, two editions
 
 The Python core (`src/wapsi`) and the officer app (`ui/`) are shared. Each edition swaps in its own adapters for
-the ledger, the LLM, the guard and the case store; the showcase numbers are the parity test for all three.
+the ledger, the LLM, the guard and the case store; the showcase numbers are the parity test for both.
 Details: [Editions](docs/editions.md).
 
 | Edition | Built for | Platform | Status (29-09-2026) |
 |---|---|---|---|
-| [Snowflake](editions/snowflake/README.md) | Snowflake CoCo CLI Hackathon (GCC edition) | Snowpark procedures running the core unchanged (`TRACE_CASE`, `BUILD_HOLD_PLAN`, `DRAFT`, `VERIFY`, `APPROVE`); Cortex Search `SOP_SEARCH`, semantic view `WAPSI_FRAUD_SV`, Cortex Agent `WAPSI_OFFICER`; Streamlit in Snowflake `WAPSI_APP`; RBAC and governance | Complete in the repo and tested offline (80 tests in `tests/snowflake`): SQL, Snowpark handlers, the SiS app and `deploy.py`. `uv run python -m editions.snowflake.deploy --step all --dry-run` prints every statement. CoCo sessions deploy and prove it on Snowflake 29 Sep–3 Oct 2026. |
 | [Google Cloud](editions/gcp/README.md) | AI Builder Cup | ADK agents on Cloud Run, Gemini, BigQuery, Firestore; optional Model Armor and a Gemma tier on Cloud Run GPU | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Deployment follows in October. |
 | [AMD](editions/amd/README.md) | lablab.ai AMD Developer Hackathon ACT III | One AMD Instinct MI300X with ROCm: vLLM serving, a GraphSAGE mule scorer, a LoRA fine-tune, benchmarks | Code prepared before the event and tested on CPU only. GPU training, serving and benchmarks run only during the event (12–18 Oct 2026). |
 
@@ -228,6 +227,7 @@ act on its own. The code is MIT-licensed ([LICENSE](LICENSE)).
 
 ## Originality
 
-Wapsi is entered in three hackathons from one repository. [docs/originality.md](docs/originality.md) records what
-was built when, including the AMD edition code prepared before the AMD event, so each event's rules can be checked
-against the git history. Commit dates are never rewritten.
+Wapsi's two current hackathon entries, the Google Cloud and AMD editions, come from one repository.
+[docs/originality.md](docs/originality.md) records what was built when, including the AMD edition code prepared
+before the AMD event and an edition for a separate, earlier event that has since been removed from the tree, so each
+event's rules can be checked against the git history. Commit dates are never rewritten.

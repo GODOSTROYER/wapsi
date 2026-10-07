@@ -1,6 +1,6 @@
 # AGENTS.md — Wapsi
 
-Read by Claude Code, Snowflake CoCo (Cortex Code) and Gemini CLI. Keep it current.
+Read by Claude Code and Gemini CLI. Keep it current.
 
 ## What this is
 Wapsi is a copilot for a bank's cyber-fraud nodal officer. Given NCRP / 1930 complaints (CFCFRMS hold notices) it
@@ -46,11 +46,11 @@ src/wapsi/
   audit/         hash-chained, append-only audit log per case; tamper drill (python -m wapsi.audit drill)
 ui/              Streamlit app (shared by editions)
 evals/           golden-set harness and reports
-editions/        snowflake/ gcp/ amd/ — thin platform-specific layers
+editions/        gcp/ amd/ — thin platform-specific layers
 data/docs/       public legal/regulatory corpus + MANIFEST (licences, URLs, retrieval dates)
 data/golden/     golden cases (JSONL) with ground truth
 data/generated/  generated worlds (gitignored)
-.claude/skills/  SKILL.md packs (also loaded by CoCo; mirrored to .agents/skills for Gemini CLI)
+.claude/skills/  SKILL.md packs (loaded by Claude Code; mirrored to .agents/skills for Gemini CLI)
 ```
 
 ## Commands (Windows: run from Git Bash or PowerShell; uv manages the venv)
@@ -137,7 +137,7 @@ uv run streamlit run ui/app.py             # local UI
      only if every tainted inflow has a DELIVERED invoice of its own.
    - Tainted money in an *other-bank* pool account counts as `outbound` (home-bank pools count as `intermediary`).
    - Edge `depth` = layer of the receiving side; cash-out edges use sender layer + 1.
-7. Python only (Snowflake CoCo compliance), 3.11+, type hints, no network calls in tests.
+7. Python only, 3.11+, type hints, no network calls in tests.
 8. Tests use `wapsi.fixtures.showcase` numbers; if your module disagrees with them, your module is wrong
    (or raise it — do not edit the fixture silently).
 
@@ -167,7 +167,7 @@ uv run streamlit run ui/app.py             # local UI
   `wapsi.audit.extend_stored(stored, incoming, case_id=)` (a store's append-only `put_bundle` rule: recorded
   events are never dropped, changed or reordered). Hash = SHA-256 over canonical JSON of (seq, ts, actor, role,
   event_type, case_id, payload_digest, prev_hash); `GENESIS_HASH` starts every chain. `InMemoryCaseStore` and the
-  AMD `FileCaseStore` chain on write; Firestore / Snowflake stores do not seal yet (their logs verify as "not chained").
+  AMD `FileCaseStore` chain on write; the Firestore store does not seal yet (its logs verify as "not chained").
 - `wapsi.agenttrace.ToolTraceRecorder` (pure Python; the GCP edition drives it from `ToolTracePlugin`),
   `AgentTrace` / `TraceStep` / `GuardVerdict` / `VerifierVerdict`, `trace_event(trace, case_id=)` (an `agent_trace`
   audit event; its stored trace is size-bounded by `bounded`, its totals count every call), `traces_from_audit(events,
@@ -183,5 +183,3 @@ uv run streamlit run ui/app.py             # local UI
   development numbers as such; never report GPU results from before the event. Never commit commit-date rewrites.
 - Training data: do not use Gemini outputs to train other models (Gemini API terms); the LoRA teacher is the open
   model itself (verifier-filtered self-distillation). Gemini is an evaluation reference only.
-- Snowflake CoCo: Snowflake-native work (`editions/snowflake/`) is built in CoCo sessions; keep evidence in
-  `editions/snowflake/coco-sessions/`.

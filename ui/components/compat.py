@@ -1,4 +1,4 @@
-"""Streamlit version shims so one codebase runs on 1.38 (Streamlit in Snowflake) and current releases.
+"""Streamlit version shims so one codebase runs on 1.38 (the oldest the ``ui`` extra allows) and current releases.
 
 Newer Streamlit replaced ``use_container_width=True`` with ``width="stretch"``; old versions only know the former.
 """

@@ -10,7 +10,7 @@ Each item names the file or test that shows it. Answers to common questions are 
 
 | Part | Status today |
 |---|---|
-| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,707 tests passed on 2026-09-29 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
+| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,623 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
 | Legal corpus (SOP, BNSS, PML Rules, FIU-IND FAQ, RBI Fraud Risk Management Directions 2026) and regulatory radar | Real public texts, downloaded at build time. 121 of 121 checks pass (`wapsi.search.check_citations`, 2026-09-29): 32 citation quotes, 33 facts and 52 radar quotes are found word for word, and 3 judgments are cited by URL only. |
 | Bank data: customers, accounts, transactions, complaints | **Synthetic** (`wapsi.synth`, `wapsi.fixtures.showcase`) |
 | Other banks' transactions ("CFCFRMS responses") | **Simulated** (`Ledger.consortium_transactions`); Wapsi is a simulated CFCFRMS interface and labels every CFCFRMS action so |
@@ -297,13 +297,12 @@ approximation. Years other than 2026 and 2027 fall back to three fixed holidays:
 and for ordinary drafts it does not check that the approver is a different person from the maker. The one
 exception is the account-level hold request: the officer who requested it cannot approve it. The local Streamlit app has a role
 switcher (analyst, supervisor and auditor) so that a demo can show each view. The Google Cloud edition adds
-signed role grants ([`editions/gcp/README.md`](../editions/gcp/README.md)), and the Snowflake edition plans
-Snowflake roles ([`editions/snowflake/README.md`](../editions/snowflake/README.md)).
+signed role grants ([`editions/gcp/README.md`](../editions/gcp/README.md)).
 
 **Plan:** single sign-on, named makers and checkers, and a rule that no one approves their own work. The audit
-log is already hash-chained and append-only in `InMemoryCaseStore`, the AMD `FileCaseStore` and
-`SnowflakeCaseStore`; `FirestoreCaseStore` does not seal the chain yet, and a production anchor belongs in a
-separate trust domain (WORM storage, a signed receipt, a daily digest).
+log is already hash-chained and append-only in `InMemoryCaseStore` and the AMD `FileCaseStore`;
+`FirestoreCaseStore` does not seal the chain yet, and a production anchor belongs in a separate trust domain (WORM
+storage, a signed receipt, a daily digest).
 
 <a id="l-actions"></a>
 ### 7.2 Actions are records only
@@ -357,7 +356,7 @@ parallel run its own directory, for example `uv run pytest --basetemp=<a private
 ```mermaid
 flowchart LR
     subgraph NT["Near term: to 18 Oct 2026"]
-        N1["Snowflake deployed in CoCo,<br/>Google Cloud and AMD editions"]
+        N1["Google Cloud and<br/>AMD editions"]
         N2["Real-LLM evaluation"]
         N3["Fresh blind injection set"]
         N4["SOP gaps: P1 threshold,<br/>Para 10.1 clocks"]
@@ -381,7 +380,6 @@ flowchart LR
 
 | Item | Detail |
 |---|---|
-| Snowflake edition | Complete in the repository and tested offline (SQL, Snowpark procedures, SiS app, `deploy.py`; 80 tests). Four short CoCo sessions (plus one optional) from 29 September to 3 October deploy it, build the semantic view and the agent with CoCo's skills and prove parity live; submission on 3 October (deadline 4 October). Plan: [`editions/snowflake/COCO_SPRINT.md`](../editions/snowflake/COCO_SPRINT.md). |
 | Google Cloud edition | Complete and deploy the agents and services described in [`editions/gcp/README.md`](../editions/gcp/README.md) (4 to 18 October) |
 | AMD edition | During the event window (12 to 18 October), all runs on AMD Instinct MI300X: GNN training, LoRA fine-tuning, vLLM-ROCm serving and the benchmarks. The code prepared before the event is disclosed in [`docs/originality.md`](originality.md). See [`editions/amd/README.md`](../editions/amd/README.md). |
 | Real-LLM evaluation | Run `evals.harness` against a real model (the command is in [1.4](#l-llm)) and commit `llm_prose_fallback_rate` and `llm_only_hallucination_rate` |
