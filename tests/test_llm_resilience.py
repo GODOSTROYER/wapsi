@@ -286,3 +286,81 @@ def test_real_gemini_adapter_daily_429_fails_fast():
 
 def test_retry_delay_from_the_plain_message():
     assert server_retry_delay(LLMError("429 ... Please retry in 12.5s.", status_code=429)) == 12.5
+
+
+# --------------------------------------------------------------------------- any OpenAI-compatible endpoint
+
+
+def test_min_interval_spaces_requests_on_a_shared_key():
+    clock = Clock()
+    lim = RateLimiter(0, 0, clock=clock, sleep=clock.sleep, min_interval_s=4.0)
+    assert lim.acquire() == 0.0  # the first request goes at once
+    clock.t += 1.5
+    assert lim.acquire() == pytest.approx(2.5) and clock.slept == [pytest.approx(2.5)]
+    clock.t += 10
+    assert lim.acquire() == 0.0  # already far enough apart
+
+
+def test_max_wait_fails_over_instead_of_blocking_a_page():
+    from wapsi.adapters.llm_resilience import RateLimited
+
+    clock = Clock()
+    lim = RateLimiter(2, 0, clock=clock, sleep=clock.sleep, max_wait_s=8.0)
+    lim.acquire()
+    lim.acquire()
+    with pytest.raises(RateLimited) as e:
+        lim.acquire()  # the window is full for another minute: an interactive caller is told, not held
+    assert e.value.status_code == 429 and e.value.retry_after_s == pytest.approx(60.05) and clock.slept == []
+    clock.t += 55
+    assert lim.acquire() == pytest.approx(5.05)  # a short wait is still taken
+
+    llm = ResilientLLM(Inner(), rpm=1, rpd=0, clock=clock, sleep=clock.sleep, max_wait_s=1.0)
+    llm.complete(MSG)
+    with pytest.raises(RateLimited):
+        llm.complete([*MSG, {"role": "user", "content": "again"}])
+    assert llm.report()["errors"] == 1 and llm.report()["api_calls"] == 1  # nothing was sent
+
+
+def test_retry_after_from_an_openai_compatible_error_is_honoured():
+    limited = LLMError("giving up after 1 attempt(s): HTTP 429", status_code=429, retry_after_s=41.0)
+    assert server_retry_delay(limited) == 41.0 and is_retryable(limited) and not is_daily_limit(limited)
+    daily = LLMError("HTTP 429: daily cost limit of $1 reached", status_code=429, retry_after_s=3600.0)
+    assert is_daily_limit(daily)  # not retried: it only resets the next day
+    llm, clock = make(Inner(limited, '{"text":"ok"}'))
+    assert llm.complete(MSG) == '{"text":"ok"}' and clock.slept == [41.0]
+
+
+def test_cache_namespace_keeps_endpoints_apart_and_old_keys_valid():
+    args = {"temperature": 0.0, "max_tokens": 700, "json_schema": None}
+    plain = request_key("Gemma-4-31B-IT", MSG, **args)
+    assert request_key("Gemma-4-31B-IT", MSG, namespace=None, **args) == plain  # existing caches stay valid
+    a = request_key("Gemma-4-31B-IT", MSG, namespace="developer.amd.com.cn", **args)
+    b = request_key("Gemma-4-31B-IT", MSG, namespace="10.0.0.5:8000", **args)
+    assert len({plain, a, b}) == 3
+
+
+def test_read_cache_off_asks_again_and_still_stores(tmp_path):
+    inner = Inner('{"text":"one"}', '{"text":"two"}')
+    first, _ = make(inner, tmp_path)
+    assert first.complete(MSG) == '{"text":"one"}' and first.last_from_cache is False
+    fresh, _ = make(inner, tmp_path, read_cache=False)  # "regenerate": a real call, not the stored answer
+    assert fresh.complete(MSG) == '{"text":"two"}' and inner.calls == 2 and fresh.report()["cache_hits"] == 0
+    later, _ = make(inner, tmp_path)
+    assert later.complete(MSG) == '{"text":"two"}' and later.last_from_cache is True and inner.calls == 2
+
+
+def test_endpoint_reported_cost_is_reported_not_estimated(tmp_path):
+    inner = Inner(usage=TokenUsage(400, 60, 460, 1, 0.00002))
+    inner.backend = "openai-compatible"
+    inner.model = "Gemma-4-31B-IT"
+    llm, _ = make(inner, tmp_path)
+    llm.complete(MSG)
+    r = llm.report()
+    assert r["reported_cost_usd"] == 0.00002 and r["tokens"]["prompt_tokens"] == 400
+    assert r["cost_estimate_usd"] == {
+        "this_run": 0.00002, "paid_tier_equivalent": None, "saved_by_cache_paid_equivalent": 0.0,
+        "price_per_1m_tokens": None, "basis": r["cost_estimate_usd"]["basis"]}
+    assert "reported by the endpoint" in r["cost_estimate_usd"]["basis"]
+    again, _ = make(inner, tmp_path)
+    again.complete(MSG)
+    assert again.report()["cost_estimate_usd"]["saved_by_cache_paid_equivalent"] == 0.00002

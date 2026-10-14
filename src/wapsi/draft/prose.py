@@ -1,11 +1,11 @@
 """LLM prose fields: placeholders in, validated text out, deterministic fallback otherwise.
 
 The LLM sees the fact sheet and a list of ``⟦slot⟧`` placeholders. It must not write digits, currency words or
-numbers in words (except small counts of accounts, victims, layers, days ...). Its answer is checked (unknown
-placeholders, raw digits, currency words, number words, amounts / account numbers / UTRs that are not slot values,
-citation tokens, copied complaint text); on failure the drafter retries once with feedback and then falls back to
-a deterministic paragraph. The accepted text, with its placeholders, is the prose *skeleton* that the draft's
-positional binding (``structured["skeleton"]``) is built from.
+numbers in words (except small counts of accounts, victims, layers, days ...). Its answer is checked (degenerate
+output that is not prose at all, unknown placeholders, raw digits, currency words, number words, amounts / account
+numbers / UTRs that are not slot values, citation tokens, copied complaint text); on failure the drafter retries
+once with feedback and then falls back to a deterministic paragraph. The accepted text, with its placeholders, is
+the prose *skeleton* that the draft's positional binding (``structured["skeleton"]``) is built from.
 
 ``feedback(problems)`` is the exact retry message; ``write_prose(..., log=[...])`` (and
 ``draft_case(..., prose_log=[...])``) records every exchange (request, each call's messages and answer, outcome) as
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -291,6 +292,33 @@ def copies_untrusted(text: str, narratives: Sequence[str]) -> bool:
     return False
 
 
+_SAME_CHAR_RUN = re.compile(r"([^\w\s])\1{11,}")  # one symbol twelve or more times in a row (digits: other rules)
+_UNBROKEN = re.compile(r"\S{61,}")  # no word, account number or UTR is this long
+_MIN_LETTER_SHARE = 0.6
+
+
+def not_prose_reason(text: str) -> str | None:
+    """Why ``text`` cannot be a paragraph of prose, or ``None`` when it reads as words.
+
+    A model endpoint can answer HTTP 200 with degenerate output (a run of slashes, an unbroken string of symbols,
+    a half-written JSON object); none of the content rules below would catch that, because it contains no digit
+    and no currency word. Placeholders are ignored; short texts are judged only on runs and syntax."""
+    s = PLACEHOLDER_RE.sub(" ", text or "").strip()
+    if s.startswith(("{", "[{", "```")):
+        return "it starts with JSON or code-fence syntax"
+    if _SAME_CHAR_RUN.search(s):
+        return "it repeats one symbol over and over"
+    if _UNBROKEN.search(s):
+        return "it has an unbroken string of more than sixty characters"
+    solid = [ch for ch in s if not ch.isspace()]
+    # letters, combining marks (a Devanagari word is letters plus vowel signs) and digits (which the content rules
+    # below judge) count as text; what is left is punctuation and symbols
+    wordlike = sum(unicodedata.category(ch)[0] in "LMN" for ch in solid)
+    if len(solid) >= 40 and wordlike / len(solid) < _MIN_LETTER_SHARE:
+        return "it is mostly symbols, not words"
+    return None
+
+
 def substitute(text: str, slots: Mapping[str, str]) -> str:
     """Replace known ``⟦key⟧`` placeholders (reads go through ``slots`` so usage is tracked)."""
     return PLACEHOLDER_RE.sub(lambda m: slots[m.group(1)] if m.group(1) in slots else m.group(0), text)
@@ -304,6 +332,10 @@ def validate_prose(
     text = (raw or "").strip()
     if not text:
         return [("empty", "The answer was empty.")]
+    garbled = not_prose_reason(text)
+    if garbled:  # nothing else is worth checking in an answer that is not prose at all
+        return [("not_prose", f"The answer is not a paragraph of prose: {garbled}. Write one paragraph of plain "
+                              "English sentences.")]
 
     unknown = sorted({n for n in PLACEHOLDER_RE.findall(text) if n not in offered})
     if unknown:

@@ -7,6 +7,9 @@
 # data/docs/index (the docs search index; gitignored by data/docs/.gitignore, which gcloud does not read: only the
 # root .gitignore is included below) IS uploaded when the deploying machine built it, so the image carries it
 # (python -m wapsi.search.bake); its extracted full texts (index/text/) are not needed at run time.
+# The edition-neutral demo image (deploy/demo/Dockerfile, built with deploy/demo/cloudbuild.yaml) also reads
+# deploy/demo, data/recordings and evals/reports/latest.json: keep them uploaded
+# (tests/demo/test_demo_container.py checks every COPY source of that Dockerfile against this file).
 .gcloudignore
 .git
 .gitignore

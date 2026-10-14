@@ -1,0 +1,21 @@
+# Cloud Build for the edition-neutral demo image (deploy/demo/Dockerfile). From the repository root:
+#   gcloud builds submit . --region=asia-south1 --config=deploy/demo/cloudbuild.yaml \
+#     --substitutions=_IMAGE=asia-south1-docker.pkg.dev/<PROJECT_ID>/wapsi/wapsi-demo:latest
+# The upload is filtered by .gcloudignore (tests/demo/test_demo_container.py checks that everything the Dockerfile
+# copies is uploaded). No key is passed to the build: the endpoint is configured on the Cloud Run service.
+# Not yet run against a live project (deploy/DEMO_HOSTING.md, option c).
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args: ["build", "-f", "deploy/demo/Dockerfile", "-t", "${_IMAGE}", "--build-arg", "BAKE_WORLD=${_BAKE_WORLD}",
+           "--build-arg", "BAKE_DOCS_INDEX=${_BAKE_DOCS_INDEX}", "--label", "app=wapsi", "."]
+images: ["${_IMAGE}"]
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s
+substitutions:
+  _IMAGE: asia-south1-docker.pkg.dev/${PROJECT_ID}/wapsi/wapsi-demo:latest
+  _BAKE_WORLD: "1"
+  _BAKE_DOCS_INDEX: "1"

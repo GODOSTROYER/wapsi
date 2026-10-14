@@ -2,7 +2,8 @@
 
 The showcase world is processed by the real pipeline (``wapsi.pipeline.run.process_case`` with the offline
 ``FakeLLM``) when the engine is installed, and falls back to the hand-built bundles in ``wapsi.fixtures.bundles``
-otherwise. Engine modules are imported lazily, inside try/except, so a partial install never breaks a page.
+otherwise. ``WAPSI_UI_LLM=auto`` (the public demo, ``deploy/demo``) swaps the stub for ``prose_llm``: the live
+OpenAI-compatible endpoint when one is configured (Gemma 4 on AMD), else a labelled recorded run. Engine modules are imported lazily, inside try/except, so a partial install never breaks a page.
 ``WAPSI_DATA_SOURCE`` (``resolve_source`` / ``load_source``) switches to a synthetic parquet world instead: ``demo``
 (``data/generated/demo``) or a path; its cases come from the world's golden set (else ``group_complaints``).
 Editions swap ``ShowcaseDataSource`` for a BigQuery- or Parquet-backed implementation of the same
@@ -16,6 +17,7 @@ import importlib.util
 import json
 import logging
 import os
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -110,6 +112,146 @@ def doc_search() -> Any | None:
     return _SEARCH_CACHE["search"]
 
 
+# --------------------------------------------------------------------------- the model that writes prose
+
+RECORDING_PATH = REPO_ROOT / "data" / "recordings" / "demo_prose.json"
+RECORDING_ENV = "WAPSI_PROSE_RECORDING"  # another recording file ("" / "none" = no replay)
+LLM_CACHE_ENV = "WAPSI_LLM_CACHE_DIR"  # where live answers are cached (default: the system temp directory)
+UI_LIVE_RPM = 12  # default requests a minute to the live endpoint (WAPSI_LLM_RPM overrides)
+UI_LIVE_MAX_WAIT_S = 8.0  # a page never waits longer than this for the rate limit: it fails over instead
+_LLM_STATE: dict[Any, Any] = {}
+_LLM_LOCK = threading.Lock()
+
+
+def recording_path() -> Path | None:
+    raw = os.environ.get(RECORDING_ENV)
+    if raw is None:
+        return RECORDING_PATH
+    raw = raw.strip()
+    return None if raw.lower() in ("", "none", "off", "0") else Path(raw).expanduser()
+
+
+def prose_recording() -> Any | None:
+    """The recording of model-written prose that the demo replays (``wapsi.adapters.llm_replay.Recording``;
+    ``data/recordings/demo_prose.json`` or ``WAPSI_PROSE_RECORDING``). Loaded once per file version; ``None`` when
+    there is none."""
+    path = recording_path()
+    if path is None:
+        return None
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return None
+    key = ("recording", str(path), stamp)
+    with _LLM_LOCK:
+        if key not in _LLM_STATE:
+            try:
+                _LLM_STATE[key] = _optional("wapsi.adapters.llm_replay", "Recording").load(path)
+            except Exception:  # noqa: BLE001 - replay is optional
+                log.exception("could not load the prose recording %s", path)
+                _LLM_STATE[key] = None
+        return _LLM_STATE[key]
+
+
+def llm_setup() -> Any:
+    """What this deployment is set up to do (``ui.components.llm_status.LlmStatus``): live endpoint, recorded run
+    or offline stub. Never raises and never reads the key's value."""
+    from ui.components.llm_status import llm_status
+
+    return llm_status(recording=prose_recording())
+
+
+def llm_cache_key() -> tuple[Any, ...]:
+    """Changes whenever the prose would come from somewhere else (mode, endpoint, model, recording version): part
+    of the key the app caches its seeded cases under."""
+    from ui.components.llm_status import ui_llm_mode
+
+    mode = ui_llm_mode()
+    if mode == "fake":
+        return (mode,)
+    path = recording_path()
+    try:
+        stamp = path.stat().st_mtime_ns if path is not None else 0
+    except OSError:
+        stamp = 0
+    status = llm_setup()
+    return (mode, status.endpoint.base_url if status.live else None, status.endpoint.model if status.live else None,
+            str(path), stamp)
+
+
+def _live_gate() -> Any:
+    with _LLM_LOCK:
+        if "gate" not in _LLM_STATE:
+            _LLM_STATE["gate"] = _optional("wapsi.adapters.llm_replay", "LiveGate")()
+        return _LLM_STATE["gate"]
+
+
+def _live_llm(fresh: bool) -> Any | None:
+    """The configured live endpoint behind ``ResilientLLM`` (disk cache, rate limit, one retry), or ``None`` when
+    it is not configured. One client and one rate limiter per process; ``fresh`` skips the cache read (the officer
+    asked for new drafts) and still stores the answer."""
+    from wapsi.adapters.llm_env import BACKEND, endpoint_config, make_endpoint_llm
+    from wapsi.adapters.llm_resilience import RPM_ENV, RateLimiter, ResilientLLM
+
+    cfg = endpoint_config()
+    if not cfg.configured:
+        return None
+    key = ("live", cfg.base_url, cfg.model, cfg.json_mode, cfg.timeout_s, cfg.platform, cfg.has_key,
+           json.dumps(cfg.extra_body, sort_keys=True, default=str))
+    with _LLM_LOCK:
+        pair = _LLM_STATE.get(key)
+        if pair is None:
+            import tempfile
+
+            try:
+                rpm = max(0, int((os.environ.get(RPM_ENV) or "").strip() or UI_LIVE_RPM))
+            except ValueError:
+                rpm = UI_LIVE_RPM
+            cache_dir = os.environ.get(LLM_CACHE_ENV, "").strip() or str(Path(tempfile.gettempdir()) / "wapsi-llm-cache")
+            inner = make_endpoint_llm(cfg, timeout=min(cfg.timeout_s, 45.0))
+            limiter = RateLimiter(rpm, 0, max_wait_s=UI_LIVE_MAX_WAIT_S)
+            # accept: an HTTP 200 with degenerate output is refused (never cached), and the recorded run answers
+            common: dict[str, Any] = {"model_id": cfg.model, "backend": BACKEND, "cache_dir": cache_dir,
+                                      "cache_namespace": cfg.host, "limiter": limiter, "max_retries": 1,
+                                      "backoff_s": 2.0, "max_backoff_s": 6.0, "name": cfg.served_name,
+                                      "accept": _optional("wapsi.adapters.llm_replay", "prose_answer_problem")}
+            pair = (ResilientLLM(inner, **common), ResilientLLM(inner, read_cache=False, **common))
+            _LLM_STATE[key] = pair
+    return pair[1 if fresh else 0]
+
+
+def prose_llm(fake_cls: Any, *, prefer: str = "live", fresh: bool = False, allow_live: bool = True) -> Any:
+    """The LLM a pipeline run in the UI writes prose with (``WAPSI_UI_LLM``, see ``ui.components.llm_status``):
+
+    - ``fake`` (default): ``fake_cls()``, the offline stub, exactly as before.
+    - ``auto`` (the public demo): the live OpenAI-compatible endpoint when ``WAPSI_LLM_BASE_URL`` /
+      ``WAPSI_LLM_API_KEY`` / ``WAPSI_LLM_MODEL`` are set, else (or when the live call fails) the recorded run,
+      else the stub. ``prefer="recorded"`` puts the recording first; ``allow_live=False`` keeps a start-up batch off
+      the endpoint.
+    - ``recorded``: recording, then the stub; never a network call.
+    - ``live``: the live endpoint only; a failed call shows as the fixed paragraph, flagged on the draft.
+
+    Every draft records who wrote its prose, so the page can say so. Any set-up problem falls back to the stub."""
+    stub = fake_cls()
+    try:
+        from ui.components.llm_status import MODE_AUTO, MODE_FAKE, MODE_LIVE, MODE_RECORDED, ui_llm_mode
+
+        mode = ui_llm_mode()
+        if mode == MODE_FAKE:
+            return stub
+        demo_llm = _optional("wapsi.adapters.llm_replay", "DemoLLM")
+        live = _live_llm(fresh) if allow_live and mode in (MODE_AUTO, MODE_LIVE) else None
+        if mode == MODE_LIVE:
+            return demo_llm(live=live, gate=_live_gate()) if live is not None else stub
+        recording = prose_recording() if mode in (MODE_AUTO, MODE_RECORDED) else None
+        if live is None and (recording is None or not len(recording)):
+            return stub
+        return demo_llm(live=live, recording=recording, stub=stub, prefer=prefer, gate=_live_gate())
+    except Exception:  # noqa: BLE001 - the page must work without the demo LLM
+        log.exception("could not set up the demo LLM; using the offline stub")
+        return stub
+
+
 SOURCE_PIPELINE, SOURCE_FIXTURES, SOURCE_MIXED = "pipeline", "fixtures", "mixed"
 
 
@@ -135,7 +277,7 @@ def build_showcase_bundles(ledger: Any | None = None, *, live: bool = True) -> t
     live_count = 0
     for fx in fixtures:
         try:
-            b = process_case(ledger, list(fx.case.ncrp_ids), llm=fake_llm_cls(), search=search,
+            b = process_case(ledger, list(fx.case.ncrp_ids), llm=prose_llm(fake_llm_cls), search=search,
                              case_id=fx.case.case_id, assigned_to=fx.case.assigned_to)
         except Exception:  # noqa: BLE001 - fall back to the fixture for this case
             log.exception("pipeline failed for %s; using the fixture bundle", fx.case.case_id)
@@ -245,7 +387,9 @@ def build_world_bundles(ledger: Any, groups: list[list[str]]) -> tuple[list[Case
     out: list[CaseBundle] = []
     for ncrp_ids in groups:
         try:
-            out.append(process_case(ledger, list(ncrp_ids), llm=fake_llm_cls(), search=search))
+            # start-up batch: recorded prose (else the stub), never a burst of live calls
+            llm = prose_llm(fake_llm_cls, prefer="recorded", allow_live=False)
+            out.append(process_case(ledger, list(ncrp_ids), llm=llm, search=search))
         except Exception:  # noqa: BLE001 - one bad case must not hide the others
             log.exception("pipeline failed for complaints %s; case skipped", ", ".join(ncrp_ids))
     return out, SOURCE_WORLD
@@ -547,7 +691,8 @@ class ShowcaseDataSource:
             return Outcome(False, missing_msg, unavailable=True)
         search = doc_search()
         try:
-            fresh = process_case(self.ledger(), list(bundle.case.ncrp_ids), llm=fake_llm_cls(), search=search,
+            fresh = process_case(self.ledger(), list(bundle.case.ncrp_ids),
+                                 llm=prose_llm(fake_llm_cls, fresh=True), search=search,
                                  case_id=case_id, assigned_to=bundle.case.assigned_to)
         except ImportError as exc:
             _chain(bundle, _audit_event("pipeline_unavailable", "case", case_id, actor=actor, role=role,
@@ -647,8 +792,8 @@ class ShowcaseDataSource:
             return Outcome(False, "The case pipeline isn't installed in this build.", unavailable=True)
         case_id = f"CASE-{ids[0]}"
         try:
-            fresh = process_case(self.ledger(), ids, llm=fake_llm_cls(), search=doc_search(), case_id=case_id,
-                                 assigned_to=actor)
+            fresh = process_case(self.ledger(), ids, llm=prose_llm(fake_llm_cls, fresh=True), search=doc_search(),
+                                 case_id=case_id, assigned_to=actor)
         except KeyError:
             return Outcome(False, f"Complaint(s) {', '.join(ids)} are not in this ledger.")
         except Exception as exc:  # noqa: BLE001

@@ -20,6 +20,7 @@ from ui.components.formatting import (
     humanize,
     ist,
 )
+from ui.components.llm_status import writer_note
 from ui.components.theme import APPROVAL_TONE
 from ui.data_source import latest_approval
 from ui.views.common import (
@@ -32,6 +33,7 @@ from ui.views.common import (
     md,
     nav_button,
     need_case,
+    served_chip_html,
 )
 from wapsi.models import (
     CaseBundle,
@@ -137,6 +139,9 @@ def render(ctx: Ctx) -> None:
         summary.append(h.chip(f"{failed} need attention", "bad"))
     if unchecked:
         summary.append(h.chip(f"{unchecked} not checked yet", "warn"))
+    served = served_chip_html(bundle)
+    if served:  # which model and endpoint host wrote the prose of these drafts
+        summary.append(served)
     c1, c2 = st.columns([4, 1.3], vertical_alignment="center")
     with c1:
         md(h.chips(summary))
@@ -276,8 +281,7 @@ def _panel(ctx: Ctx, bundle: CaseBundle, draft: Draft) -> None:
             st.markdown(demote_headings(body))
     else:
         md(h.document(body, errors, warnings))
-    prose = (f"Prose by {draft.llm_model}; " if draft.llm_model else "") + "every number is filled from case tables."
-    md(f'<div class="wp-note">{h.esc(prose)}</div>')
+    md(f'<div class="wp-note">{h.esc(writer_note(draft))}</div>')
 
     if draft.citation_ids:
         md(h.section("Citations"))

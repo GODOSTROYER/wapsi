@@ -5,14 +5,21 @@
     uv run python -m evals.harness --world hard            # data/generated/hard (+ its golden/ folder)
     uv run python -m evals.harness --world hard --scorer heuristic --scorer xgb:models/xgb_demo.json
     uv run python -m evals.harness --world demo --llm gemini   # real Gemini (needs GEMINI_API_KEY); cached reruns
+    uv run python -m evals.harness --world demo --llm openai-compat   # the endpoint in WAPSI_LLM_BASE_URL /
+                                                                      # WAPSI_LLM_API_KEY / WAPSI_LLM_MODEL
+                                                                      # (AMD Token Factory, vLLM on AMD); cached
 
 ``--llm``: ``fake`` (default, offline), ``fake-hallucinate``, ``gemini`` / ``gemini:<model>`` (the Gemini API with
-``GEMINI_API_KEY``, or Agent Platform with ``WAPSI_GEMINI_BACKEND=vertex``), ``openai:<base_url>|<model>``. Real
-models are wrapped in ``wapsi.adapters.llm_resilience.ResilientLLM``: free-tier RPM / RPD limiting (``--rpm``,
-``--rpd``), 429 / 503 retries with backoff, and a response cache keyed by the prompt hash (``.cache/llm``; reruns are
-free; ``--no-cache`` to bypass). Such runs add an ``llm`` block (model id, calls, cache hits, retries, token usage,
-cost estimate) and an ``ab_test`` block (raw LLM-only number hallucination rate vs Wapsi's slot-bound drafts), and
-write ``<world>-<llm>.json`` (e.g. ``demo-gemini.json``) instead of ``latest.json``.
+``GEMINI_API_KEY``, or Agent Platform with ``WAPSI_GEMINI_BACKEND=vertex``), ``openai-compat`` /
+``openai-compat:<model>`` (any OpenAI-compatible endpoint, configured from the environment:
+``wapsi.adapters.llm_env``; ``endpoint`` is an alias), ``openai:<base_url>|<model>`` (the same adapter, addressed on
+the command line, never cached). Real models are wrapped in ``wapsi.adapters.llm_resilience.ResilientLLM``:
+RPM / RPD limiting (``--rpm``, ``--rpd``, ``--min-interval``), 429 / 503 retries with backoff that honour the
+server's ``Retry-After``, and a response cache keyed by the prompt hash (``.cache/llm``; reruns are free;
+``--no-cache`` to bypass). Such runs add an ``llm`` block (model id, endpoint host, calls, cache hits, retries,
+token usage, the cost the endpoint reported or a cost estimate) and an ``ab_test`` block (raw LLM-only number
+hallucination rate vs Wapsi's slot-bound drafts), and write ``<world>-<llm>.json`` (e.g. ``demo-gemini.json``,
+``demo-openai-compat.json``) instead of ``latest.json``.
 
 Writes evals/reports/<world>-<timestamp>.json/.md plus a stable copy (schema: docs/eval-report.md):
 ``latest.json`` for the default heuristic scorer on showcase / demo / full, ``<world>.json`` for hard worlds
@@ -118,9 +125,29 @@ def make_gemini(model: str | None = None, *, client=None, thinking_budget: int |
                      location=(os.environ.get("WAPSI_LOCATION") or "global").strip())
 
 
+ENDPOINT_KINDS = ("openai-compat", "endpoint")  # --llm values for the env-configured OpenAI-compatible endpoint
+
+
+def is_endpoint_kind(kind: str) -> bool:
+    return kind.partition(":")[0] in ENDPOINT_KINDS
+
+
+def make_endpoint(cfg):
+    """The raw adapter for the env-configured OpenAI-compatible endpoint (no inner retries: ``ResilientLLM`` owns
+    the retry policy). Fails fast, before any case runs, when the endpoint is not configured."""
+    from wapsi.adapters.llm_env import EndpointNotConfigured, make_endpoint_llm
+
+    try:
+        return make_endpoint_llm(cfg)
+    except EndpointNotConfigured as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def make_llm(kind: str, *, cache_dir: str | Path | None = LLM_CACHE, rpm: int | None = None,
-             rpd: int | None = None, thinking_budget: int | None = None, client=None):
-    """``fake`` | ``fake-hallucinate`` | ``gemini[:<model>]`` | ``openai:<base_url>|<model>``.
+             rpd: int | None = None, thinking_budget: int | None = None, client=None,
+             min_interval_s: float | None = None):
+    """``fake`` | ``fake-hallucinate`` | ``gemini[:<model>]`` | ``openai-compat[:<model>]`` |
+    ``openai:<base_url>|<model>``.
 
     Real models come wrapped in ``ResilientLLM`` (rate limits, retries, prompt-hash cache under ``cache_dir``;
     ``None`` disables the cache). ``client`` injects a google-genai client (tests)."""
@@ -134,7 +161,20 @@ def make_llm(kind: str, *, cache_dir: str | Path | None = LLM_CACHE, rpm: int | 
     if kind == "gemini" or kind.startswith("gemini:"):
         inner = make_gemini(kind.partition(":")[2] or None, client=client, thinking_budget=thinking_budget)
         return ResilientLLM(inner, model_id=inner.model, backend=inner.backend, rpm=rpm, rpd=rpd,
-                            cache_dir=cache_dir)
+                            cache_dir=cache_dir, min_interval_s=min_interval_s)
+    if is_endpoint_kind(kind):  # WAPSI_LLM_BASE_URL / WAPSI_LLM_API_KEY / WAPSI_LLM_MODEL (wapsi.adapters.llm_env)
+        from dataclasses import replace
+
+        from wapsi.adapters.llm_env import endpoint_config, platform_for, resilient_endpoint_llm
+
+        cfg = endpoint_config()
+        model = kind.partition(":")[2].strip()
+        if model:  # openai-compat:<model>: another model on the same endpoint
+            cfg = replace(cfg, model=model, platform=platform_for(cfg.host, cfg.platform))
+        inner = make_endpoint(cfg)
+        # the daily cap is the endpoint's own (the AMD Token Factory counts cost, not requests): no client-side RPD
+        return resilient_endpoint_llm(cfg, inner=inner, cache_dir=cache_dir, rpm=rpm,
+                                      rpd=rpd if rpd is not None else 0, min_interval_s=min_interval_s)
     if kind.startswith("openai:"):  # openai:<base_url>|<model>
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
@@ -505,15 +545,22 @@ def to_markdown(rep: dict) -> str:
     if rep.get("llm"):
         x = rep["llm"]
         t, c = x["tokens"], x["cost_estimate_usd"]
+        where = f"{x['backend']} @ {x['endpoint_host']}" if x.get("endpoint_host") else x["backend"]
+        if c.get("this_run") is None:
+            cost = f"- Cost this run: n/a ({c['basis']})"
+        elif c.get("paid_tier_equivalent") is None:  # the endpoint's own figure (usage.cost)
+            cost = f"- Cost this run: ${c['this_run']:.6f} ({c['basis']})"
+        else:
+            cost = (f"- Cost this run: ${c['this_run']:.4f} (paid-tier equivalent ${c['paid_tier_equivalent']:.4f}; "
+                    f"{c['basis']})")
         lines += ["", "## LLM", "",
-                  f"- Model `{x['model_id']}` ({x['backend']}): {x['requests']} requests, {x['api_calls']} API calls, "
+                  f"- Model `{x['model_id']}` ({where}): {x['requests']} requests, {x['api_calls']} API calls, "
                   f"{x['cache_hits']} cache hits ({x['cache_hit_rate']:.0%}), {x['retries']} retries, "
                   f"{x['rate_limited_429']} rate-limited (429), {x['errors']} errors"
                   + (", daily quota reached" if x["quota_exhausted"] else ""),
                   f"- Tokens: {t['prompt_tokens']} in, {t['output_tokens']} out, {t['thinking_tokens']} thinking "
                   f"(total {t['total_tokens']}); waited {x['rate_limit_wait_s']} s for the rate limit",
-                  (f"- Cost this run: ${c['this_run']:.4f} (paid-tier equivalent ${c['paid_tier_equivalent']:.4f}; "
-                   f"{c['basis']})" if c.get("this_run") is not None else f"- Cost this run: n/a ({c['basis']})"),
+                  cost,
                   f"- Prose fallback rate {rep['metrics']['llm_prose_fallback_rate']}, draft verification pass rate "
                   f"{rep['metrics']['draft_verification_pass_rate']}"]
     if rep.get("ab_test"):
@@ -551,9 +598,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--world", default="demo")
     ap.add_argument("--llm", default="fake",
-                    help="fake (offline) | fake-hallucinate | gemini[:<model>] | openai:<base_url>|<model>")
+                    help="fake (offline) | fake-hallucinate | gemini[:<model>] | openai-compat[:<model>] (the "
+                         "endpoint in WAPSI_LLM_BASE_URL / WAPSI_LLM_API_KEY / WAPSI_LLM_MODEL) | "
+                         "openai:<base_url>|<model>")
     ap.add_argument("--rpm", type=int, default=None, help="requests per minute for real models "
                     "(default WAPSI_LLM_RPM or 10; 0 = no limit)")
+    ap.add_argument("--min-interval", type=float, default=None, help="seconds between two requests to a real "
+                    "model (default WAPSI_LLM_MIN_INTERVAL_S or 0)")
     ap.add_argument("--rpd", type=int, default=None, help="requests per day, Pacific time (default WAPSI_LLM_RPD "
                     "or 250; 0 = no limit)")
     ap.add_argument("--cache-dir", default=str(LLM_CACHE), help="prompt-hash response cache (real models)")
@@ -575,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     limit = 10 if args.quick else args.limit
     ledger = load_ledger(args.world, world_dir)
     llm = make_llm(args.llm, cache_dir=None if args.no_cache else args.cache_dir, rpm=args.rpm, rpd=args.rpd,
-                   thinking_budget=args.thinking_budget)
+                   thinking_budget=args.thinking_budget, min_interval_s=args.min_interval)
     runs = [evaluate(args.world, args.llm, limit=limit, draft=not args.no_draft, scorer=s, world_dir=world_dir,
                      ledger=ledger, llm=llm) for s in scorers]
     rep = runs[0]

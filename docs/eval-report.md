@@ -3,8 +3,9 @@
 Written by `uv run python -m evals.harness --world <name>`; read by the UI KPI page, the `wapsi-eval` skill and
 `pitch/check_numbers.py`. Every run writes `<world>-<UTC stamp>.json` and `.md`, plus one stable file:
 `latest.json` for the heuristic scorer on showcase / demo / full, `<world>.json` for hard worlds (`hard.json`,
-`hard-101.json`; never `latest.json`), `<world>-<xgb|gnn>.json` otherwise; a real-model run (`--llm gemini`) writes
-`<world>-gemini.json` and never replaces the offline reference. `--report-name` overrides the stable
+`hard-101.json`; never `latest.json`), `<world>-<xgb|gnn>.json` otherwise; a real-model run (`--llm gemini`,
+`--llm openai-compat`) writes `<world>-gemini.json` / `<world>-openai-compat.json` and never replaces the offline
+reference. `--report-name` overrides the stable
 name (the committed `showcase.json` and `demo.json` were written that way). Options: [Evaluation](evaluation.md#scorers-and-harness-options).
 
 ```json
@@ -54,12 +55,14 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
     "heuristic-v2": {"scorer": "heuristic-v2", "scorer_spec": "heuristic", "disposition_accuracy": 0.9198, "...": "..."},
     "xgb:xgb_hard202": {"scorer": "xgb:xgb_hard202", "scorer_spec": "xgb:models/xgb_hard202.json", "...": "..."}
   },
-  "llm": {                                   // real models only (--llm gemini | openai:...); null with the fake LLM
-    "model_id": "gemini-3.8-flash", "backend": "aistudio",
+  "llm": {                                   // real models only (--llm gemini | openai-compat | openai:...); null with the fake LLM
+    "model_id": "gemini-3.8-flash", "backend": "aistudio",   // openai-compat: "openai-compatible"
+    "endpoint_host": null,                     // openai-compat: the endpoint's host, e.g. "developer.amd.com.cn"
     "requests": 122, "api_calls": 123, "ok": 122, "cache_hits": 0, "cache_hit_rate": 0.0,
-    "retries": 1, "rate_limited_429": 1, "unavailable_5xx": 0, "errors": 0, "quota_exhausted": false,
-    "rate_limit_wait_s": 610.2, "backoff_wait_s": 7.0,
-    "limits": {"rpm": 10, "rpd": 250, "used_today": 123, "remaining_today": 127},
+    "retries": 1, "rate_limited_429": 1, "unavailable_5xx": 0, "unusable_answers": 0, "errors": 0,
+    "quota_exhausted": false, "rate_limit_wait_s": 610.2, "backoff_wait_s": 7.0,
+    "limits": {"rpm": 10, "rpd": 250, "used_today": 123, "remaining_today": 127, "min_interval_s": 0.0},
+    "reported_cost_usd": 0.0,                  // what the endpoint itself reported (usage.cost), summed; 0.0 if it reports none
     "tokens": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
     "tokens_served_from_cache": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
     "cost_estimate_usd": {"this_run": 0.0,     // Gemini API free tier: no charge (429 over the limit, never a bill)
@@ -78,5 +81,14 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
 The `llm` and `ab_test` numbers above only show the shape (illustrative, not measured). The `llm` block comes
 from `wapsi.adapters.llm_resilience.ResilientLLM`: free-tier RPM / RPD limiting, 429 / 503 retries and a prompt-hash
 response cache under `.cache/llm` (gitignored; replay only, never training data), so a rerun costs no requests.
+
+`--llm openai-compat` evaluates the OpenAI-compatible endpoint in `WAPSI_LLM_BASE_URL` / `WAPSI_LLM_API_KEY` /
+`WAPSI_LLM_MODEL` (the AMD Token Factory, or a vLLM server on AMD; `openai-compat:<model>` picks another model on
+the same endpoint). Retries honour the server's `Retry-After`, and the cache is kept apart per endpoint host. When
+the endpoint prices its own answers (`usage.cost`), `cost_estimate_usd.this_run` is that figure and
+`paid_tier_equivalent` is `null`; otherwise the cost block is n/a for a self-served model. An evaluation scores the
+model as it answers: degenerate output is rejected by the prose validator and shows up in
+`llm_prose_fallback_rate`. Label every number from such a run with the endpoint that served it and the date, and
+never present it as a benchmark of hardware it was not measured on.
 
 The `classification` and `by_scorer` examples above are the values in the committed `evals/reports/hard.json`.

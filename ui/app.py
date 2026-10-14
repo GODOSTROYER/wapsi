@@ -7,6 +7,11 @@ Data source: the showcase world by default. ``WAPSI_DATA_SOURCE=demo`` (a world 
 ``WAPSI_DATA_SOURCE=<path to a parquet world>`` shows a synthetic world instead (its first ``WAPSI_UI_MAX_CASES``
 cases, default 12, run through the live pipeline); the sidebar's Data switch changes it for the session. Editions
 that seed ``st.session_state["_wapsi_ds"]`` with their own data source (GCP, AMD) keep it and get no switch.
+
+Prose: the offline stub by default. ``WAPSI_UI_LLM=auto`` (what the public demo sets, ``deploy/demo/app.py``) uses the
+OpenAI-compatible endpoint in ``WAPSI_LLM_BASE_URL`` / ``WAPSI_LLM_API_KEY`` / ``WAPSI_LLM_MODEL`` (Gemma 4 on AMD)
+and, when none is configured, replays a recorded run under the banner "Recorded run — live AMD endpoint not
+configured". A chip names the model and endpoint host that served each case's drafts.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ from ui.components.formatting import (  # noqa: E402
     Viewer,
     inr_short,
 )
+from ui.components.llm_status import MODE_FAKE, banner, ui_llm_mode  # noqa: E402
 from ui.components.theme import detect_dark, inject_css  # noqa: E402
 from ui.data_source import (  # noqa: E402
     SHOWCASE_SOURCE,
@@ -55,6 +61,8 @@ from ui.data_source import (  # noqa: E402
     available_sources,
     engine_status,
     latest_approval,
+    llm_cache_key,
+    llm_setup,
     load_source,
     now_for_ui,
     resolve_source,
@@ -80,6 +88,7 @@ from ui.views.common import (  # noqa: E402
     Ctx,
     flash,
     md,
+    served_chip_html,
     show_flash,
 )
 from wapsi.models import ApprovalDecision, AuditEvent  # noqa: E402
@@ -105,9 +114,11 @@ _OWN_SOURCE = "_wapsi_ds_spec"  # the SourceSpec this app built the data source 
 
 
 @st.cache_resource(show_spinner="Tracing the cases…")
-def _seed(source_key: str, live: bool):
+def _seed(source_key: str, live: bool, llm_key: tuple = ()):
     """Bundles + ledger of a data source, built once per server process (read-only; sessions deep-copy the
-    bundles)."""
+    bundles). Streamlit runs this once even when several sessions start together, so the cases are seeded exactly
+    once; every session then works on its own copy. ``llm_key`` (``llm_cache_key``) ties the cached cases to where
+    their prose came from."""
     return load_source(resolve_source(source_key), live=live)
 
 
@@ -126,7 +137,7 @@ def data_source() -> ShowcaseDataSource:
     if ds is None:
         live = os.environ.get("WAPSI_UI_SOURCE", "pipeline").strip().lower() != "fixtures"
         spec = _selected_source()
-        bundles, ledger, source = _seed(spec.key, live)
+        bundles, ledger, source = _seed(spec.key, live, llm_cache_key())
         ds = ShowcaseDataSource(bundles=[b.model_copy(deep=True) for b in bundles], ledger=ledger, source=source,
                                 label=spec.label)
         st.session_state[DS_KEY] = ds
@@ -242,6 +253,32 @@ def _demo_reset_control(ds: ShowcaseDataSource, viewer: Viewer) -> None:
                    "nothing approved. Earlier decisions stay in each case's audit log.")
 
 
+def _start_over_control() -> None:
+    """Public demo (``WAPSI_UI_LLM`` is not the plain stub): every browser session works on its own copy of the
+    cases, so one visitor's approvals never reach the next. This button gives the same visitor a fresh copy."""
+    if st.session_state.get(_OWN_SOURCE) is None or ui_llm_mode() == MODE_FAKE:
+        return
+    md('<div class="wp-foot" style="margin-top:1rem"><strong>Your own copy.</strong> Decisions you record here '
+       "stay in this browser session; other visitors never see them.</div>")
+    st.button("Start over", key="demo_start_over", on_click=_on_source_change, **stretch(st.button),
+              help="Drop this session's decisions and reload the cases as first prepared: hold plan and drafts as "
+                   "computed, nothing approved.")
+
+
+def _llm_banner() -> None:
+    """Say so on every page when the demo is not calling a live model (the app's own data source only: editions
+    bring their own models)."""
+    if st.session_state.get(_OWN_SOURCE) is None:
+        return
+    try:
+        note = banner(llm_setup())
+    except Exception:  # noqa: BLE001 - a disclosure helper must never break the page
+        log.exception("could not work out the LLM status")
+        return
+    if note:
+        md(h.callout(note[1], tone="warn", strong=note[0] + "."))
+
+
 def _sidebar(ds: ShowcaseDataSource, viewer: Viewer, case_ids: list[str]) -> None:
     md('<div class="wp-brand"><div class="wp-brand-mark" aria-hidden="true">₹</div><div>'
        '<div class="wp-brand-name">Wapsi</div><div class="wp-brand-sub">Money-trail copilot</div></div></div>')
@@ -272,6 +309,10 @@ def _sidebar(ds: ShowcaseDataSource, viewer: Viewer, case_ids: list[str]) -> Non
        f"{h.esc(ROLE_BLURBS.get(viewer.role, ''))}</div>")
     _source_switch()
     _demo_reset_control(ds, viewer)
+    _start_over_control()
+    chip = served_chip_html(b) if b is not None else None
+    if chip:  # which model and endpoint host served this case's drafts
+        md('<div class="wp-foot" style="margin-top:1rem">Prose in this case</div>' + h.chips([chip]))
     status = engine_status()
     n = len(case_ids)
     engine = {
@@ -326,6 +367,7 @@ def main() -> None:
     ctx = Ctx(ds=ds, viewer=viewer, case_id=case_id, bundle=ds.get_bundle(case_id) if case_id else None,
               now=now_for_ui(), dark=detect_dark(), engine=engine_status())
     _log_view(ds, ctx, page)
+    _llm_banner()
     show_flash()
     try:
         RENDERERS[page](ctx)

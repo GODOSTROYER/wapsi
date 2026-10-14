@@ -119,7 +119,16 @@ uv run streamlit run ui/app.py               # officer app, opens on the Inbox
 ```
 
 The app runs the real pipeline on the showcase world with an offline FakeLLM, so it needs no API keys and no
-generated data. To reproduce the results:
+generated data.
+
+**Public demo.** `uv run streamlit run deploy/demo/app.py` is what the hosted demo runs: with
+`WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY` and `WAPSI_LLM_MODEL` set it writes prose with that OpenAI-compatible
+endpoint (Gemma 4 on AMD through the AMD Token Factory, or your own vLLM on AMD) and a chip names the model and the
+endpoint host; without them it says "Recorded run — live AMD endpoint not configured" and replays prose recorded
+from an open model served on AMD. Numbers come from the ledger in both modes. Free hosting without a credit card
+(Hugging Face Spaces, Streamlit Community Cloud) and Cloud Run: [deploy/DEMO_HOSTING.md](deploy/DEMO_HOSTING.md).
+
+To reproduce the results:
 
 ```bash
 uv run pytest -q                                                              # full test suite
