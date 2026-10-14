@@ -165,7 +165,13 @@ and who served the text model. Token Factory numbers are AMD-served, include the
 droplet benchmarks; CPU numbers are rehearsal numbers; a run with `--asr scripts` reports no real-time factor
 because no speech model ran. Live calls are sequential and paced (`--min-interval`), and answers are cached on
 disk with the latency measured when each call was first made, so a re-run costs no request and reports the
-original measurement.
+original measurement (the samples are "received" on a fixed date, `--received-at`, so the prompt is the same
+every time). The client's host name is not recorded unless `--record-host` is passed.
+
+The first live smoke runs (14 October 2026, AMD Token Factory, text model only) are in
+`editions/amd/bench/results/voice-tokenfactory-20261014/`: Gemma-4-31B-IT answered six sample transcripts in
+7.5 s at the median, and during an outage of that model earlier the same night the chain failed over to
+DeepSeek-V4-Flash (26.3 s at the median). The README there says exactly what those numbers are and are not.
 
 ## Samples
 

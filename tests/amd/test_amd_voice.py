@@ -261,6 +261,10 @@ def test_voice_bench_measures_real_time_factor_and_extraction_latency_and_labels
     assert "stand-in" in prov and "AMD Token Factory" in prov and "not an MI300X droplet benchmark" in prov
     again = run()
     assert gemma.calls == 1 and again["metrics"]["llm_cached_runs"] == 2  # a second run costs no request
+    assert first["settings"]["received_at"] == voice_bench.DEFAULT_RECEIVED_AT  # a fixed date: the prompt replays
+    assert again["runs"][0]["llm_measured_at"] == first["runs"][0]["llm_measured_at"]  # when it was really measured
+    prompt = json.loads(next(cache.glob("*.json")).read_text(encoding="utf-8"))
+    assert "measured_at" in prompt and "16 September 2026" not in prompt["text"]  # the answer, not the prompt
     stored = "".join(p.read_text(encoding="utf-8") for p in cache.glob("*.json"))
     assert "Authorization" not in stored and "measured_at" in stored
 

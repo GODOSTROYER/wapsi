@@ -66,6 +66,9 @@ from wapsi.intake.llm_chain import PROBE_MAX_TOKENS  # noqa: E402
 from wapsi.intake.open_voice import friendly_model  # noqa: E402
 
 ASR_CHOICES = ("auto", "scripts", "endpoint", "local", "chat-audio")
+# When the bundled samples are "received": shortly after the complaints they retell (August / September 2026).
+# The date is part of the prompt, so a fixed one keeps relative dates stable and lets the answer cache replay.
+DEFAULT_RECEIVED_AT = "2026-09-16T11:00:00+05:30"
 SCALAR_FIELDS = ("victim_name", "phone", "bank", "account_last4", "date_time", "payment_mode", "fraud_type",
                  "beneficiary")  # fmt: skip
 
@@ -299,7 +302,7 @@ def _agreement(result: Any, expected: Mapping[str, Any]) -> tuple[int, int, list
 
 
 def run_one(model: Any, item: Mapping[str, Any], ledger: Any, llm: CallLog | None,
-            clock: Callable[[], float] = time.perf_counter) -> dict[str, Any]:
+            clock: Callable[[], float] = time.perf_counter, received_at: Any = None) -> dict[str, Any]:
     from wapsi.adapters.llm_openai_compat import LLMError
     from wapsi.intake.voice import VoiceIntakeError, intake_voice_note
     from wapsi.verify.injection import RulesGuard
@@ -308,7 +311,7 @@ def run_one(model: Any, item: Mapping[str, Any], ledger: Any, llm: CallLog | Non
     rec: dict[str, Any] = {"id": item["id"], "world": item["world"], "ok": False}
     t0 = clock()
     try:
-        r = intake_voice_note(item["audio"], llm=model, ledger=ledger, guard=RulesGuard(),
+        r = intake_voice_note(item["audio"], llm=model, ledger=ledger, guard=RulesGuard(), received_at=received_at,
                               filename=item["filename"], sample_id=item["id"] if item.get("sample") else None)
     except (VoiceIntakeError, LLMError) as exc:
         rec["error"] = f"{type(exc).__name__}: {exc}"[:300]
@@ -439,13 +442,20 @@ def summarise(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def run_bench(items: Sequence[Mapping[str, Any]], model: Any, llm: CallLog | None, *, repeat: int = 1,
-              fake: bool = False, asr: str = "auto", min_interval_s: float = 0.0, progress: bool = False) -> dict[str, Any]:
+              fake: bool = False, asr: str = "auto", min_interval_s: float = 0.0, progress: bool = False,
+              received_at: str | None = DEFAULT_RECEIVED_AT, record_host: bool = False) -> dict[str, Any]:
+    """``received_at`` (ISO 8601) is when the notes count as received; ``None`` = now (the prompt then changes
+    every minute and nothing replays from the cache). The client's host name is left out unless ``record_host``:
+    this bench often runs on a developer's own machine and its results are committed."""
+    from datetime import datetime
+
+    received = datetime.fromisoformat(received_at) if received_at else None
     ledger_for = _ledgers()
     started = utc_now()
     runs: list[dict[str, Any]] = []
     for n in range(max(1, repeat)):
         for item in items:
-            rec = run_one(model, item, ledger_for(item["world"]), llm)
+            rec = run_one(model, item, ledger_for(item["world"]), llm, received_at=received)
             rec["repeat"] = n
             runs.append(rec)
             if progress:
@@ -462,11 +472,11 @@ def run_bench(items: Sequence[Mapping[str, Any]], model: Any, llm: CallLog | Non
         "schema_version": SCHEMA_VERSION,
         "generated_at": started.isoformat(),
         "settings": {"asr": "fake" if fake else asr, "repeat": max(1, repeat), "min_interval_s": min_interval_s,
-                     "items": [i["id"] for i in items], "fake": fake},
+                     "items": [i["id"] for i in items], "fake": fake, "received_at": received_at or "now"},
         "label": label,
         "hardware": hardware,
         "provenance": provenance(hardware, fake=fake),
-        "env": env_info(),
+        "env": env_info() if record_host else {**env_info(), "host": "not recorded"},
         "metrics": metrics,
         "runs": runs,
     }
@@ -525,10 +535,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--world", choices=["showcase", "demo"], default="showcase",
                     help="ledger that --audio files are reconciled against")
     ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--received-at", default=DEFAULT_RECEIVED_AT,
+                    help="when the notes count as received (ISO 8601; 'now' for the current time). A fixed date "
+                         "keeps the prompt identical between runs, so cached answers can replay")
     ap.add_argument("--min-interval", type=float, default=4.0, help="seconds between live LLM calls")
     ap.add_argument("--cache-dir", default=str(Path(__file__).resolve().parent / ".cache" / "voice"),
                     help="LLM answer cache ('' disables it)")
     ap.add_argument("--fake", action="store_true", help="offline harness check (fake recogniser + fake LLM)")
+    ap.add_argument("--record-host", action="store_true",
+                    help="record this machine's host name (off by default: results are committed)")
     ap.add_argument("--out", default=None, help="results directory (default bench/results/<utc stamp>)")
     ap.add_argument("--name", default="voice_bench", help="output file stem (report.py picks up voice_bench*.json)")
     args = ap.parse_args(argv)
@@ -542,7 +557,9 @@ def main(argv: list[str] | None = None) -> int:
     model, llm = build_model(args.asr, fake=args.fake, cache_dir=cache, min_interval_s=args.min_interval)
     print(f"reading {len(items)} voice note(s) x {max(1, args.repeat)} with {model.label()}", flush=True)
     result = run_bench(items, model, llm, repeat=args.repeat, fake=args.fake, asr=args.asr,
-                       min_interval_s=args.min_interval, progress=True)
+                       min_interval_s=args.min_interval, progress=True,
+                       received_at=None if args.received_at.strip().lower() == "now" else args.received_at,
+                       record_host=args.record_host)
     out = results_dir(args.out)
     write_json(out / f"{args.name}.json", result)
     (out / f"{args.name}.md").write_text(to_markdown(result), encoding="utf-8", newline="\n")
