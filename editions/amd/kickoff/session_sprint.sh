@@ -9,6 +9,8 @@
 #   SPRINT_BLOCKS="serve eval bench" bash .../session_sprint.sh
 #
 # Blocks, in order: env, serve (models + serve), eval, bench, ab, gnn, voice, evidence.
+# AMD AI Notebook tutorial sessions on MI300X end after about 1 hour: split the work, e.g.
+#   SPRINT_BLOCKS="env serve bench ab evidence"   then   SPRINT_BLOCKS="env gnn voice evidence"
 # Output: $SPRINT_OUT/progress.log, $SPRINT_OUT/run.log, $SPRINT_OUT/pack_<block>.tgz
 set -u
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -18,6 +20,18 @@ mkdir -p "${OUT}"
 BLOCKS="${SPRINT_BLOCKS:-env serve eval bench ab gnn voice evidence}"
 export WAPSI_GPU_HOUR_USD="${WAPSI_GPU_HOUR_USD:-1.99}"
 RUN=(bash editions/amd/kickoff/run_all.sh --mode notebook --skip-preflight --ignore-budget --keep-going)
+
+# One GPU, one session: the optional second-opinion judge (Gemma 4 E4B on port 8001) collides with the main engine,
+# which takes 8001 for its own distributed init when 8000 is the API port, and every later stage then waits 30 min for
+# it. Unless SPRINT_JUDGE=1, blank the judge in the model plan so the notebook stages never start or wait for it.
+no_judge() {
+  [[ "${SPRINT_JUDGE:-0}" == "1" ]] && return 0
+  local plan="${WAPSI_WORK:-/root/wapsi-scratch/wapsi-work}/model_plan.env"
+  if [[ -f "${plan}" ]]; then printf '
+# session_sprint: no judge model this session
+PLAN_JUDGE_MODEL=
+' >> "${plan}"; echo "judge removed from ${plan}"; fi
+}
 
 note() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "${OUT}/progress.log"; }
 
@@ -100,7 +114,10 @@ for b in ${BLOCKS}; do
   note "BLOCK ${b} start"
   case "${b}" in
     env)      "${RUN[@]}" --stage env >> "${OUT}/run.log" 2>&1 ;;
-    serve)    vllm_overlay >> "${OUT}/run.log" 2>&1; "${RUN[@]}" --stage models,serve >> "${OUT}/run.log" 2>&1 ;;
+    serve)    vllm_overlay >> "${OUT}/run.log" 2>&1
+              "${RUN[@]}" --stage models >> "${OUT}/run.log" 2>&1
+              no_judge >> "${OUT}/run.log" 2>&1
+              "${RUN[@]}" --stage serve >> "${OUT}/run.log" 2>&1 ;;
     eval)     "${RUN[@]}" --stage eval >> "${OUT}/run.log" 2>&1 ;;
     bench)    "${RUN[@]}" --stage bench >> "${OUT}/run.log" 2>&1 ;;
     ab)       "${RUN[@]}" --stage ab >> "${OUT}/run.log" 2>&1 ;;
