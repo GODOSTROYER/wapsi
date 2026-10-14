@@ -30,59 +30,87 @@
      "total_tokens": 35637
     },
     "reported_cost_usd": 0.000954
+   },
+   {
+    "measured_on": "2026-10-14",
+    "label": "developer.amd.com.cn, Gemma-4-31B-IT, measured 2026-10-14",
+    "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+    "source": "showcase",
+    "cases": 2,
+    "prose_fields": 5,
+    "recorded": 5,
+    "already_recorded": 0,
+    "rejected": 0,
+    "api_calls": 6,
+    "cache_hits": 0,
+    "retries": 0,
+    "rate_limited_429": 0,
+    "latency_s": {
+     "n": 6,
+     "p50": 9.563,
+     "min": 4.982,
+     "max": 29.77
+    },
+    "tokens": {
+     "prompt_tokens": 31864,
+     "output_tokens": 942,
+     "thinking_tokens": 0,
+     "total_tokens": 32806
+    },
+    "reported_cost_usd": 0.001096
    }
   ]
  },
  "entries": {
   "a8cbbc45e06a99ac15fcfe85fde31ed9551848b688667172341126dfd03041ef": {
-   "text": "{\n  \"text\": \"Two victims reported a combined loss of ⟦total_stolen⟧ to a mule account at this bank, identified by complaint numbers ⟦ncrp_ids⟧. The funds were received via fraudulent calls and UPI transfers. Currently, ⟦total_hold⟧ remains in the mule account, where an amount-specific hold has been applied. A further ⟦total_cashed_out⟧ was withdrawn via ATM, for which a forward hold has been initiated. No funds are resting at other banks. The bank is processing restoration under code ⟦restoration_process⟧, with the total recoverable amount standing at ⟦total_recoverable⟧. The case status is planned, and the mule account has been flagged for escalation.\"\n}",
-   "served_by": "Qwen3.8-27B on AMD @ developer.amd.com.cn",
-   "recorded_at": "2026-10-14T00:37:11+00:00",
+   "text": "{\"text\": \"Two victims reported a total loss of ⟦total_stolen⟧ under complaint numbers ⟦ncrp_ids⟧. The funds were transferred to a mule account at this bank, where ⟦total_cashed_out⟧ was withdrawn via ATM. The bank has placed a hold of ⟦total_hold⟧ on the available funds in the beneficiary account. No funds are resting at other banks, and the total recoverable amount is ⟦total_recoverable⟧. The bank is following restoration process ⟦restoration_process⟧ to address the fraud.\"}",
+   "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+   "recorded_at": "2026-10-14T10:31:37+00:00",
    "task": "case_summary",
    "case_id": "CASE-31109260000102",
    "draft_id": "DRF-CASE-31109260000102-CFCFRMS_UPDATE-CASE",
    "attempts": 1,
-   "latency_s": 9.253
+   "latency_s": 4.982
   },
   "acd0a4b6169714a034d158f27dd9a31904a2ca759305f2a78aa5d28be9cde733": {
-   "text": "{\n  \"text\": \"The focus account, ⟦account_id⟧, is classified as an innocent holder because it has been active for approximately seven years with regular rent credits, indicating a legitimate long-standing relationship. The MuleHunter risk score is minimal, and the Financial Fraud Risk Indicator is none, with no prior NCRP reports. Crucially, none of the funds received were forwarded within twenty-four hours, suggesting the account was operated without the holder's knowledge or connivance. Consequently, an amount-specific hold of ⟦hold_amount⟧ is proportionate to secure the disputed funds for restoration. Since the account does not exhibit conduit behavior, no escalation or STR is recommended, and the hold remains limited to the specific tainted amount without suspending the broader account.\"\n}",
-   "served_by": "Qwen3.8-27B on AMD @ developer.amd.com.cn",
-   "recorded_at": "2026-10-14T00:36:31+00:00",
+   "text": "{\"text\": \"Account ⟦account_id⟧ is identified as an innocent holder as it is a long-standing account open for about seven years with regular rent credits. The account shows no signs of connivance, evidenced by a low MuleHunter-style risk score and the fact that none of the disputed funds received were sent on within twenty-four hours. Given these indicators of bona fides, the account was likely operated without the holder's knowledge. A hold of ⟦hold_amount⟧ is proportionate to the disputed credit received and is applied without further escalation. Since the account was not used as a conduit, no STR is recommended.\"}",
+   "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+   "recorded_at": "2026-10-14T10:31:20+00:00",
    "task": "edd_rationale",
    "case_id": "CASE-31009260000101",
    "draft_id": "DRF-CASE-31009260000101-EDD_MEMO-HB01-2000000001",
-   "attempts": 2,
-   "latency_s": 7.184
+   "attempts": 1,
+   "latency_s": 8.403
   },
   "b92c968a2cd89187cdf86af0de43f585f729508dc0bcde7b250b4b69f2aaff94": {
-   "text": "{\n  \"text\": \"The victim was defrauded through impersonation, transferring funds to a safe account for verification. The money moved through three subject accounts, with the first receiving the full amount and quickly forwarding it to the next two layers. Indicators of mule activity include high risk scores, prior reports, and rapid fund movement within minutes of receipt. The accounts were opened shortly before the fraud, and shared devices were detected. Cash withdrawals and outbound transfers to other banks further confirm the laundering pattern, supporting the ground of proceeds of crime.\"\n}",
-   "served_by": "Qwen3.8-27B on AMD @ developer.amd.com.cn",
-   "recorded_at": "2026-10-14T00:36:31+00:00",
+   "text": "{\"text\": \"A victim was defrauded through impersonation, where a caller posing as a bank official induced the transfer of ⟦total_stolen⟧ to a safe account. The funds were first received by ⟦HB01-1000000001/account_id⟧ and subsequently layered through ⟦HB01-1000000002/account_id⟧ and ⟦HB01-1000000003/account_id⟧. These three accounts are suspected money mules as they exhibit rapid fund depletion within twenty-four hours of receipt and share a common device. Additionally, ⟦HB01-1000000001/account_id⟧ and ⟦HB01-1000000002/account_id⟧ were opened shortly before the fraud occurred. The transactions are flagged as ⟦str_ground⟧ due to these patterns of layering and high-risk indicators.\"}",
+   "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+   "recorded_at": "2026-10-14T10:31:20+00:00",
    "task": "str_grounds",
    "case_id": "CASE-31009260000101",
    "draft_id": "DRF-CASE-31009260000101-STR-CASE",
    "attempts": 1,
-   "latency_s": 23.163
+   "latency_s": 29.77
   },
   "b9c94c691347db09876a8c151c5553fd2222e2d9ed246200d5c516dccdad3312": {
-   "text": "{\n  \"text\": \"A victim reported an impersonation fraud resulting in a loss of ⟦total_stolen⟧, with complaint acknowledgement number ⟦ncrp_ids⟧. The funds were transferred to a mule account at the home bank, which subsequently distributed the money across multiple layers. Currently, ⟦total_hold⟧ is immobilised through amount-specific holds on accounts within this bank, while ⟦total_outbound⟧ remains at other banks, for which CFCFRMS requests have been issued. An additional ⟦total_cashed_out⟧ was withdrawn in cash, rendering it unrecoverable. The total recoverable amount, including outbound hold requests, stands at ⟦total_recoverable⟧. The bank is proceeding with restoration process ⟦restoration_process⟧, applying pro-rata apportionment rules to ensure equitable distribution of recovered funds to the victim.\"\n}",
-   "served_by": "Qwen3.8-27B on AMD @ developer.amd.com.cn",
-   "recorded_at": "2026-10-14T00:36:31+00:00",
+   "text": "{\"text\": \"A total of ⟦total_stolen⟧ was stolen from a victim in a case involving impersonation, as reported under ⟦ncrp_ids⟧. The funds were traced across several accounts, with ⟦total_hold⟧ currently held at this bank and ⟦total_outbound⟧ resting at other banks. Additionally, ⟦total_cashed_out⟧ has been cashed out. The bank has placed amount-specific holds on the identified accounts and has requested holds from other banks for the outbound funds. The total recoverable amount is ⟦total_recoverable⟧, and the restoration process is being handled under ⟦restoration_process⟧.\"}",
+   "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+   "recorded_at": "2026-10-14T10:31:20+00:00",
    "task": "case_summary",
    "case_id": "CASE-31009260000101",
    "draft_id": "DRF-CASE-31009260000101-CFCFRMS_UPDATE-CASE",
-   "attempts": 1,
-   "latency_s": 9.415
+   "attempts": 2,
+   "latency_s": 6.714
   },
   "d206a1e96377b50f3b2e42e093e512610b64a974f729ea0c76b7e00a05ac811f": {
-   "text": "{\n  \"text\": \"Two victims were defrauded through a fake KYC update call and a courier customs scam, transferring a combined total of ⟦total_stolen⟧ to account ⟦HB01-1000000004/account_id⟧. The account received the full disputed amount of ⟦HB01-1000000004/disputed_amount⟧ and immediately moved funds, with ⟦total_cashed_out⟧ withdrawn via ATM shortly after receipt. Indicators of mule activity include the account being opened only six days prior to the fraud, a high risk score, and prior NCRP reports. The rapid movement of funds, specifically the cash-out within minutes of receipt, strongly suggests the account was used to launder proceeds of crime. A hold of ⟦HB01-1000000004/hold_amount⟧ has been placed to secure the remaining balance for potential recovery.\"\n}",
-   "served_by": "Qwen3.8-27B on AMD @ developer.amd.com.cn",
-   "recorded_at": "2026-10-14T00:37:11+00:00",
+   "text": "{\"text\": \"Two victims were defrauded through a KYC update scam and a courier scam, resulting in funds being transferred to account ⟦HB01-1000000004/account_id⟧. The account received a total of ⟦HB01-1000000004/disputed_amount⟧, of which ⟦total_cashed_out⟧ was withdrawn via ATM. The remaining ⟦HB01-1000000004/hold_amount⟧ is currently held. This account is suspected of being a money mule as it was opened six days before the fraud, exhibits a high risk score, and shows a pattern where funds were moved shortly after arrival. These activities are linked to complaints ⟦ncrp_ids⟧ and are reported as ⟦str_ground⟧.\"}",
+   "served_by": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+   "recorded_at": "2026-10-14T10:31:37+00:00",
    "task": "str_grounds",
    "case_id": "CASE-31109260000102",
    "draft_id": "DRF-CASE-31109260000102-STR-CASE",
-   "attempts": 2,
-   "latency_s": 20.014
+   "attempts": 1,
+   "latency_s": 11.655
   }
  }
 }

@@ -15,8 +15,9 @@ no credit card, in three ways. All of them serve the same thing: the shared offi
 > The build baked the demo world and the docs search index (561 chunks from the five public sources, 32 citation
 > ids; raw files and full texts removed). The container ran as user 1000 in recorded mode (health check, banner,
 > "Recorded run" chip, 16 of 16 showcase drafts verified) and in live mode against the AMD Token Factory (no
-> banner, live chip naming the model and `developer.amd.com.cn`, 16 of 16 drafts verified). The Space builder,
-> the launchers and the Community Cloud requirements are covered by tests. Nothing was pushed to Hugging Face,
+> banner, live chip naming the model and `developer.amd.com.cn`). That container check has no committed results
+> file, so no live figure is quoted from it; the committed AMD-served figures are in `pitch/NUMBERS.md`. The Space
+> builder, the launchers and the Community Cloud requirements are covered by tests. Nothing was pushed to Hugging Face,
 > Streamlit or Google Cloud: those steps need your accounts, so the first real run there is yours.
 
 ## What a visitor sees
@@ -26,9 +27,15 @@ no credit card, in three ways. All of them serve the same thing: the shared offi
   family, where it runs, the endpoint host). The chip is read from the drafts themselves: each draft records who
   wrote its prose, and the audit chain seals that name with the draft.
 - **Recorded run.** Without them every page carries the banner **"Recorded run — live AMD endpoint not
-  configured"**, and the prose is replayed from `data/recordings/demo_prose.json`: answers an open model served on
-  AMD really gave for these cases, recorded once. The chip then reads "Recorded run · <model> on AMD via <host>".
-  Cases with no recorded answer use the offline stub, and the chip says so.
+  configured"**, and the prose is replayed from `data/recordings/demo_prose.json`: the answers `Gemma-4-31B-IT`,
+  served on AMD GPUs by the AMD Token Factory, gave for the two showcase cases on 2026-10-14. The chip then reads
+  "Recorded run · Gemma 4 on AMD via developer.amd.com.cn". The demo world's cases have no recorded answer yet: they
+  use the offline stub, and the chip says so.
+- **Live, recorded or offline, page by page.** Drafts: live with a key, else the recording (showcase) or the stub
+  (demo world), always labelled. Agent trace tab: a recording of a live ADK session on Gemma 4 on AMD
+  (2026-10-14), labelled "Recorded live run, replayed"; the public image has no agent extra, so "Ask the agent" is
+  not offered there (run `editions/amd/app/ui_app.py` for it). Voice Intake: the six bundled samples, read by an
+  offline model, labelled as such.
 - **Either way** every amount, account number, UTR and date is a slot filled from the ledger, and the verifier
   recomputes them on the spot. The model only ever writes words around placeholders, so a replay cannot show a
   stale number: a recording is keyed by the case's own figures and is not used when they differ.
@@ -47,21 +54,18 @@ no credit card, in three ways. All of them serve the same thing: the shared offi
 | `WAPSI_LLM_MODEL` | `Gemma-4-31B-IT` | variable |
 | `WAPSI_LLM_JSON_MODE` | optional: `json_object` (default), `json_schema`, or `none` (send no `response_format`) | variable |
 | `WAPSI_LLM_EXTRA_BODY` | optional: a JSON object merged into every request | variable |
-| `WAPSI_LLM_MODELS` | recommended on a shared endpoint: `Gemma-4-31B-IT,DeepSeek-V4-Flash`, the models to fail over along, in order, while one is withdrawn or answers in garbage. Each draft's chip names the model that wrote it | variable |
+| `WAPSI_LLM_MODELS` | optional on a shared endpoint: `Gemma-4-31B-IT,DeepSeek-V4-Flash`, the models to fail over along, in order, while one is withdrawn or answers in garbage. Each draft's chip names the model that wrote it. Leave it unset to keep Gemma 4 the only live writer (the recording is the fallback) | variable |
 | `WAPSI_LLM_PLATFORM` | optional: `AMD` for your own vLLM on AMD hardware. `*.amd.com(.cn)` hosts are recognised; any other host is shown without a platform unless you state it | variable |
-| `WAPSI_LLM_RPM` | optional: requests a minute the app may send (default 12; the Token Factory allows 20 per account) | variable |
+| `WAPSI_LLM_RPM` | optional: requests a minute the app may send (default 12 here, 18 in the AMD app; the Token Factory allows 20 per account) | variable |
 | `WAPSI_UI_LLM` | optional: `auto` (default in the demo), `recorded` (never call the endpoint), `live` (never replay) | variable |
 
-> **Endpoint status on 2026-10-14 (measured, AMD Token Factory).** `Gemma-4-31B-IT` answered every request, even
-> "say hello", with HTTP 200 and degenerate output (a run of `/` up to `max_tokens`), with and without
-> `response_format`, at temperature 0 and at the default. Wapsi now treats such an answer as a failure: it is never
-> cached, recorded or shown. `Qwen3.8-27B` on the same endpoint worked with
-> `WAPSI_LLM_JSON_MODE=none` and `WAPSI_LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`
-> (5 showcase prose fields, 7 calls, median 9.8 s per call, 34,422 prompt and 1,215 completion tokens, endpoint-reported
-> cost $0.000954), so the bundled recording is from that model and is labelled with it. Before you publish the URL,
-> check the model you configure (see "Check the live endpoint") and record again with Gemma 4 once it answers.
-> Set `WAPSI_LLM_MODELS` too: while the first model answers in garbage, the next one writes the prose live, and the
-> recorded run is the last resort.
+> **Endpoint status on 2026-10-14 (measured, AMD Token Factory).** For about half an hour after midnight UTC,
+> `Gemma-4-31B-IT` answered every request, even "say hello", with HTTP 200 and degenerate output (a run of `/` up to
+> `max_tokens`). Wapsi treats such an answer as a failure: it is never cached, recorded or shown. A first recording
+> was made from `Qwen3.8-27B` in that window. At 10:30 UTC the live health probe passed (1.9 s) and the recording was
+> made again from `Gemma-4-31B-IT` (5 showcase prose fields, 6 calls, median 9.6 s per call, 31,864 prompt and 942
+> completion tokens; `meta.runs` in the file keeps both runs), so every recorded answer the demo replays is
+> Gemma 4's. Before you publish the URL, check the model you configure (see "Check the live endpoint").
 
 ## a. Hugging Face Spaces (Docker Space)
 
@@ -88,7 +92,9 @@ port named in the README's YAML block. `scripts/make_space.py` assembles that re
    `uv run python scripts/make_space.py --out <that clone> --force`, then
    `git lfs install && git add -A && git commit -m "Wapsi demo" && git push`.
 4. **Configure the endpoint** in the Space: Settings → Variables and secrets. Add `WAPSI_LLM_API_KEY` as a
-   **secret** and `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_MODEL` as variables. Skip this step to run the recorded run.
+   **secret** and `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_MODEL` (`Gemma-4-31B-IT`) as variables. Recommended for judging:
+   the drafts' prose is then written live by Gemma 4 on AMD, and the Gemma 4 recording answers whenever the
+   endpoint does not. Skip this step to run the recorded run alone.
 5. **Open it.** The build takes a few minutes the first time. The judged URL is
    `https://<user>-<space>.hf.space/?page=case-room&case=CASE-31009260000101` (the direct URL, not the
    `huggingface.co/spaces/...` page that frames it).
@@ -181,15 +187,19 @@ docs-index download; `--build-arg BAKE_WORLD=0` skips the demo world. Without Do
 uv run python scripts/record_demo_prose.py --dry-run          # what is recorded, what is missing; no call
 uv run python scripts/record_demo_prose.py --refresh          # the two showcase cases: 5 prose fields
 uv run python scripts/record_demo_prose.py --source demo      # the demo world's first 12 cases: 26 more
-uv run python -m evals.harness --world showcase --llm openai-compat --min-interval 4   # 2 cases end to end
+uv run python -m evals.harness --world showcase --llm openai-compat:Gemma-4-31B-IT --min-interval 4 \
+  --out evals/reports/amd --report-name showcase-gemma4-<date>                          # 2 cases end to end
 ```
 
 The recorder is polite on a shared key (sequential, 4 s apart, at most 12 a minute and 40 calls a run, HTTP 429
 retried after `Retry-After`, every answer cached under `.cache/llm`). It refuses degenerate answers, so a broken
 model records nothing, and it prints what it measured. Commit the updated `data/recordings/demo_prose.json` and
-rebuild the Space folder. The harness writes `evals/reports/showcase-openai-compat.json` with the model id, the
-endpoint host, calls, cache hits, retries, tokens and the cost the endpoint reported; a rerun is served from the
-cache (measured on 2026-10-14 against the Token Factory with Qwen3.8-27B: 9 requests, 0 API calls, 9 cache hits).
+rebuild the Space folder. Start with `uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only`: its two
+requests always go to the endpoint, never to a cache. The harness report names the model id, the endpoint host,
+calls, cache hits, retries, tokens, the cost the endpoint reported, and which model wrote each draft's prose
+(`prose_by_model`); a rerun is served from the cache. Measured on 2026-10-14 against the Token Factory with
+`Gemma-4-31B-IT` alone: 8 requests, 2 API calls, 6 cache hits (the prose answers the recording run had just cached)
+(`evals/reports/amd/showcase-gemma4-20261014.json`).
 
 ## Keep it up through judging
 
@@ -208,7 +218,7 @@ cache (measured on 2026-10-14 against the Token Factory with Qwen3.8-27B: 9 requ
 | Banner "Recorded run — live AMD endpoint not configured" although you set the variables | The banner lists the variables it could not see. On Spaces a new variable needs a restart (Settings → Restart). On Community Cloud the secrets must be top-level TOML keys |
 | Chip "Recorded run · ..." without the banner | The endpoint is configured but the call failed (rate limit, wrong model name, key rejected, degenerate output). "Regenerate drafts" on the Drafts page tries a fresh live call after a minute |
 | Chip "Fixed paragraphs · model not reached" | `WAPSI_UI_LLM=live` and the endpoint failed, or the model's prose broke the placeholder rules twice. The numbers are still right; switch to `auto` to use the recording |
-| Chip "Offline stub · no model call" | No recorded answer exists for that case's figures. Record it (`scripts/record_demo_prose.py --source demo`) |
+| Chip "Offline stub · no model call" | No recorded answer exists for that case's figures (the demo world is not recorded yet). Record it (`scripts/record_demo_prose.py --source demo`, 26 calls) |
 | Space build fails at `COPY` | The folder was assembled before a file was committed. Commit, rerun `make_space.py --force`, upload again |
 | Space build is slow or the index step warns | A public legal site was unreachable; the image still works on the citations-only corpus. Rebuild later (Settings → Factory rebuild) |
 | Upload on the Voice Intake page fails with 403 behind another proxy | Keep `--server.enableXsrfProtection false --server.enableCORS false` in the start command |

@@ -54,6 +54,7 @@ from editions.amd.bench.common import (  # noqa: E402
     utc_now,
     write_json,
 )
+from wapsi.adapters.llm_env import self_hosted_name  # noqa: E402 - "vllm-rocm:" only when AMD is confirmed
 
 DEFAULT_GPU_HOUR_USD = 1.99
 
@@ -409,7 +410,7 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         args.llm_model = args.llm_model or os.environ.get("WAPSI_LLM_SERVED_NAME", "wapsi-llm")
         # the bearer token reaches every request (vLLM started with VLLM_API_KEY answers 401 without it)
         inner = OpenAICompatLLM(base_url=args.llm_url, model=args.llm_model, api_key=api_key, timeout=args.llm_timeout,
-                                name=f"vllm-rocm:{args.llm_model}")
+                                name=self_hosted_name(args.llm_model))
         card = model_card(args.llm_url, api_key)
         info = {"llm": inner.name, "base_url": args.llm_url, "root": card.get("root"),
                 "max_model_len": card.get("max_model_len")}
@@ -433,7 +434,7 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
 
         guard = LLMJudgeGuard(OpenAICompatLLM(base_url=args.verifier_url, model=args.verifier_model,
                                               api_key=os.environ.get("WAPSI_VERIFIER_API_KEY") or api_key,
-                                              timeout=60, max_retries=1, name=f"vllm-rocm:{args.verifier_model}"))
+                                              timeout=60, max_retries=1, name=self_hosted_name(args.verifier_model)))
     scorer = None
     if args.gnn_url:
         from editions.amd.app.gnn_client import GnnHttpScorer

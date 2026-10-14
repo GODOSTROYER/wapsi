@@ -20,6 +20,9 @@ synthetic.
   return the money, so honest merchants and customers keep trading.
 - Hero line: a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false
   freezes (39-case synthetic test world).
+- Retention line under it: honest merchants and customers: ₹82.99 L would be frozen; Wapsi holds ₹2.50 L, the
+  victim money only. (Most of the ₹35.26 Cr sits in three nodal / pool accounts, which SOP 9.1(iii) already says
+  must not be frozen whole; this line is the part a bank's own customers feel.)
 - Footer: Track 3, Reinvent Commerce · Gemma 4 on AMD GPUs · Google ADK · solo entry.
 
 ## 2. The merchant's problem, and the customer's
@@ -119,28 +122,31 @@ Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false fr
 
 ## 8. What runs on AMD
 
-The AMD component is in the working product: every word in every draft, every field read from a complaint and
-every agent tool call comes from an open model served on AMD GPUs.
+The AMD component is in the working product: with an endpoint configured, the words in every draft, the fields
+read from a complaint and every agent tool call come from Gemma 4 served on AMD GPUs. The status column says what
+has run on AMD so far and what is prepared.
 
-| Workload | Model | Where it runs |
-|---|---|---|
-| Draft prose (three placeholder-only fields per case) | Gemma 4 31B | AMD Token Factory endpoint (AMD GPUs) |
-| Complaint and voice-note field extraction, translation | Gemma 4 31B | AMD Token Factory endpoint |
-| The officer's agent and its tool calls | Gemma 4 31B through Google ADK | AMD Token Factory endpoint |
-| Second opinion on untrusted text | a small open model | AMD Token Factory endpoint |
-| Speech to text for voice notes | Whisper, open weights | local by default; any GPU is faster |
-| Mule scoring | GraphSAGE GNN, PyTorch on ROCm | AMD GPU notebook or MI300X droplet |
+| Workload | Model | Where it runs | Status (14-10-2026) |
+|---|---|---|---|
+| Draft prose (placeholder-only fields) | Gemma 4 31B | AMD Token Factory endpoint (AMD GPUs) | run live: the agent session and the showcase world; the public demo replays prose recorded from it |
+| Complaint and voice-note field extraction, translation | Gemma 4 31B | AMD Token Factory endpoint | run live on the six sample transcripts |
+| The officer's agent and its tool calls | Gemma 4 31B through Google ADK | AMD Token Factory endpoint | run live; its trace is replayed in the Agent trace tab |
+| Second opinion on untrusted text | a small open model | AMD Token Factory endpoint | wired, not yet measured |
+| Speech to text for voice notes | Whisper, open weights | local by default; any GPU is faster | built and tested offline; not yet run in this entry |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, PyTorch, built to run on ROCm | AMD GPU notebook or MI300X droplet | prepared and CPU-tested; not yet run on AMD |
 
 - **Three modes, one codebase.** Endpoint mode is the default: three settings (`WAPSI_LLM_BASE_URL`,
   `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`). Notebook mode runs the GNN and the benchmarks in a ROCm JupyterLab.
   Droplet mode serves everything on one MI300X with vLLM and docker compose.
 - **Why this matters to a bank:** the model is open and the endpoint is the bank's choice. The same code moves
   from AMD's shared API to one AMD GPU in the bank's own rack by changing those three settings.
-- **Measured with Gemma 4 on AMD (Token Factory):** on the demo world, drafts passing the verifier
-  TBD(tf_demo_pass), prose replaced by fixed text TBD(tf_demo_fallback), holds exact TBD(tf_demo_hold_exact); on
-  the showcase world TBD(tf_showcase_pass). One request takes TBD(tf_call_latency), and a case uses
-  TBD(tf_tokens_case) tokens. A voice note is transcribed in TBD(voice_asr_seconds), and TBD(voice_asr_samples) of
-  the six bundled notes reconcile as expected.
+- **Measured with Gemma 4 on AMD (Token Factory, 14-10-2026):** on the showcase world with Gemma 4 writing the
+  prose, drafts passing the verifier 1.0 and prose replaced by fixed text on that run 0.0. On the demo world, drafts
+  passing the verifier TBD(tf_demo_pass), prose replaced by fixed text TBD(tf_demo_fallback), holds exact
+  TBD(tf_demo_hold_exact). In the smoke run one prose request takes a median of 8.29 s (one request at a time, from
+  a laptop), and showcase case 1 uses 25,914 prompt and 636 completion tokens for its prose; the kickoff run's
+  drafting latency is TBD(tf_call_latency). A voice note is transcribed in TBD(voice_asr_seconds), and TBD(voice_asr_samples) of the six bundled notes
+  reconcile as expected.
 - **Droplet mode, designed and tested offline:** one MI300X, 192 GB HBM3. Gemma 4 31B in BF16 ≈ 62 GB of weights
   plus 43.6 GB left for its KV cache is 105.6 GB for the drafting model; 28.8 GB for the verifier; 57.6 GB left
   for the GNN and headroom. Measured on the droplet: memory per container TBD(droplet_vram), throughput
@@ -148,19 +154,22 @@ every agent tool call comes from an open model served on AMD GPUs.
 
 ## 9. Google technology: Gemma 4 and the Agent Development Kit
 
-- **Gemma 4** is the only language model on the product path. It never types a number: it writes sentences around
-  placeholders, and the verifier recomputes every amount, account, UTR, date and citation.
+- **Gemma 4** is the primary language model on the product path; other models on the same AMD endpoint answer
+  only as a labelled failover, and every draft names the model that wrote it. It never types a number: it writes
+  sentences around placeholders, and the verifier recomputes every amount, account, UTR, date and citation.
 - **Google ADK** (open source) runs the officer's agent: an ADK agent with 10 pipeline tools, pointed at Gemma 4
   on AMD through ADK's LiteLLM connector. Gemma calls the tools natively; a JSON-protocol fallback is the safety
   net.
-- **Voice Intake:** a victim's Hinglish voice note is transcribed with Whisper, Gemma 4 reads the fields from the
-  transcript, and every amount and UTR she said is checked against the ledger before a case opens.
+- **Voice Intake:** a victim's Hinglish voice note becomes a transcript (Whisper on the open path; the six bundled
+  samples come with their scripts), Gemma 4 reads the fields from the transcript, and every amount and UTR she said
+  is checked against the ledger before a case opens.
 - **Agent trace:** every tool call is recorded with its guard and verifier verdicts, redacted and sealed into the
-  case's audit log. In the recorded offline run: 5 tool calls behind "Open case 31009260000101", Verifier · 17/17
-  passed, Reply grounding · 23/23 values traced to tools; an analyst's attempt to approve is refused.
+  case's audit log. The tab replays a live run on Gemma 4 on AMD, labelled as a recording.
 - **Live on AMD (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14):** 5 tool calls behind "Open case
-  31009260000101", Gemma 4 driving the same agent through native tool calls; the run ended with 16 of 16 drafts
-  verified. Reply grounding of a live run: TBD(adk_grounding).
+  31009260000101", Gemma 4 driving the same agent through native tool calls; that live run ended VERIFIED: 16 of 16
+  drafts verified, with Gemma 4 on AMD writing the draft prose too. Reply grounding of the live run: 24 of 24 values
+  in the agent's reply (17 amounts, 7 account numbers) came from a tool; an analyst's approval refused by
+  maker-checker in the live session.
 - **Voice-note fields, live on AMD:** Gemma 4 answered for all 6 sample transcripts in a median of 7.5 s per
   note, and 98.3% of the extracted values agree with the expected answers (the samples' scripts stood in for the
   recogniser; a smoke run on synthetic notes).

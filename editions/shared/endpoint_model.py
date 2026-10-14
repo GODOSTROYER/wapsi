@@ -41,7 +41,7 @@ from google.genai import types
 from pydantic import PrivateAttr
 
 from . import json_protocol as jp
-from .endpoint import AgentEndpoint, EndpointStats
+from .endpoint import MODEL_TIMING, AgentEndpoint, EndpointStats
 from .probe import (
     JSON,
     NATIVE,
@@ -62,6 +62,8 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 REPROBE_AFTER_S = 30.0  # after a probe that could not assess the endpoint
 FALLBACK_RECHECK_S = 600.0  # while on a fallback model: how often the configured model is probed again
 _REJECT_STATUS = frozenset({400, 404, 422})
+_RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
+MAX_RETRY_AFTER_S = 60.0
 _MODEL_GONE = re.compile(r"model\b.{0,80}(not supported|not found|does not exist|not served|unavailable)",
                          re.IGNORECASE | re.DOTALL)
 
@@ -73,6 +75,34 @@ class EndpointOutputError(RuntimeError):
 def _status(exc: BaseException) -> int | None:
     code = getattr(exc, "status_code", None)
     return int(code) if isinstance(code, int) else None
+
+
+def retry_after_s(exc: BaseException) -> float | None:
+    """The server's ``Retry-After`` on a LiteLLM / OpenAI error, in seconds (``None`` when it sent none)."""
+    for headers in (getattr(exc, "litellm_response_headers", None),
+                    getattr(getattr(exc, "response", None), "headers", None)):
+        if headers is None:
+            continue
+        try:
+            raw = headers.get("retry-after") or headers.get("Retry-After")
+        except Exception:  # noqa: BLE001 - an odd header container: no hint
+            raw = None
+        try:
+            return max(0.0, float(raw)) if raw not in (None, "") else None
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def retry_delay(exc: BaseException, attempt: int) -> float | None:
+    """Seconds to wait before retrying ``exc``, or ``None`` when it is not worth retrying (a rejected request, a
+    bad key). A 429 waits the server's ``Retry-After`` (at most a minute); other transient errors back off."""
+    if _status(exc) not in _RETRY_STATUS:
+        return None
+    hinted = retry_after_s(exc)
+    if hinted is not None:
+        return min(hinted, MAX_RETRY_AFTER_S)
+    return float(min(2 ** (attempt + 1), 30))
 
 
 def rejects_tools(exc: BaseException) -> bool:
@@ -99,14 +129,34 @@ class EndpointClient(LiteLLMClient):
         self.result_role = ROLE_TOOL if endpoint.tool_result_role == "auto" else endpoint.tool_result_role
         self._last_call = 0.0
         self._quiet = False
+        self._limiter: Any = None
+        self._limiter_ready = False
 
-    async def _pace(self) -> None:
+    def limiter(self) -> Any:
+        """The endpoint's process-wide limiter (shared with the drafts' prose), or ``None`` for no pacing."""
+        if not self._limiter_ready:
+            from wapsi.adapters.llm_openai_compat import endpoint_host
+            from wapsi.adapters.llm_resilience import shared_limiter
+
+            e = self.endpoint
+            self._limiter = shared_limiter(endpoint_host(e.base_url) or e.base_url, rpm=e.rpm,
+                                           min_interval_s=e.min_interval_s)
+            self._limiter_ready = True
+        return self._limiter
+
+    async def _pace(self) -> float:
+        """Wait for the endpoint's pacing; returns the seconds waited (announced on ``RATE_WAITS``)."""
+        limiter = self.limiter()
+        if limiter is not None:
+            return float(await asyncio.to_thread(limiter.acquire))
         gap = self.endpoint.min_interval_s
         if gap <= 0:
-            return
+            return 0.0
         wait = self._last_call + gap - time.monotonic()
-        if wait > 0:
-            await asyncio.sleep(wait)
+        if wait <= 0:
+            return 0.0
+        await _announced_sleep(wait)
+        return wait
 
     async def acompletion(self, model: Any, messages: Any, tools: Any, **kwargs: Any) -> Any:
         if not self._quiet:
@@ -129,18 +179,53 @@ class EndpointClient(LiteLLMClient):
         # tool results go out under the role this endpoint understands (ADK picks one from the model's name)
         messages = [{**m, "role": self.result_role} if isinstance(m, dict) and m.get("role") in RESULT_ROLES
                     and m.get("role") != self.result_role else m for m in messages]
-        await self._pace()
-        t0 = time.perf_counter()
-        self._last_call = time.monotonic()
-        try:
-            response = await super().acompletion(model=model, messages=messages, tools=tools, **kwargs)
-        except Exception:
-            self.stats.error()
+        timing = MODEL_TIMING.get()
+        attempts = 1 + max(0, self.endpoint.max_retries)  # this client retries; LiteLLM's own retries are off
+        for attempt in range(attempts):
+            waited = await self._pace()
+            t0 = time.perf_counter()
             self._last_call = time.monotonic()
-            raise
-        self._last_call = time.monotonic()
-        self.stats.record((time.perf_counter() - t0) * 1000.0, getattr(response, "usage", None))
-        return response
+            try:
+                response = await super().acompletion(model=model, messages=messages, tools=tools, **kwargs)
+            except Exception as exc:
+                took = (time.perf_counter() - t0) * 1000.0
+                self.stats.error()
+                self._last_call = time.monotonic()
+                delay = retry_delay(exc, attempt) if attempt + 1 < attempts else None
+                if timing is not None:
+                    timing.http_ms += took
+                    timing.waited_ms += waited * 1000.0
+                    timing.calls += 1
+                if delay is None:
+                    raise
+                log.warning("agent endpoint answered HTTP %s; retrying in %.0f s", _status(exc), delay)
+                await _announced_sleep(delay, _RATE_LIMIT if _status(exc) == 429 else "the endpoint to recover")
+                if timing is not None:
+                    timing.waited_ms += delay * 1000.0
+                continue
+            took = (time.perf_counter() - t0) * 1000.0
+            self._last_call = time.monotonic()
+            self.stats.record(took, getattr(response, "usage", None))
+            if timing is not None:
+                timing.http_ms += took
+                timing.waited_ms += waited * 1000.0
+                timing.calls += 1
+            return response
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+_RATE_LIMIT = "the endpoint's rate limit"
+
+
+async def _announced_sleep(seconds: float, why: str = _RATE_LIMIT) -> None:
+    """``asyncio.sleep`` that shows the wait on ``RATE_WAITS`` (the chat says "waiting for ... (N s)")."""
+    from wapsi.adapters.llm_resilience import RATE_WAITS
+
+    token = RATE_WAITS.begin(seconds, why)
+    try:
+        await asyncio.sleep(seconds)
+    finally:
+        RATE_WAITS.end(token)
 
 
 class EndpointLlm(LiteLlm):
@@ -167,7 +252,7 @@ class EndpointLlm(LiteLlm):
             "api_base": endpoint.base_url,
             "api_key": endpoint.api_key or "EMPTY",  # keyless local servers (vLLM without --api-key)
             "timeout": endpoint.timeout_s,
-            "max_retries": endpoint.max_retries,
+            "max_retries": 0,  # EndpointClient retries 429 / 5xx itself, so a Retry-After wait can be announced
             "max_tokens": endpoint.max_tokens,
             "llm_client": EndpointClient(endpoint, stats),
         }

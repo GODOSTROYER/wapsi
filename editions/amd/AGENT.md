@@ -89,7 +89,7 @@ draft prose stays on the offline `FakeLLM`: one endpoint request per model turn,
 | `WAPSI_AGENT_TOOL_RESULT_ROLE` | `auto` | `auto` = what the probe found; `tool`; `tool_responses` |
 | `WAPSI_AGENT_FALLBACK_MODELS` | the other models of `WAPSI_LLM_MODELS` | other model ids on the same endpoint, used in order while the configured model is not served or returns unusable output; runs are labelled with the model that answered. Unset: the list voice intake fails over along (`WAPSI_LLM_MODELS`, else `WAPSI_LLM_FALLBACK_MODELS`) when the agent runs on the drafting endpoint; with none of the three set there is no fallback |
 | `WAPSI_AGENT_MAX_TOOL_CALLS` / `WAPSI_AGENT_MAX_LLM_CALLS` | `12` / `24` | bounds per officer message |
-| `WAPSI_AGENT_MIN_INTERVAL_S` | `0` | pause between model calls (shared rate limits) |
+| `WAPSI_AGENT_MIN_INTERVAL_S` | `WAPSI_LLM_MIN_INTERVAL_S`, else 3 s for a shared endpoint (0 for a local server or the offline fake) | pause between model calls; the agent paces on the same process-wide limiter as the drafts' prose, retries 429 / 5xx itself (honouring `Retry-After`, at most 60 s) and announces the wait, so "Ask the agent" shows "Waiting for the endpoint's rate limit (N s)" instead of a frozen page |
 | `WAPSI_AGENT_TIMEOUT_S`, `WAPSI_AGENT_MAX_TOKENS`, `WAPSI_AGENT_TEMPERATURE`, `WAPSI_AGENT_RETRIES`, `WAPSI_AGENT_PARALLEL_TOOLS`, `WAPSI_AGENT_JSON_OBJECT`, `WAPSI_AGENT_EXTRA_BODY`, `WAPSI_AGENT_PROVIDER_LABEL` | see `editions/shared/endpoint.py` | request shape |
 
 ## Tool calling: native when the endpoint has it, a strict JSON protocol when it does not
@@ -150,21 +150,40 @@ Then point the app at it: `WAPSI_LLM_BASE_URL=http://127.0.0.1:8000/v1 WAPSI_LLM
 endpoint (the provider states the models run on AMD GPUs). They are not MI300X droplet benchmarks, and the latencies
 include network time from the developer's laptop and whatever load the shared endpoint had.
 
+**The committed run** (the one the pitch cites):
+[`bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json`](bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json),
+written by
+
+```bash
+WAPSI_LLM_MIN_INTERVAL_S=4 WAPSI_AGENT_MIN_INTERVAL_S=4 \
+  uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live --prose endpoint --demo --out <file>
+```
+
+with no failover list, so Gemma 4 answered everything, **including the draft prose** inside `open_case`.
+
 | Run | Model calls | Errors | Latency per call (mean / p50 / max) | Tokens in / out | Cost reported by the endpoint |
 |---|---|---|---|---|---|
-| Showcase case, "Open case 31009260000101": 5 tool calls, 6 model turns, reply grounded | 6 | 0 | 4.69 s / 3.09 s / 14.59 s | 45,468 / 867 | $0.000752 |
-| Same case, first run (reply replaced by the tool-result summary, see above) | 6 | 0 | 6.09 s / 4.96 s / 17.07 s | 45,072 / 739 | $0.000778 |
-| Demo script, 4 officer messages (open, explain, analyst approval, injected instruction) | 12 | 0 | 12.73 s / 4.20 s / 83.95 s | 171,975 / 1,718 | $0.001049 |
-| JSON tool protocol forced (`WAPSI_AGENT_TOOL_MODE=json`), "Show the hold plan." | 2 | 0 | 9.03 s mean | 6,529 / 881 | $0.000247 |
+| Demo script, 4 officer messages (open, explain, analyst approval, injected instruction), draft prose on the endpoint too | 12 | 0 | 6.89 s / 3.86 s / 19.07 s | 172,846 / 1,824 | $0.001071 |
 
-- Capability probe: native tool calls, tool results understood with `role: "tool"`, 2 requests, 2.6 s for the
-  first.
-- Draft prose in these runs came from the offline `FakeLLM`; only the agent's model turns went to the endpoint.
-- The slowest call is always the final reply: the prompt then holds every tool result (about 18,000 tokens).
-- Demo script: the analyst's approval was refused by maker-checker before the tool ran; the message with an
-  injected instruction was rewritten by the input guard and the model searched the SOP without following it.
-- Every run ended VERIFIED: plan policy check passed, 16 of 16 drafts verified, audit chain intact with the agent
-  runs sealed in it.
+- Outcome: VERIFIED. Plan policy check passed, 16 of 16 drafts verified, 3 of 3 prose fields written by Gemma 4 on
+  AMD (0 replaced by the fixed paragraph), audit chain intact with 4 agent runs sealed in it.
+- "Open case 31009260000101": 5 tool calls, 6 model turns; the reply's grounding check traced 24 of 24 values
+  (17 amounts, 7 account numbers) to tool results. 4 of 4 replies in the session were grounded.
+- The analyst's approval was refused by maker-checker before the tool ran; the message with an injected
+  instruction was rewritten by the input guard, and the model searched the SOP without following it.
+- Model latency is the HTTP request (the endpoint client times it); the pause for the shared endpoint's rate limit
+  is recorded apart in each model step (`waited_ms`) and in the run summary (`waited_for_rate_limit_ms`). The
+  slowest call is the final reply of a run: the prompt then holds every tool result.
+- Capability probe: native tool calls, tool results understood with `role: "tool"`, 2 requests.
+- The Case Room's Agent trace tab replays these four runs (`src/wapsi/agenttrace/showcase_gemma_recording.json`),
+  labelled "Recorded live run, replayed", wherever no run of its own is recorded.
+
+**Earlier runs the same day, described only (no results file; not cited in the pitch).** Before the committed
+run, the same session ran with the draft prose on the offline `FakeLLM` (12 model calls, 0 errors, 16 of 16 drafts
+verified), the open-case run alone ran twice (6 model calls each, 0 errors), and one run forced the JSON tool
+protocol (`WAPSI_AGENT_TOOL_MODE=json`, 2 model calls, 0 errors). Their latencies were timed around the ADK model
+callback, which also counted local LiteLLM start-up and the pacing sleep, so they are not comparable with the
+HTTP-level figures above.
 
 **The same day, earlier (roughly 00:40 to 01:10 UTC by the developer's clock), the shared `Gemma-4-31B-IT`
 deployment was degraded and then withdrawn for a while.** Plain and tool requests came back as

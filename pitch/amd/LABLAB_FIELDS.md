@@ -31,14 +31,14 @@ A kirana shop sells groceries to a buyer who was spending stolen money. Next mor
 
 Wapsi is a copilot for a bank's fraud desk. From the bank's own transaction data it traces a complaint's money through mule accounts, splits each balance between victims by the SOP's method (reproduced to the paisa), and proposes one action per account: hold only the victim's money, no hold for a merchant that delivered, a request to the next bank, a restoration packet.
 
-Which account is a mule, an innocent holder or a merchant is predicted by a transparent scorer and a graph neural network, never by a language model. Amounts are arithmetic.
+Which account is a mule, an innocent holder or a merchant is predicted by a transparent scorer (an optional graph neural network is prepared), never by a language model. Amounts are arithmetic.
 
 Gemma 4, served on AMD GPUs through AMD's Token Factory, writes the sentences of each draft and reads Hinglish complaints and voice notes. Every number is filled from data and recomputed by a verifier before a supervisor approves. A Google ADK agent on the same model shows every tool call it makes.
 
-On a 39-case synthetic test world a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false freezes and every hold exact. All banking data is synthetic.
+On a 39-case synthetic test world a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false freezes and every hold exact. For honest merchants and customers: ₹82.99 L frozen against ₹2.50 L held. All data is synthetic.
 <!-- /limit -->
 
-Length: 1,373 / 1,500 characters
+Length: 1,459 / 1,500 characters
 
 ## Selected challenge
 
@@ -53,12 +53,13 @@ partner prizes can be selected, and pick accordingly.
 
 ## Technologies and tags
 
-AMD Developer Cloud · AMD Token Factory · AMD Instinct · ROCm · vLLM · Gemma 4 · Google ADK (Agent Development
-Kit) · LiteLLM · Whisper · PyTorch · Graph Neural Network · Streamlit · FastAPI · Docker · Python · Fintech ·
-Fraud · Commerce
+AMD Token Factory · Gemma 4 · Google ADK (Agent Development Kit) · LiteLLM · Whisper · PyTorch · Streamlit ·
+FastAPI · Docker · Python · Fintech · Fraud · Commerce
 
-Tag only what the submitted build really uses. vLLM and ROCm apply to the notebook and droplet modes and to a
-dedicated AMD endpoint; drop them if the submitted demo ran on the shared Token Factory endpoint alone.
+These are the tags of the stack the submitted build uses. Add **ROCm**, **vLLM**, **AMD Instinct** and
+**AMD Developer Cloud** only after a notebook or droplet run is committed (an evidence bundle under
+`editions/amd/evidence/`, or a GNN result under `editions/amd/gnn/results/` from an AMD GPU); add **Graph Neural
+Network** with it.
 
 ## Cover image brief
 
@@ -67,7 +68,8 @@ dedicated AMD endpoint; drop them if the submitted demo ran on the shared Token 
 - **Right half:** the same shop open and lit, with one small coin set aside in a marked box. Caption: "Wapsi:
   hold the fraud, not the shop".
 - **Bottom strip, the only numbers:** `₹35.26 Cr frozen` → `₹29.19 L held` · `0 false freezes`, and in small
-  type "39-case synthetic test world".
+  type "39-case synthetic test world". Optional second line, the retention figure: `honest merchants and customers:
+  ₹82.99 L frozen → ₹2.50 L held`.
 - **Corner marks:** "Gemma 4 on AMD GPUs" and "Track 3: Reinvent Commerce". Use AMD and Google names as plain
   text; do not use their logos unless the event's brand kit allows it.
 - **Do not show:** real bank names, real people, account numbers, or any figure that is not a row in
@@ -79,7 +81,7 @@ dedicated AMD endpoint; drop them if the submitted demo ran on the shared Token 
 |---|---|
 | Demo video (limit 5:00) | **TODO (user):** link of the 4:15 cut, [`VIDEO_SCRIPT.md`](VIDEO_SCRIPT.md) |
 | Pitch presentation | **TODO (user):** PDF exported from [`DECK_OUTLINE.md`](DECK_OUTLINE.md) |
-| Public GitHub repository (MIT) | **TODO (user):** repository URL; it must contain the tag `amd-baseline` |
+| Public GitHub repository (MIT) | **TODO (user):** repository URL; it must contain the tag `amd-baseline`. Push explicit refs only: `git push origin main amd-baseline`. Never `git push --tags` or `--all`: local refs from earlier work (another event's tag and branch) must stay off the public repository |
 | Demo application platform | **TODO (user):** where the app is hosted (container host or the AMD instance) |
 | Application URL | **TODO (user):** the public URL; the page states that all data is synthetic |
 | Cover image | **TODO (user):** image made from the brief above |

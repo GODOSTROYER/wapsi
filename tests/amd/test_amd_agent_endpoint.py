@@ -110,7 +110,11 @@ def test_litellm_model_is_built_from_env_without_any_network_call():
     assert model.model == "openai/Gemma-4-31B-IT"
     args = model._additional_args
     assert args["api_base"] == TOKEN_FACTORY and args["api_key"] == KEY
-    assert args["max_tokens"] == 1024 and args["timeout"] == 45.0 and args["max_retries"] == 2
+    # the endpoint client retries 429 / 5xx itself (so a Retry-After wait is announced); LiteLLM's own retries are off
+    assert args["max_tokens"] == 1024 and args["timeout"] == 45.0 and args["max_retries"] == 0
+    assert endpoint.max_retries == 2
+    # a shared endpoint is paced by default: 3 s apart, 18 a minute (the AMD Token Factory allows 20 per team)
+    assert (endpoint.min_interval_s, endpoint.rpm) == (3.0, 18)
     assert "client" not in args  # a live endpoint: LiteLLM builds its own HTTP client on first use
     assert KEY not in repr(model) and KEY not in model.model_dump_json() and KEY not in json.dumps(model.describe())
     assert model.tool_mode is None and model.describe()["tool_mode"] == "auto (not probed yet)"

@@ -148,7 +148,7 @@ its own. The same from a terminal:
 git clone https://github.com/<you>/wapsi.git && cd wapsi
 export WAPSI_PYTHON=$(which python3)          # the notebook's python: the ROCm torch lives there
 export SCRATCH=$HOME/wapsi-scratch            # weights and work files: the big volume
-read -rs HF_TOKEN && export HF_TOKEN          # Gemma 4 licence accepted on the model pages
+read -rs HF_TOKEN && export HF_TOKEN          # optional for Gemma 4 (Apache-2.0, not gated); avoids Hub rate limits
 bash editions/amd/kickoff/preflight.sh --mode notebook
 bash editions/amd/kickoff/run_all.sh --mode notebook --dry-run
 bash editions/amd/kickoff/run_all.sh --mode notebook

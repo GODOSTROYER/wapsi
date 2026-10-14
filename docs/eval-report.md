@@ -40,8 +40,12 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
     "p50_time_to_hold_plan_s": 0.05, "p95_time_to_hold_plan_s": 0.12,
     "p95_total_s": 0.4
   },
-  "baseline": {"whole_account_freeze_inr": 0.0, "wapsi_hold_inr": 0.0, "accounts_frozen_baseline": 0, "accounts_held": 0},
-                                             // the whole-account freeze baseline: a comparison figure only
+  "baseline": {"whole_account_freeze_inr": 0.0, "wapsi_hold_inr": 0.0, "accounts_frozen_baseline": 0, "accounts_held": 0,
+               "by_group": {"nodal_pool_escrow": {"accounts": 0, "whole_account_freeze_inr": 0.0,
+                                                  "accounts_held": 0, "wapsi_hold_inr": 0.0},
+                            "merchant": {"...": "..."}, "innocent_holder": {"...": "..."}, "mule": {"...": "..."}}},
+                                             // the whole-account freeze baseline: a comparison figure only; by_group
+                                             // splits it (nodal / pool / escrow by account type, else the plan's role)
   "per_typology": {"T1_FANOUT_CASHOUT": {"cases": 5, "hold_exact_match_rate": 1.0, "disposition_accuracy": 1.0}},
   "classification": {                        // the scorer on the accounts it decides (truth MULE / INNOCENT_HOLDER / VICTIM)
     "accounts": 200, "truth": {"INNOCENT_HOLDER": 48, "MULE": 147, "VICTIM": 5},
@@ -55,9 +59,9 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
     "heuristic-v2": {"scorer": "heuristic-v2", "scorer_spec": "heuristic", "disposition_accuracy": 0.9198, "...": "..."},
     "xgb:xgb_hard202": {"scorer": "xgb:xgb_hard202", "scorer_spec": "xgb:models/xgb_hard202.json", "...": "..."}
   },
-  "llm": {                                   // real models only (--llm gemini | openai-compat | openai:...); null with the fake LLM
-    "model_id": "gemini-3.8-flash", "backend": "aistudio",   // openai-compat: "openai-compatible"
-    "endpoint_host": null,                     // openai-compat: the endpoint's host, e.g. "developer.amd.com.cn"
+  "llm": {                                   // real models only (--llm openai-compat | gemini | openai:...); null with the fake LLM
+    "model_id": "Gemma-4-31B-IT", "backend": "openai-compatible",   // illustrative values from here to the end of ab_test
+    "endpoint_host": "developer.amd.com.cn",   // the endpoint's host (null for the Gemini API)
     "requests": 122, "api_calls": 123, "ok": 122, "cache_hits": 0, "cache_hit_rate": 0.0,
     "retries": 1, "rate_limited_429": 1, "unavailable_5xx": 0, "unusable_answers": 0, "errors": 0,
     "quota_exhausted": false, "rate_limit_wait_s": 610.2, "backoff_wait_s": 7.0,
@@ -65,13 +69,14 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
     "reported_cost_usd": 0.0,                  // what the endpoint itself reported (usage.cost), summed; 0.0 if it reports none
     "tokens": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
     "tokens_served_from_cache": {"prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
-    "cost_estimate_usd": {"this_run": 0.0,     // Gemini API free tier: no charge (429 over the limit, never a bill)
+    "cost_estimate_usd": {"this_run": 0.0,     // the endpoint's own usage.cost where it reports one (AMD Token Factory)
                           "paid_tier_equivalent": 0.0, "saved_by_cache_paid_equivalent": 0.0,
                           "price_per_1m_tokens": {"input": 0.3, "output": 2.5}, "basis": "assumed list price ..."}
   },
-  "prose_by_model": {"Gemma-4-31B-IT on AMD @ developer.amd.com.cn": 83},   // drafts whose prose a model wrote, by the model that wrote it
+  "prose_by_model": {"Gemma-4-31B-IT on AMD @ developer.amd.com.cn": 83},   // illustrative: drafts whose prose a model wrote, by that model
   "ab_test": {                               // real models only: the same model with and without Wapsi's slot binding
-    "llm_only": {"cases": 39, "summaries_with_wrong_amounts": 0, "hallucination_rate": 0.0},
+    "llm_only": {"cases": 39, "summaries_with_wrong_amounts": 0, "hallucination_rate": 0.0,
+                 "answered_by": {"Gemma-4-31B-IT": 39}},   // which model wrote each raw summary (failover can change it)
     "wapsi_bound": {"drafts": 300, "drafts_with_numeric_errors": 0, "hallucination_rate": 0.0},
     "method": "..."
   },
@@ -79,7 +84,10 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
 }
 ```
 
-The `llm` and `ab_test` numbers above only show the shape (illustrative, not measured). The `llm` block comes
+The `llm`, `prose_by_model` and `ab_test` numbers above only show the shape (illustrative, not measured; a measured
+example is `evals/reports/amd/showcase-gemma4-20261014.json`). With a failover list (`WAPSI_LLM_MODELS`) the `llm`
+block also carries `answers_by_model`, `rejected_by_model` and `failovers`, and the Markdown report prints them next
+to `prose_by_model`, so a run a failover model partly wrote never reads as the configured model's. The `llm` block comes
 from `wapsi.adapters.llm_resilience.ResilientLLM`: free-tier RPM / RPD limiting, 429 / 503 retries and a prompt-hash
 response cache under `.cache/llm` (gitignored; replay only, never training data), so a rerun costs no requests.
 

@@ -13,7 +13,7 @@ from typing import Any
 
 from wapsi.agenttrace.model import GuardVerdict, VerifierVerdict
 from wapsi.agenttrace.redact import redact_text
-from wapsi.money import find_account_ids, find_amounts, r2
+from wapsi.money import find_account_ids, find_amounts, find_money_mentions, normalize_text, r2
 
 CASE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
 
@@ -196,6 +196,55 @@ def result_guards(tool: str, result: Any) -> list[GuardVerdict]:
 # --------------------------------------------------------------------------- reply grounding
 
 
+# A figure written without a rupee sign ("Hold 45000"): this many digits before any decimal point. Shorter numbers
+# are counts ("8 accounts", "16 drafts", "Section 106"); 12 digits and more are identifiers (UTRs, NCRP complaint
+# numbers such as an example in a help text), not amounts. Neither is checked here.
+MIN_BARE_DIGITS = 4
+MAX_BARE_DIGITS = 11
+_NUMBER = re.compile(r"\d(?:[\d,]*\d)?(?:\.\d+)?")
+_BARE_NUMBER = re.compile(r"(?<![\w.,])\d(?:[\d,]*\d)?(?:\.\d+)?(?![\w]|[.,]\d)")
+_DATE_LIKE = re.compile(r"(?<!\d)\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?!\d)")
+_ACCOUNT_LIKE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{2}\d{2}[- ]?\d{8,12}(?![0-9])")
+
+
+def canon_number(token: str) -> str:
+    """``4,80,000.00`` -> ``480000``; ``0.035`` -> ``0.035``: one spelling per value, whatever the grouping."""
+    t = token.replace(",", "")
+    if "." in t:
+        whole, frac = t.split(".", 1)
+        frac = frac.rstrip("0")
+        t = f"{whole}.{frac}" if frac else whole
+    return t.lstrip("0") or "0"
+
+
+def grounding_numbers(texts: Iterable[str]) -> set[str]:
+    """Every number written in ``texts`` (tool results the model has seen), in ``canon_number`` form: amounts,
+    account and complaint numbers, UTRs and the parts of dates all count as known."""
+    out: set[str] = set()
+    for t in texts:
+        if t:
+            out.update(canon_number(m.group(0)) for m in _NUMBER.finditer(normalize_text(t)))
+    return out
+
+
+def bare_numbers(text: str) -> dict[str, str]:
+    """Amount-sized figures (``MIN_BARE_DIGITS`` to ``MAX_BARE_DIGITS`` digits) written without a rupee sign, outside
+    rupee amounts, account numbers and dates: {canonical value: span}."""
+    norm = normalize_text(text or "")
+    chars = list(norm)
+    spans = [(m.start, m.end) for m in find_money_mentions(norm)]
+    spans += [m.span() for m in _ACCOUNT_LIKE.finditer(norm)] + [m.span() for m in _DATE_LIKE.finditer(norm)]
+    for a, b in spans:
+        chars[a:b] = " " * (b - a)
+    masked = "".join(chars)
+    out: dict[str, str] = {}
+    for m in _BARE_NUMBER.finditer(masked):
+        token = m.group(0)
+        if MIN_BARE_DIGITS <= len(token.split(".", 1)[0].replace(",", "")) <= MAX_BARE_DIGITS:
+            out.setdefault(canon_number(token), norm[m.start():m.end()])
+    return out
+
+
 def grounding_facts(texts: Iterable[str]) -> tuple[set[float], set[str]]:
     """Rupee amounts and account numbers that appear in ``texts`` (tool results the model has seen)."""
     amounts: set[float] = set()
@@ -217,17 +266,24 @@ def as_text(value: Any) -> str:
         return str(value)
 
 
-def reply_grounding(reply: str, amounts: set[float], accounts: set[str]) -> VerifierVerdict:
-    """Every rupee amount and account number in the agent's reply must appear in a tool result."""
+def reply_grounding(reply: str, amounts: set[float], accounts: set[str],
+                    numbers: set[str] | None = None) -> VerifierVerdict:
+    """Every rupee amount and account number in the agent's reply must appear in a tool result, and so must every
+    other figure of four or more digits written without a rupee sign ("Hold 45000"). ``numbers``: every number the
+    tool results contained (``grounding_numbers``); the amounts count as known either way."""
     found_amounts = {r2(v): span for span, v in find_amounts(reply or "")}  # distinct values
     found_accounts = {canon: span for span, canon in find_account_ids(reply or "")}
+    found_bare = bare_numbers(reply or "")
+    known = set(numbers or ()) | {canon_number(f"{a:.2f}") for a in amounts}
     missing = [span for v, span in found_amounts.items() if v not in amounts]
     missing += [span for canon, span in found_accounts.items() if canon not in accounts]
-    checked = len(found_amounts) + len(found_accounts)
+    missing += [span for canon, span in found_bare.items() if canon not in known]
+    checked = len(found_amounts) + len(found_accounts) + len(found_bare)
     if checked == 0:
         detail = "no amounts or account numbers in the reply"
     elif not missing:
-        detail = (f"all {len(found_amounts)} amounts and {len(found_accounts)} account numbers in the reply "
+        other = f" and {len(found_bare)} other figure(s)" if found_bare else ""
+        detail = (f"all {len(found_amounts)} amounts and {len(found_accounts)} account numbers{other} in the reply "
                   "appear in tool results")
     else:
         shown = "; ".join(redact_text(m) for m in missing[:3])

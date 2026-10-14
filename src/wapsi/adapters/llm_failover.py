@@ -89,6 +89,7 @@ class FailoverLLM:
         cooldown_s: float | None = None,
         error_cooldown_s: float | None = None,
         registry: Any | None = None,
+        fail_fast: bool = False,
     ) -> None:
         if not llms:
             raise ValueError("FailoverLLM needs at least one model")
@@ -100,6 +101,9 @@ class FailoverLLM:
         self.registry = registry if registry is not None else chain.HEALTH
         self.cooldown_s = chain.DEFAULT_COOLDOWN_S if cooldown_s is None else float(cooldown_s)
         self.error_cooldown_s = chain.ERROR_COOLDOWN_S if error_cooldown_s is None else float(error_cooldown_s)
+        # fail_fast: while every model rests after a failure, refuse at once (an interactive app: the prose gets its
+        # fixed paragraph now instead of waiting on an unreachable host again); otherwise one half-open attempt
+        self.fail_fast = fail_fast
         self._local = threading.local()
         self._lock = threading.Lock()
         self.answers: Counter[str] = Counter()  # model -> answers it wrote
@@ -167,6 +171,9 @@ class FailoverLLM:
             if m not in ready:
                 with self._lock:
                     self.skipped[model_of(m)] += 1
+        if not ready and self.fail_fast:
+            soonest = min(self.registry.bad_for(self.key(m)) for m in self.llms)
+            raise AllModelsFailed(f"every model is resting after a failure; the next attempt in {soonest:.0f} s")
         # half-open: when every model is resting, the one due back soonest gets one honest attempt
         return ready or [min(self.llms, key=lambda m: self.registry.bad_for(self.key(m)))]
 

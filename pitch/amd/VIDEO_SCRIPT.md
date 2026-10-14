@@ -58,8 +58,8 @@ and the plain-English reasons. Then deck slide 6 (the scorer and the GNN table).
 
 **VO:** "Which account is a mule and which is an honest shop is a prediction, and no language model makes it. A
 transparent scorer weighs 33 behavioural features, such as how fast the money was passed on, and shows its
-reasons in plain English. A graph neural network is the second scorer. Unclear accounts go to the officer. And
-the amount held is never predicted: it is arithmetic."
+reasons in plain English. An optional graph neural network is prepared as a second scorer. Unclear accounts go
+to the officer. And the amount held is never predicted: it is arithmetic."
 
 *Add "trained on an AMD GPU, with a mule ROC-AUC of TBD(gnn_amd_auc)" after "second scorer" once that slot is
 filled.*
@@ -73,10 +73,15 @@ checks.
 
 **VO:** "The words come from Gemma 4, Google's open model, served on AMD GPUs. It writes the sentences in each
 draft around placeholders; every amount, account and date is filled from data, and a verifier recomputes all of
-them. It also reads complaints. This victim's Hinglish voice note is transcribed with Whisper, and Gemma extracts
-the fields. Every number she says is checked against the ledger. The note hides an order to release the hold: it
+them. It also reads complaints. This victim's Hinglish voice note becomes a transcript, and Gemma extracts the
+fields. Every number she says is checked against the ledger. The note hides an order to release the hold: it
 is quoted to the officer, and the hold stays. The officer's agent runs on Google's Agent Development Kit, and
 every tool call it makes is recorded here, with its checks."
+
+*Say "transcribed with Whisper" only if this beat is recorded from `editions/amd/app/ui_app.py` with
+`WAPSI_VOICE_BACKEND=open WAPSI_ASR_BACKEND=local` and the Whisper weights downloaded beforehand, so the transcript on
+screen really came from Whisper. With the bundled samples' scripts standing in for the recogniser, keep the line as
+written.*
 
 ## 2:50 to 3:25. Measured on AMD
 

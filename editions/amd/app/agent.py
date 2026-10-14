@@ -109,6 +109,26 @@ def agent_status(services: Services | None = None, env: Mapping[str, str] | None
     return out
 
 
+_warmed = threading.Event()
+
+
+def warm_litellm() -> None:
+    """Import LiteLLM in the background once, so the officer's first question does not wait for it (several
+    seconds of local work; the trace times model turns at the HTTP request either way). No network call."""
+    if _warmed.is_set():
+        return
+    _warmed.set()
+
+    def load() -> None:
+        try:
+            os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # no price-map download at import
+            importlib.import_module("litellm")
+        except Exception:  # noqa: BLE001 - warming is an optimisation
+            log.debug("could not pre-import litellm", exc_info=True)
+
+    threading.Thread(target=load, name="wapsi-litellm-warmup", daemon=True).start()
+
+
 def build_app(services: Services, model: Any, recorder: ToolTraceRecorder, endpoint: AgentEndpoint) -> Any:
     """The ADK ``App``: one ``LlmAgent`` with the officer tools; trace plugin first, then guard, audit, notices."""
     from google.adk.agents import LlmAgent
@@ -162,6 +182,7 @@ def build_runtime(services: Services | None = None, *, backend: str | None = Non
             endpoint = endpoint or agent_endpoint(services.settings, env)
             cache = ProbeCache(Path(services.settings.state_dir) / PROBE_CACHE_FILE)
             model = build_endpoint_model(endpoint, probe_cache=cache)
+            warm_litellm()
     if endpoint is None:
         endpoint = getattr(model, "endpoint", None)
     if endpoint is None:

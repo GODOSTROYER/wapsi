@@ -14,7 +14,8 @@ Four checks, all offline and read-only:
    ``calc:<expr>`` (arithmetic over other row ids) and ``cmd:<command>`` (command output, checked by hand on the
    date given in the row; not re-run here, because some take minutes).
 2. **Registered tokens.** Every rupee amount, percentage, dollar amount and GB figure written anywhere in
-   ``pitch/**/*.md`` must appear in the ``Pitched as`` column of ``NUMBERS.md``.
+   ``pitch/**/*.md``, in ``README.md`` and in ``docs/index.md`` (the pages a judge reads first) must appear in the
+   ``Pitched as`` column of ``NUMBERS.md``.
 3. **Character limits.** Text between ``<!-- limit:N -->`` and ``<!-- /limit -->`` is at most N characters, and the
    file states its length as ``Length: X / N characters``.
 4. **Open slots.** A figure that has not been measured yet is written ``TBD(slot_id)``, and ``slot_id`` is a row of
@@ -96,6 +97,8 @@ def _json_path(data: Any, path: str) -> Any:
 
 
 def _module_for(source: str) -> Any:
+    if str(ROOT) not in sys.path:  # sources outside src/ (editions/...) import as packages of the repository root
+        sys.path.insert(0, str(ROOT))
     rel = Path(source).with_suffix("")
     parts = rel.parts[1:] if rel.parts and rel.parts[0] == "src" else rel.parts
     return importlib.import_module(".".join(parts))
@@ -202,11 +205,19 @@ def pitch_files() -> list[Path]:
     return sorted(p for p in PITCH.rglob("*.md") if p != NUMBERS_MD)
 
 
+# outside pitch/: the pages a judge reads first carry the same figures, so they are held to the same register
+FRONT_PAGES = ("README.md", "docs/index.md")
+
+
+def token_files() -> list[Path]:
+    return pitch_files() + [ROOT / f for f in FRONT_PAGES if (ROOT / f).exists()]
+
+
 def check_tokens(rows: list[Row] | None = None) -> list[str]:
     rows = parse_rows() if rows is None else rows
     registered = {_norm(t) for row in rows for t in TOKEN_RE.findall(row.pitched)}
     errors = []
-    for path in pitch_files():
+    for path in token_files():
         text = path.read_text(encoding="utf-8")
         for match in TOKEN_RE.finditer(text):
             if _norm(match.group(0)) not in registered:

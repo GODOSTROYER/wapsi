@@ -94,13 +94,14 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         label = args.label or measured_label(llm.base_url, llm.model)
     else:
         from editions.amd.kickoff.ab_hallucination import endpoint_api_key
+        from wapsi.adapters.llm_env import self_hosted_name  # "vllm-rocm:" only when AMD is confirmed
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
         url = args.llm_url or os.environ.get("WAPSI_LLM_BASE_URL", "http://127.0.0.1:8000/v1")
         model = args.llm_model or os.environ.get("WAPSI_LLM_SERVED_NAME", "wapsi-llm")
         llm = OpenAICompatLLM(base_url=url, model=model, api_key=endpoint_api_key(), timeout=180.0,
                               json_mode=os.environ.get("WAPSI_LLM_JSON_MODE") or "json_schema",
-                              name=f"vllm-rocm:{model}", transport=transport)
+                              name=self_hosted_name(model), transport=transport)
         kind = "openai"
         label = args.label or f"measured against {url} ({model})"
 

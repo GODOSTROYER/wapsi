@@ -1668,6 +1668,7 @@ False 2 2 | 2 value(s) in the reply not found in any tool result: ₹9,99,999.00
 | `trace_from_event(event)`, `traces_from_audit(events, *, case_id=None)` | read traces back from an audit log (oldest first, one per run) |
 | `dump_traces(traces)`, `load_traces(text)` | JSON round trip (the format of `showcase_recording.json`) |
 | `wapsi.agenttrace.demo.recorded_traces(case_id=None)` | the recorded offline run of the showcase cases, with `source="recording"` |
+| `wapsi.agenttrace.demo.live_recorded_traces(case_id=None)` | the recorded live session on Gemma 4 served on AMD (2026-10-14), with `source="recording-endpoint"`; the Agent trace tab prefers it |
 
 Append the event with `wapsi.audit.append_event` (or a store's `append_audit`), so the case's chain covers it:
 

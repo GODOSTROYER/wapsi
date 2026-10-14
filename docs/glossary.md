@@ -159,14 +159,14 @@ Wapsi ships one portable core and thin platform layers. The AMD layer is the hac
 
 | Term | Meaning |
 |---|---|
-| **ADK** | Google's open-source Agent Development Kit. The officer's agent is an ADK agent (`editions/gcp/app`); in the AMD entry its model is Gemma 4 served on AMD, reached through ADK's LiteLLM connector. |
-| **AMD Instinct MI300X / ROCm** | AMD's data-centre GPU and its open GPU software stack. Wapsi's droplet mode serves open models with vLLM on ROCm on a single MI300X, and the GNN trains on ROCm (`editions/amd/README.md`). |
+| **ADK** | Google's open-source Agent Development Kit. The officer's agent is an ADK agent (`editions/shared`, wired by `editions/amd/app/agent.py`); in the AMD entry its model is Gemma 4 served on AMD, reached through ADK's LiteLLM connector. |
+| **AMD Instinct MI300X / ROCm** | AMD's data-centre GPU and its open GPU software stack. Wapsi's droplet mode is built to serve open models with vLLM on ROCm on a single MI300X, and the GNN is built to train on ROCm; neither has run on AMD hardware in this entry yet (`editions/amd/README.md`). |
 | **AMD Token Factory** | AMD's API that serves open models on AMD GPUs through an OpenAI-compatible endpoint. It is the model endpoint every team in the hackathon gets, and the default ("endpoint mode") of the AMD entry. A result from it is labelled as such and is not an MI300X benchmark. |
 | **Endpoint / notebook / droplet mode** | The three ways the AMD entry runs: an AMD-hosted model endpoint, a ROCm JupyterLab on an AMD GPU, or one MI300X with Docker Compose ([Editions](editions.md)). |
 | **Firestore** | Google Cloud's document database. The Google Cloud edition stores cases there (`FirestoreCaseStore`), with each audit event a create-only document sealed in a transaction. |
 | **Gemini** | Google's hosted multimodal model family. An optional adapter (`GeminiLLM`) can use it for prose and for reading voice notes; it is not part of the hackathon entry, and its outputs are never used to train another model. |
 | **Gemma 4** | Google's open model family. Gemma 4 31B, served on AMD GPUs, is the language model of the hackathon entry: it writes draft prose around slot placeholders, extracts complaint fields and drives the agent. It never supplies a number. |
-| **GNN (GraphSAGE)** | A graph neural network that scores how mule-like an account is from the money-trail graph. Wapsi's is pure PyTorch, runs on ROCm, and plugs in behind the same `Scorer` interface as the default heuristic (`editions/amd/gnn/README.md`). |
+| **GNN (GraphSAGE)** | A graph neural network that scores how mule-like an account is from the money-trail graph. Wapsi's is pure PyTorch, built to run on ROCm (CPU-tested; no AMD GPU run yet), and plugs in behind the same `Scorer` interface as the default heuristic (`editions/amd/gnn/README.md`). |
 | **Google Cloud edition** | An older name, still used on some pages, for `editions/gcp`: the Google ADK agent app plus the optional managed-cloud adapters (BigQuery, Firestore, Model Armor, Cloud Run). It is not a hackathon entry. |
 | **IAP** | Identity-Aware Proxy: Google Cloud's sign-in layer in front of Cloud Run. Its `X-Goog-Authenticated-User-Email` header names the user, which sets the role and scopes who may read agent traces. |
 | **LiteLLM** | An open-source client library that speaks many model APIs. ADK's LiteLLM connector is how the agent reaches Gemma 4 on an OpenAI-compatible AMD endpoint. |

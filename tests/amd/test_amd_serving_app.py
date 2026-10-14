@@ -32,8 +32,20 @@ def test_settings_from_env_and_describe_hides_secrets():
     d = json.dumps(s.describe())
     assert "t0k" not in d and "k3y" not in d
     assert s.describe()["api_token_required"] is True
-    default = load_settings({})
-    assert not default.demo_mode and default.llm_base_url == "http://llm:8000/v1" and default.llm_model == "wapsi-llm"
+    stack = load_settings({"WAPSI_STACK": "1"})  # inside the compose stack: the llm service is the default
+    assert not stack.demo_mode and stack.llm_base_url == "http://llm:8000/v1" and stack.llm_model == "wapsi-llm"
+    assert stack.demo_reason is None and (stack.llm_rpm, stack.llm_min_interval_s) == (0, 0.0)  # own server
+    # outside the stack, no endpoint: offline stand-ins at once, with the reason shown (not minutes of retries
+    # against the compose-only host "llm")
+    bare = load_settings({})
+    assert bare.demo_mode and "WAPSI_LLM_BASE_URL is not set" in (bare.demo_reason or "")
+    assert bare.describe()["demo_reason"] == bare.demo_reason
+    assert load_settings({"WAPSI_DEMO_MODE": "1"}).demo_reason is None  # asked for on purpose: no notice
+    tf = load_settings({"WAPSI_LLM_BASE_URL": "https://developer.amd.com.cn/radeon/api/v1"})
+    assert not tf.demo_mode and (tf.llm_rpm, tf.llm_min_interval_s) == (18, 3.0)  # a shared endpoint is paced
+    assert load_settings({"WAPSI_LLM_BASE_URL": "https://developer.amd.com.cn/radeon/api/v1",
+                          "WAPSI_LLM_MIN_INTERVAL_S": "4", "WAPSI_LLM_CACHE_DIR": "off"}).llm_min_interval_s == 4.0
+    assert load_settings({"WAPSI_LLM_CACHE_DIR": "off", "WAPSI_STACK": "1"}).llm_cache_dir is None
     with pytest.raises(ValueError):
         load_settings({"WAPSI_LLM_JSON_MODE": "xml"})
 
@@ -349,6 +361,92 @@ def test_streamlit_entry_runs_in_demo_mode(tmp_path, amd_dir):
         assert not at.exception, [e.value for e in at.exception]
         assert sorted(c.case_id for c in svc.store.list_cases()) == sorted([CASE1, f"CASE-{sc.N2}"])
         assert "Case" in [s.label for s in at.selectbox]
+        text = "\n".join(m.value for m in at.markdown)
+        assert "no model endpoint configured" not in text  # demo mode asked for on purpose: no notice
     finally:
         st.cache_resource.clear()
         set_services(None)
+
+
+def test_streamlit_entry_without_an_endpoint_says_it_runs_offline(tmp_path, amd_dir):
+    """`streamlit run editions/amd/app/ui_app.py` with no endpoint and no WAPSI_DEMO_MODE: offline stand-ins at once,
+    and every page says why (no minutes of retries against the compose-only host `llm`)."""
+    st = pytest.importorskip("streamlit")
+    from dataclasses import replace
+
+    from streamlit.testing.v1 import AppTest
+
+    from editions.amd.app.services import build_services, set_services
+    from editions.amd.app.settings import load_settings
+
+    settings = replace(load_settings({"WAPSI_STATE_DIR": str(tmp_path)}), ui_seed_limit=1)
+    assert settings.demo_mode and settings.demo_reason
+    svc = build_services(settings, search=False)
+    assert getattr(svc.llm, "name", "").startswith("fake-llm")  # no client for the host `llm` is built at all
+    set_services(svc)
+    try:
+        st.cache_resource.clear()
+        at = AppTest.from_file(str(amd_dir / "app" / "ui_app.py"), default_timeout=120)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        text = "\n".join(m.value for m in at.markdown)
+        assert "Offline stand-ins, no model endpoint configured" in text and "WAPSI_LLM_BASE_URL" in text
+    finally:
+        st.cache_resource.clear()
+        set_services(None)
+
+
+def test_the_amd_prose_client_fails_fast_after_a_connection_error(tmp_path):
+    """One connection error rests the endpoint for a minute: the next prose fields get the fixed paragraph at once."""
+    import httpx
+
+    from editions.amd.app.services import build_prose_llm
+    from editions.amd.app.settings import load_settings
+    from wapsi.adapters.llm_failover import AllModelsFailed
+
+    settings = load_settings({"WAPSI_LLM_BASE_URL": "http://llm:8000/v1", "WAPSI_STACK": "1",
+                              "WAPSI_LLM_CACHE_DIR": "off", "WAPSI_STATE_DIR": str(tmp_path)})
+    llm = build_prose_llm(settings)
+    calls = []
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.host)
+        raise httpx.ConnectError("name resolution failed", request=request)
+
+    member = llm.primary
+    member.inner._client = httpx.Client(transport=httpx.MockTransport(refuse))  # noqa: SLF001 - test seam
+    member._sleep = lambda _s: None  # noqa: SLF001 - no backoff wait in a test
+    messages = [{"role": "user", "content": "hello"}]
+    with pytest.raises(Exception):  # noqa: B017 - the first call meets the outage (and retries once)
+        llm.complete(messages)
+    tried = len(calls)
+    assert 1 <= tried <= 2
+    with pytest.raises(AllModelsFailed, match="resting"):
+        llm.complete(messages)
+    assert len(calls) == tried  # the second call never reached the network
+
+
+
+def test_the_amd_prose_client_never_caches_a_degenerate_answer(tmp_path):
+    """An HTTP 200 with a run of slashes is refused before the cache sees it, so it is never replayed later."""
+    import httpx
+
+    from editions.amd.app.services import build_prose_llm
+    from editions.amd.app.settings import load_settings
+    from wapsi.adapters.llm_failover import AllModelsFailed
+
+    cache = tmp_path / "llm-cache"
+    settings = load_settings({"WAPSI_LLM_BASE_URL": "http://llm:8000/v1", "WAPSI_STACK": "1",
+                              "WAPSI_LLM_CACHE_DIR": str(cache), "WAPSI_STATE_DIR": str(tmp_path)})
+    llm = build_prose_llm(settings)
+    reply = {"text": "{\"" + "/" * 120}
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"index": 0, "finish_reason": "length",
+                                                      "message": {"role": "assistant", "content": reply["text"]}}]})
+
+    llm.primary.inner._client = httpx.Client(transport=httpx.MockTransport(answer))  # noqa: SLF001 - test seam
+    messages = [{"role": "user", "content": "Write one sentence about the hold."}]
+    with pytest.raises(AllModelsFailed):
+        llm.complete(messages)
+    assert not [p for p in cache.rglob("*.json") if p.name != "_quota.json"], "garbage must never be cached"

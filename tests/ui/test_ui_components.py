@@ -304,3 +304,12 @@ def test_audit_detail_summary():
     long = summarize_details({"x": "y" * 500})
     assert len(long) <= 140 and long.endswith("…")
     assert re.search(r"\n", text) is None
+
+
+
+def test_agent_chat_names_a_rate_limit_wait():
+    from ui.components.agent_chat import wait_note
+
+    assert wait_note(None) is None and wait_note((0.4, "the endpoint's rate limit")) is None
+    note = wait_note((42.3, "the endpoint's rate limit"))
+    assert note.startswith("Waiting for the endpoint's rate limit (42 s)")

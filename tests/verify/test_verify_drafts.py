@@ -242,6 +242,29 @@ def test_missing_quote_is_a_warning(b1, ledger, hold_a):
     assert failing(full, severity="warning") == set()
 
 
+def test_judgments_cited_by_url_are_not_missing_quotes(b1, ledger, hold_a):
+    """The court rulings are cited by URL with no stored quote, by design: no 'Passed with warnings' for them."""
+    from wapsi.citations import registry
+    from wapsi.verify.citations import cited_by_url
+
+    reg = registry()
+    assert cited_by_url("CASE-NEELKANTH") and cited_by_url("CASE-SHREE-BALAJI") and not cited_by_url("SOP-9-1")
+    by_url = [c for c in ("CASE-NEELKANTH", "CASE-SHREE-BALAJI") if c in reg]
+    draft = hold_a.model_copy(update={"citation_ids": [*hold_a.citation_ids, *by_url]})
+
+    class _Registry(_Search):  # the docs index: every quote, and the judgments without one
+        def citation(self, citation_id: str) -> Citation | None:
+            return reg[citation_id].model_copy() if citation_id in reg else None
+
+    report = verify_draft(draft, b1, ledger, search=_Registry(set()))
+    assert report.passed and failing(report, severity="warning") == set()
+    note = next(c for c in report.checks if c.name == "citations" and c.passed)
+    assert "cited by URL (no quote by design): CASE-NEELKANTH, CASE-SHREE-BALAJI" in note.message
+    # an id that should carry a quote still warns when the corpus lacks it
+    partial = verify_draft(draft, b1, ledger, search=_Search({"SOP-9-1", "SOP-ANNEX-I", "SOP-5-IX"}))
+    assert spans(partial, "citation_quote_missing") == ["SOP-9-1-I"]
+
+
 def test_no_citations_warning(b1, ledger, hold_a, with_body):
     body = hold_a.body.replace(" [SOP-9-1]", "").replace(" [SOP-ANNEX-I]", "").replace(" [SOP-5-IX]", "")
     draft = with_body(hold_a, body.replace(" [SOP-9-1-I]", ""), citation_ids=[])

@@ -1,0 +1,176 @@
+{
+  "label": "AMD Token Factory, Gemma-4-31B-IT, replayed from cache (1 of 9 replies; originally measured 2026-10-14)",
+  "measured_at_utc": "2026-10-14T11:16:42+00:00",
+  "endpoint_host": "developer.amd.com.cn",
+  "model": "Gemma-4-31B-IT",
+  "scope": "Models are served on AMD GPUs by the provider. Not a benchmark of a dedicated MI300X. Synthetic data only. Latency is one sequential request at a time, from a laptop in India.",
+  "models_listed": 12,
+  "model_listed": true,
+  "pipeline": {
+    "case": "showcase case 1 (NCRP 31009260000101), synthetic",
+    "llm_calls": 4,
+    "llm_replies_sane": 4,
+    "drafts": 16,
+    "drafts_passing_verifier": 16,
+    "drafts_with_llm_prose": 3,
+    "drafts_with_prose_fallback": 0,
+    "llm_model_on_drafts": [
+      "Gemma-4-31B-IT"
+    ],
+    "total_hold_inr": 142848.0,
+    "total_recoverable_inr": 334848.0,
+    "holds_match_hand_computed_fixture": true,
+    "latency_s_median": 8.29,
+    "latency_s_max": 15.96,
+    "prompt_tokens": 25914,
+    "completion_tokens": 636,
+    "wall_s_including_spacing": 59.871
+  },
+  "tool_calling": {
+    "finish_reason": "tool_calls",
+    "tool_calls": 1,
+    "latency_s": 2.593,
+    "tool_name": "hold_plan",
+    "arguments_valid": true,
+    "followup_latency_s": 3.751,
+    "reply_amounts": 2,
+    "reply_amounts_from_tool": 2,
+    "reply_grounded": true
+  },
+  "hinglish_extraction": {
+    "meera_impersonation": {
+      "valid_json": true,
+      "amount_matches_expected": true,
+      "utr_matches_expected": true,
+      "instruction_like_found": 1,
+      "instruction_like_expected": 0,
+      "latency_s": 18.417
+    },
+    "fatima_courier_injection": {
+      "valid_json": true,
+      "amount_matches_expected": false,
+      "utr_matches_expected": true,
+      "instruction_like_found": 1,
+      "instruction_like_expected": 1,
+      "latency_s": 3.757
+    }
+  },
+  "healthy": true,
+  "replayed_from_cache": {
+    "replies": 1,
+    "of": 9,
+    "measured_on": [
+      "2026-10-14"
+    ]
+  },
+  "requests": {
+    "chat_requests": 9,
+    "replies_sane": 9,
+    "replies_from_cache": 1,
+    "rate_limited_429": 0,
+    "live_requests_this_run": 9,
+    "latency_s_median": 6.979,
+    "latency_s_max": 18.417,
+    "prompt_tokens": 27066,
+    "completion_tokens": 916,
+    "usage_cost_usd": 0.000931
+  },
+  "calls": [
+    {
+      "kind": "models",
+      "status": 200,
+      "latency_s": 0.647,
+      "cached": false
+    },
+    {
+      "kind": "health_probe",
+      "status": 200,
+      "latency_s": 2.543,
+      "prompt_tokens": 40,
+      "completion_tokens": 8,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "pipeline_prose",
+      "status": 200,
+      "latency_s": 7.634,
+      "prompt_tokens": 6664,
+      "completion_tokens": 115,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "pipeline_prose",
+      "status": 200,
+      "latency_s": 15.96,
+      "prompt_tokens": 6666,
+      "completion_tokens": 242,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "pipeline_prose",
+      "status": 200,
+      "latency_s": 6.979,
+      "prompt_tokens": 6165,
+      "completion_tokens": 140,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "pipeline_prose",
+      "status": 200,
+      "latency_s": 8.947,
+      "prompt_tokens": 6419,
+      "completion_tokens": 139,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "tool_call",
+      "status": 200,
+      "latency_s": 2.593,
+      "prompt_tokens": 209,
+      "completion_tokens": 32,
+      "finish_reason": "tool_calls",
+      "sane": true,
+      "cached": true
+    },
+    {
+      "kind": "tool_followup",
+      "status": 200,
+      "latency_s": 3.751,
+      "prompt_tokens": 374,
+      "completion_tokens": 78,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "extract_meera_impersonation",
+      "status": 200,
+      "latency_s": 18.417,
+      "prompt_tokens": 275,
+      "completion_tokens": 83,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    },
+    {
+      "kind": "extract_fatima_courier_injection",
+      "status": 200,
+      "latency_s": 3.757,
+      "prompt_tokens": 254,
+      "completion_tokens": 79,
+      "finish_reason": "stop",
+      "sane": true,
+      "cached": false
+    }
+  ]
+}

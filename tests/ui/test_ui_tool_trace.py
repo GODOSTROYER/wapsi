@@ -84,10 +84,23 @@ def test_summary_row_counts_calls_latency_tokens_and_blocks():
     assert "not reported (scripted model)" in recorded
 
 
-def test_case_traces_prefers_the_audit_log_then_the_recording():
+def test_case_traces_prefers_the_audit_log_then_the_recorded_live_run_then_the_scripted_one(monkeypatch):
     b1, b2 = (next(b for b in all_showcase_bundles() if b.case.case_id == c) for c in (CASE1, CASE2))
     traces, origin = tt.case_traces(b1)
-    assert origin == tt.ORIGIN_RECORDING and len(traces) == 4
+    # the recorded live run on Gemma 4 served on AMD (AMD Token Factory), replayed and labelled as such
+    assert origin == tt.ORIGIN_LIVE_RECORDING and len(traces) == 4
+    assert {t.source for t in traces} == {"recording-endpoint"} and traces[0].provider == "AMD Token Factory"
+    assert traces[0].model.removeprefix("openai/") == "Gemma-4-31B-IT"
+    head = _text(tt.run_html(traces[0], 1, origin=origin))
+    assert "Recorded live ADK run (Gemma 4 on AMD, replayed)" in head and "replayed" in head
+    assert "hash-chained" not in head  # a replay is not in this deployment's audit log
+    # model turns are timed at the HTTP request; the pause for the rate limit is shown apart, never as model time
+    assert all(s.latency_ms is not None for t in traces for s in t.steps if s.kind == "model")
+    assert sum(t.summary().waited_for_rate_limit_ms for t in traces) > 0
+    with monkeypatch.context() as m:  # without the live recording: the scripted offline run
+        m.setattr(tt, "live_recorded_traces", lambda case_id=None: [])
+        traces, origin = tt.case_traces(b1)
+        assert origin == tt.ORIGIN_RECORDING and len(traces) == 4
     live = _trace()
     live.case_ids = [CASE1]
     append_event(b1.audit, trace_event(live, case_id=CASE1), case_id=CASE1)
@@ -173,8 +186,32 @@ def test_case_room_has_an_agent_trace_tab(monkeypatch):
     labels = [t.label for t in at.tabs]
     assert labels[:2] == ["Money trail", "Agent trace · 8"]
     text = "\n".join(html.unescape(m.value) for m in at.markdown)
-    assert "Recorded offline run." in text and "open_case" in text and "Blocked by guard" in text
+    assert "Recorded live run, replayed." in text and "Gemma 4 served on AMD GPUs" in text and "open_case" in text
+    assert "Gemma-4-31B-IT" in text and "Gemini" not in text
     assert not at.warning
+
+
+def test_the_scripted_recording_says_what_drove_it(monkeypatch):
+    """Without the recorded live run, the scripted run is shown and named for what it is (no Gemini wording)."""
+    from wapsi.agenttrace import demo
+
+    monkeypatch.setattr(demo, "LIVE_RECORDING", demo.LIVE_RECORDING.with_name("missing.json"))
+    demo._load_live.cache_clear()
+    try:
+        monkeypatch.setenv("WAPSI_UI_RAISE", "1")
+        monkeypatch.setenv("WAPSI_UI_SOURCE", "fixtures")
+        monkeypatch.setenv("WAPSI_NOW", "2026-09-16T11:00:00+05:30")
+        at = AppTest.from_file(str(APP), default_timeout=90)
+        at.session_state["case_id"] = CASE1
+        at.session_state["role"] = "auditor"
+        at.session_state["page"] = "Case Room"
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        text = "\n".join(html.unescape(m.value) for m in at.markdown)
+        assert "Recorded offline run." in text and "instead of Gemma 4 on AMD" in text and "Gemini" not in text
+        assert "open_case" in text and "Blocked by guard" in text
+    finally:
+        demo._load_live.cache_clear()
 
 
 def test_hash_chain_badge_only_for_sealed_trace_events():

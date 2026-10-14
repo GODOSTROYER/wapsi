@@ -20,7 +20,7 @@ The same variables as the drafting LLM, so one endpoint serves both, with agent-
 | ``WAPSI_AGENT_JSON_OBJECT`` | ``1`` | JSON protocol only: ask for ``response_format: json_object`` (dropped automatically if rejected) |
 | ``WAPSI_AGENT_MAX_TOOL_CALLS`` | ``12`` | tool calls allowed per officer message |
 | ``WAPSI_AGENT_MAX_LLM_CALLS`` | ``24`` | model turns allowed per run (ADK ``RunConfig.max_llm_calls``) |
-| ``WAPSI_AGENT_MIN_INTERVAL_S`` | ``0`` | minimum seconds between model calls (shared rate limits: 20 requests/min on AMD Token Factory) |
+| ``WAPSI_AGENT_MIN_INTERVAL_S`` | ``WAPSI_LLM_MIN_INTERVAL_S``, else 3 s for a shared endpoint and 0 for a local server or an offline fake | minimum seconds between model calls (AMD Token Factory: 20 requests/min for the whole team). The agent paces on the same process-wide limiter as the drafts' prose (``wapsi.adapters.llm_resilience.shared_limiter``), and a wait in progress is announced on ``RATE_WAITS`` so the chat can say so |
 | ``WAPSI_AGENT_PROVIDER_LABEL`` | from the host | how the UI names the serving platform (e.g. ``vLLM-ROCm on MI300X``). Unset: ``WAPSI_LLM_PROVIDER`` (voice intake's label), else the host's own name, with the deployer's ``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD`` statement added "as declared" for a host that says nothing itself |
 
 Default model: ``Gemma-4-31B-IT`` is the id AMD Token Factory serves Google's Gemma 4 31B IT under; a vLLM server
@@ -36,6 +36,7 @@ import os
 import re
 import threading
 from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
@@ -64,6 +65,31 @@ def _number(env: Mapping[str, str], key: str, default: float) -> float:
         raise ValueError(f"{key} must be a number, got {raw!r}") from exc
 
 
+@dataclass
+class ModelTiming:
+    """Where one model turn's time went, measured at the HTTP call (``endpoint_model.EndpointClient``): the
+    requests themselves (``http_ms``, every attempt) and the pauses before them (``waited_ms``: client-side pacing
+    and a server's ``Retry-After``). Local work (LiteLLM's first import, ADK's request building) is in neither."""
+
+    http_ms: float = 0.0
+    waited_ms: float = 0.0
+    calls: int = 0
+
+
+#: The turn being timed: set by the trace plugin before a model call, filled by the endpoint client, read after.
+MODEL_TIMING: ContextVar[ModelTiming | None] = ContextVar("wapsi_model_timing", default=None)
+
+
+def _default_gap(env: Mapping[str, str], url: str) -> float:
+    """The agent's pause between model calls: ``WAPSI_AGENT_MIN_INTERVAL_S``, else the endpoint's pacing
+    (``wapsi.adapters.llm_env.pacing``: 3 s for a shared endpoint such as the AMD Token Factory)."""
+    if (env.get("WAPSI_AGENT_MIN_INTERVAL_S") or "").strip():
+        return max(0.0, _number(env, "WAPSI_AGENT_MIN_INTERVAL_S", 0.0))
+    from wapsi.adapters.llm_env import pacing
+
+    return pacing(url, env)[1]
+
+
 def _shared_fallbacks(env: Mapping[str, str], model: str, same_endpoint: bool) -> tuple[str, ...]:
     """The agent's fallback models: its own list, else the other models of the drafting endpoint's ordered list
     (``WAPSI_LLM_MODELS``, else ``WAPSI_LLM_FALLBACK_MODELS``) when the agent runs on that endpoint."""
@@ -84,6 +110,12 @@ def _declared_label(base_url: str, env: Mapping[str, str]) -> str:
 
     declared = declared_platform(env)
     return f"{name}, on {declared} as declared" if declared else ""
+
+
+def _rpm(env: Mapping[str, str], url: str) -> int:
+    from wapsi.adapters.llm_env import pacing
+
+    return pacing(url, env)[0]
 
 
 def provider_label(base_url: str) -> str:
@@ -117,6 +149,7 @@ class AgentEndpoint:
     max_tool_calls: int = 12
     max_llm_calls: int = 24
     min_interval_s: float = 0.0
+    rpm: int = 0  # requests a minute on the shared limiter (0 = only the gap above)
     label: str = ""
     fallback_models: tuple[str, ...] = ()
     extra_body: Mapping[str, Any] = field(default_factory=dict)
@@ -169,7 +202,8 @@ class AgentEndpoint:
             json_object=(e.get("WAPSI_AGENT_JSON_OBJECT") or "1").strip().lower() in TRUE,
             max_tool_calls=max(1, int(_number(e, "WAPSI_AGENT_MAX_TOOL_CALLS", cls.max_tool_calls))),
             max_llm_calls=max(2, int(_number(e, "WAPSI_AGENT_MAX_LLM_CALLS", cls.max_llm_calls))),
-            min_interval_s=max(0.0, _number(e, "WAPSI_AGENT_MIN_INTERVAL_S", cls.min_interval_s)),
+            min_interval_s=_default_gap(e, url),
+            rpm=_rpm(e, url),
             label=_text(e, "WAPSI_AGENT_PROVIDER_LABEL", "WAPSI_LLM_PROVIDER") or _declared_label(url, e),
             fallback_models=_shared_fallbacks(
                 e, _text(e, "WAPSI_AGENT_MODEL", "WAPSI_LLM_MODEL") or (model or "").strip() or DEFAULT_AGENT_MODEL,

@@ -119,8 +119,8 @@ All numbers in this section are **estimates** until they are measured on the box
 - vLLM for ROCm: AMD's `rocm/vllm` container. Check the current tag.
 - Log in to Hugging Face with **your own token on the box**: `hf auth login`, or export `HF_TOKEN` in the shell.
   Never commit the token or put it in a file inside the repo.
-- Read the Gemma 4 model card. Confirm the licence (Apache-2.0 per the plan) and whether the repo is gated, and
-  accept the terms on the Hub if asked.
+- Gemma 4 is Apache-2.0 with open, ungated weights (model card checked 2026-10-14); re-read the card before a
+  run in case it changed. Another base model may be gated: accept its terms on the Hub if asked.
 - Verify the exact repo ids in `configs/*.json` before downloading.
 
 ```bash

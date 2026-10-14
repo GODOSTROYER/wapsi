@@ -122,7 +122,7 @@ def _row(ctx: Ctx, b: CaseBundle) -> None:
             accounts = len([a for a, s_ in trace.accounts.items() if s_.layer > 0]) if trace else 0
             md('<div class="wp-note">First-layer account</div>'
                f'<div class="wp-mono" title="{h.esc(", ".join(fl))}">{h.esc(fl_text)}</div>'
-               f'<div class="wp-note">{accounts} accounts on the trail</div>')
+               f'<div class="wp-note">{accounts} account{"s" if accounts != 1 else ""} on the trail</div>')
         with c3:
             if plan is not None and trace is not None:
                 share = plan.total_recoverable / trace.totals.stolen if trace.totals.stolen else None

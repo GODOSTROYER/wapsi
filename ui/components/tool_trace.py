@@ -29,11 +29,12 @@ from wapsi.agenttrace import (
     VerifierVerdict,
     traces_from_audit,
 )
-from wapsi.agenttrace.demo import recorded_traces
+from wapsi.agenttrace.demo import live_recorded_traces, recorded_traces
 from wapsi.agenttrace.model import FAILED_STATUSES, STOPPED_STATUSES
 from wapsi.models import CaseBundle
 
 ORIGIN_AUDIT, ORIGIN_RECORDING, ORIGIN_NONE = "audit", "recording", "none"
+ORIGIN_LIVE_RECORDING = "live_recording"  # a recorded live run (Gemma 4 on AMD), replayed
 OFFLINE_ENDPOINT = "adk-endpoint-offline"  # the AMD edition's fake OpenAI-compatible endpoint (no network)
 ORIGIN_AUDIT_UNSEALED = "audit_unsealed"  # in the audit log, but the store did not seal it into the hash chain
 Masker = Callable[[str], str]
@@ -125,13 +126,17 @@ def css() -> str:
 
 
 def case_traces(bundle: CaseBundle | None) -> tuple[list[AgentTrace], str]:
-    """The case's agent runs from its audit log, else the recorded offline run (showcase), else nothing."""
+    """The case's agent runs from its audit log, else the recorded live run on Gemma 4 on AMD (showcase), else the
+    recorded offline run (showcase), else nothing."""
     if bundle is None:
         return [], ORIGIN_NONE
     cid = bundle.case.case_id
     traces = traces_from_audit(bundle.audit, case_id=cid)
     if traces:
         return traces, ORIGIN_AUDIT
+    live = live_recorded_traces(cid)
+    if live:
+        return live, ORIGIN_LIVE_RECORDING
     recorded = recorded_traces(cid)
     if recorded:
         return recorded, ORIGIN_RECORDING
@@ -288,11 +293,14 @@ def model_step_html(step: TraceStep, mask: Masker = str) -> str:
     asks = (" → " + ", ".join(step.calls)) if step.calls else " → reply"
     stop = " stop" if step.failed else ""
     guards = "".join(guard_chip(g) for g in step.guards)
+    waited = (h.chip(f"waited {fmt_ms(step.waited_ms)} for the rate limit", "gray",
+                     title="Paused before the request so the shared endpoint's limit is respected; not model time")
+              if step.waited_ms and step.waited_ms >= 50 else "")
     return (
         f'<div class="wp-tt-step" data-kind="model"><span class="wp-tt-dot{stop}" aria-hidden="true"></span>'
         f'<div class="wp-tt-mini"><span class="wp-tt-kind">Model</span><span class="wp-mono">{h.esc(step.name)}</span>'
         f"<span>{h.esc(step.agent)}{h.esc(asks)}</span><span>{h.esc(fmt_ms(step.latency_ms))}</span>{tokens}"
-        f"{guards}{'' if not step.failed else h.chip(status_text(step), 'bad')}</div></div>"
+        f"{waited}{guards}{'' if not step.failed else h.chip(status_text(step), 'bad')}</div></div>"
     )
 
 
@@ -351,6 +359,10 @@ def run_header_html(trace: AgentTrace, number: int, *, origin: str = ORIGIN_AUDI
     if origin == ORIGIN_AUDIT:
         chips.append(h.chip("In the case's hash-chained audit log", "good",
                             title="Recorded as an agent_trace audit event; the audit page re-verifies the chain"))
+    elif origin == ORIGIN_LIVE_RECORDING:
+        chips.append(h.chip(f"Recorded {ist(trace.started_at).split(' ')[0]}, replayed", "gray",
+                            title="A live run on Gemma 4 served on AMD, recorded and replayed here; not a run in "
+                                  "this deployment"))
     elif origin == ORIGIN_AUDIT_UNSEALED:
         chips.append(h.chip("In the case's audit log", "gray",
                             title="Recorded as an agent_trace audit event; this case store does not seal events "
@@ -436,11 +448,19 @@ def render_agent_trace(ctx: object) -> None:
         return
     lead = ("Every tool call the agent made on this case, in order, with the safety checks around it. Account "
             "numbers, phones and names are redacted in the trace.")
-    if origin == ORIGIN_RECORDING:
-        md(h.callout("No live agent run is recorded on this case yet, so this is the recorded offline run: the "
-                     "real ADK app, tools and guards, driven by a scripted model instead of Gemini (no API key). "
-                     "Latencies were measured on a laptop CPU. With a model configured (a Gemini key, or Gemma 4 "
-                     "on AMD behind an OpenAI-compatible endpoint), live runs appear here.",
+    if origin == ORIGIN_LIVE_RECORDING:
+        when = ist(traces[0].started_at).split(" ")[0] if traces else ""
+        md(h.callout(f"No agent run is recorded on this case in this deployment yet, so this replays a live run "
+                     f"recorded on {when}: the real ADK app, tools and guards, with Gemma 4 served on AMD GPUs "
+                     "(AMD Token Factory) choosing every tool call and writing the draft prose. Model latencies are "
+                     "the requests to that endpoint from a laptop in India; waits for its rate limit are shown "
+                     "apart. With WAPSI_LLM_BASE_URL set, live runs appear here.",
+                     strong="Recorded live run, replayed."))
+    elif origin == ORIGIN_RECORDING:
+        md(h.callout("No agent run is recorded on this case yet, so this is the recorded offline run: the real ADK "
+                     "app, tools and guards, driven by a scripted model instead of Gemma 4 on AMD (no API key). "
+                     "Latencies were measured on a laptop CPU. With WAPSI_LLM_BASE_URL set (Gemma 4 on AMD, or any "
+                     "OpenAI-compatible endpoint), live runs appear here.",
                      strong="Recorded offline run."))
     else:
         md(f'<div class="wp-note" style="margin:-.2rem 0 .6rem">{h.esc(lead)}</div>')
@@ -479,6 +499,7 @@ def tab_label(bundle: CaseBundle | None) -> str:
 __all__ = [
     "ORIGIN_AUDIT",
     "ORIGIN_AUDIT_UNSEALED",
+    "ORIGIN_LIVE_RECORDING",
     "ORIGIN_NONE",
     "ORIGIN_RECORDING",
     "STOPPED_STATUSES",

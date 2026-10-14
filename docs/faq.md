@@ -43,8 +43,8 @@ in the [Glossary](glossary.md).
 | 26 | [Can a victim just send a voice note?](#q26) | Yes. A speech model and Gemma 4 on AMD turn a Hinglish voice note into a transcript, a translation and complaint fields; every claim is then checked against the ledger, and only a ledger match opens a case. |
 | 27 | [How can I see what the AI agent actually did?](#q27) | The Case Room's Agent trace tab lists every tool call in order, with redacted arguments, the result, latency and the guard and verifier verdicts, sealed into the case's audit chain. |
 | 28 | [Where is the audit trail kept with the optional cloud adapters?](#q28) | In Firestore: one transaction per event, create-only documents, and a chain anchor kept outside the log. |
-| 29 | [What runs on AMD?](#q29) | The language side of every case: Gemma 4 on AMD GPUs writes the prose, reads complaints and drives the agent. A GraphSAGE mule scorer runs on ROCm. |
-| 30 | [Why is this a commerce entry, and does a language model make the predictions?](#q30) | A wrongly frozen account stops an honest merchant trading. The roles are predicted by a transparent scorer and a GNN; no language model predicts anything. |
+| 29 | [What runs on AMD?](#q29) | The language side of every case: Gemma 4 on AMD GPUs writes the prose, reads complaints and drives the agent (run live on 14-10-2026). A GraphSAGE mule scorer is prepared for ROCm; it has not run on AMD yet. |
+| 30 | [Why is this a commerce entry, and does a language model make the predictions?](#q30) | A wrongly frozen account stops an honest merchant trading. The roles are predicted by a transparent scorer (an optional GNN is prepared); no language model predicts anything. |
 
 ### Check the numbers yourself
 
@@ -521,7 +521,7 @@ services around the core:
 
 | Layer | Platform-specific part | Status on 2026-10-14 | Read |
 |---|---|---|---|
-| AMD (the hackathon entry) | Gemma 4 on AMD GPUs for prose, extraction and the agent, reached as an OpenAI-compatible endpoint; a GraphSAGE mule scorer on ROCm; endpoint, notebook and MI300X droplet modes | Endpoint mode wired; AMD measurements are published only from committed results files; no MI300X run reported | [Editions](editions.md), [`editions/amd/README.md`](../editions/amd/README.md) |
+| AMD (the hackathon entry) | Gemma 4 on AMD GPUs for prose, extraction and the agent, reached as an OpenAI-compatible endpoint; a GraphSAGE mule scorer prepared for ROCm; endpoint, notebook and MI300X droplet modes | Endpoint mode run live on 14-10-2026; AMD measurements are published only from committed results files; no AMD GPU notebook or MI300X run reported | [Editions](editions.md), [`editions/amd/README.md`](../editions/amd/README.md) |
 | The Google ADK agent | The officer's agent and its tool trace, with Gemma 4 on AMD as its model | Built and tested offline with a scripted model; Gemma 4 on AMD as its model is event-week work | [Editions](editions.md) |
 | Optional managed-cloud adapters | BigQuery ledger, Firestore case store, Model Armor guard, Cloud Run deploy scripts; not part of the entry | Built and unit-tested locally with fakes; not deployed | [`editions/gcp/README.md`](../editions/gcp/README.md) |
 
@@ -708,10 +708,12 @@ maker-checker role check, untrusted complaint text in the result, the plan polic
 reply grounding: every rupee amount and account number in the agent's reply must appear in a tool result). The
 trace is sealed into the case's hash-chained audit log, so editing a recorded step breaks the chain.
 
-On the showcase case, the recorded offline run (the real ADK app, tools and guards with a scripted model, so no
-API key is needed) shows 8 tool calls in 4 runs: the five calls behind "Open case", an account explanation, an
-analyst's approval request **refused by maker-checker**, and an injected "release all holds" search **blocked by
-the guard**. Live runs of the same agent, with Gemma 4 on AMD as its model, are recorded the same way. In the
+On the showcase case, the tab replays a live session recorded on 14-10-2026 (the real ADK app, tools and guards
+with Gemma 4 served on AMD choosing every tool call; no API key is needed to view it): 8 tool calls in 4 runs, the
+five calls behind "Open case", an account explanation, an analyst's approval request **refused by maker-checker**,
+and an injected "release all holds" message rewritten by the input guard, after which the model searched the SOP
+and released nothing. Without that recording, a scripted offline run of the same app is shown (there the search
+that follows the injection is **blocked by the guard**). Runs in your own deployment are recorded the same way. In the
 optional cloud deployment, behind IAP, an analyst can read only their own runs through `GET /wapsi/traces`;
 supervisors and auditors read all
 ([User guide](user-guide.md#agent-trace-tab), [Trust and safety](trust-and-safety.md#agent-traces)).
@@ -737,8 +739,10 @@ The language side of every case. Gemma 4 31B, an open model, is served on AMD GP
 OpenAI-compatible endpoint (`OpenAICompatLLM`). It writes the prose fields of the drafts, extracts the fields of a
 complaint or a voice-note transcript, and is the model behind the officer's ADK agent. Without it there is no
 natural-language draft, no complaint or voice intake and no agent; the case would still be traced, planned and
-verified, with fixed paragraphs in place of the prose. The second AMD workload is the GraphSAGE mule scorer,
-pure PyTorch on ROCm.
+verified, with fixed paragraphs in place of the prose. This ran live on 14-10-2026 through the AMD Token
+Factory (the agent with live draft prose, the showcase world, voice-note extraction). A second AMD workload is
+prepared: the GraphSAGE mule scorer, pure PyTorch, built to run on ROCm; it is CPU-tested and has not run on an AMD
+GPU yet, and the heuristic scorer is the default.
 
 There are three modes on one codebase: an AMD-hosted endpoint (the default, used for the demo), a ROCm notebook
 and one MI300X with Docker Compose. A figure with the real model in the loop is published only from a committed

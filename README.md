@@ -46,23 +46,30 @@ comparison baseline, never a recommendation.
 ## What runs on AMD
 
 Every project in this hackathon must run a meaningful part of its workload on AMD. In Wapsi the AMD workload is
-inside the working product: each sentence in a draft, each field read from a complaint and each step the officer's
-agent takes comes from an open model served on AMD GPUs.
+inside the working product: with an endpoint configured, each sentence in a draft, each field read from a complaint
+and each step the officer's agent takes comes from Gemma 4 served on AMD GPUs. The status column says what has run
+on AMD so far and what is prepared.
 
-| Workload | Model | Where it runs |
-|---|---|---|
-| Prose of every draft (placeholder-only fields; numbers are filled from data) | **Gemma 4 31B** | AMD GPUs, through the AMD Token Factory endpoint (OpenAI-compatible) |
-| Field extraction and translation of Hinglish complaints and voice notes | Gemma 4 31B | the same endpoint |
-| The officer's agent and its tool calls | Gemma 4 31B, driven by Google ADK | the same endpoint |
-| Second opinion on untrusted complaint text | a small open model (configurable) | the same endpoint, or a second model on the same GPU |
-| Speech to text for voice notes | **Whisper** (open weights) | local by default (a CPU is enough for a short clip); any GPU is faster |
-| Mule scoring on the money-trail graph | **GraphSAGE GNN**, pure PyTorch | ROCm on an AMD GPU notebook or an MI300X |
+| Workload | Model | Where it runs | Status (14-10-2026) |
+|---|---|---|---|
+| Prose of every draft (placeholder-only fields; numbers are filled from data) | **Gemma 4 31B** | AMD GPUs, through the AMD Token Factory endpoint (OpenAI-compatible) | run live: in the agent session and on the showcase world; the public demo replays prose recorded from it |
+| Field extraction and translation of Hinglish complaints and voice notes | Gemma 4 31B | the same endpoint | run live on the six sample transcripts |
+| The officer's agent and its tool calls | Gemma 4 31B, driven by Google ADK | the same endpoint | run live; the Agent trace tab replays that run |
+| Second opinion on untrusted complaint text | a small open model (configurable) | the same endpoint, or a second model on the same GPU | wired, not yet measured |
+| Speech to text for voice notes | **Whisper** (open weights) | local by default (a CPU is enough for a short clip); any GPU is faster | built and tested offline; not yet run in this entry |
+| Mule scoring on the money-trail graph (optional second scorer) | **GraphSAGE GNN**, pure PyTorch, built to run on ROCm | an AMD GPU notebook or an MI300X | prepared and CPU-tested; not yet run on AMD |
+
+**What the public demo URL shows.** With a key set as a host secret, the drafts' prose is written live by Gemma 4
+on AMD (a chip names the model and the endpoint). Without one, it replays prose recorded from Gemma 4 on AMD on
+14-10-2026 for the two showcase cases, labelled "Recorded run"; the demo world's cases fall back to an offline stub
+labelled as such. The Agent trace tab replays the live Gemma 4 agent session, labelled as a recording. Voice Intake
+reads the six bundled samples with an offline model. Nothing on the page is presented as live unless it is.
 
 There are three ways to run it, and one codebase. The model endpoint is a setting, never a code change:
 
 | Mode | What it is | Status on 2026-10-14 |
 |---|---|---|
-| **Endpoint** (default) | `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL` point at AMD's Token Factory API. No GPU and no Docker needed on your side. | Built and run live on 2026-10-14: the ADK agent and voice-note field extraction on Gemma 4 served on AMD (results in `editions/amd/AGENT.md` and `editions/amd/bench/results/voice-tokenfactory-20261014/`), and the demo's recorded prose from an open model on the same endpoint. A figure is pitched only from a committed results file; the rest are open slots in [pitch/NUMBERS.md](pitch/NUMBERS.md). |
+| **Endpoint** (default) | `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL` point at AMD's Token Factory API. No GPU and no Docker needed on your side. | Built and run live on 2026-10-14 with Gemma 4 served on AMD: the ADK agent with live draft prose (`editions/amd/bench/results/agent-tokenfactory-20261014/`), the showcase world through the harness (`evals/reports/amd/`), voice-note field extraction (`editions/amd/bench/results/voice-tokenfactory-20261014/`) and the demo's recorded prose (`data/recordings/demo_prose.json`). A figure is pitched only from a committed results file; the rest are open slots in [pitch/NUMBERS.md](pitch/NUMBERS.md). |
 | **Notebook** | A ROCm JupyterLab on an AMD GPU: GNN training and the benchmarks, without Docker. | Code prepared and CPU-tested (`editions/amd/gnn/`). No AMD GPU run is reported yet. |
 | **Droplet** | One AMD Instinct MI300X with Docker Compose: vLLM serves Gemma 4 and a verifier model next to the GNN and the app, so no request leaves the machine. | Stack, runbook and benchmark harness prepared and tested offline (`editions/amd/`). Not run on an MI300X yet. |
 
@@ -73,13 +80,17 @@ detail: [docs/editions.md](docs/editions.md).
 
 ## Google technology: Gemma 4 and the Agent Development Kit
 
-- **Gemma 4** (Google's open model) is the only language model on the product path. It never types a number: it
-  writes sentences around placeholders, and a separate verifier recomputes every amount, account number, UTR,
-  date and citation. If its prose fails a check, a fixed paragraph replaces it.
-- **Google ADK** (open source) runs the officer's agent: ten pipeline tools (trace the money, build the hold plan,
-  draft, verify, approve as a supervisor), an intake sub-agent, and plugins that screen input and record every
-  tool call. The agent reaches Gemma 4 on AMD through ADK's LiteLLM connector with native tool calls; a small
-  JSON-protocol fallback is the safety net.
+- **Gemma 4** (Google's open model) is the primary language model on the product path; other models on the same
+  AMD endpoint answer only as a labelled failover (`WAPSI_LLM_MODELS`), and every draft, trace and report names the
+  model that wrote it. It never types a number: it writes sentences around placeholders, and a separate verifier
+  recomputes every amount, account number, UTR, date and citation. If its prose fails a check, a fixed paragraph
+  replaces it.
+- **Google ADK** (open source) runs the officer's agent: one agent with ten pipeline tools (open a case, trace the
+  money, build the hold plan, draft, verify, approve as a supervisor) and plugins that screen input, write the
+  audit log and record every tool call. The agent reaches Gemma 4 on AMD through ADK's LiteLLM connector with
+  native tool calls; a small JSON-protocol fallback is the safety net. Measured live on 14-10-2026 (AMD Token
+  Factory, Gemma-4-31B-IT): 5 tool calls behind "Open case 31009260000101", 16 of 16 drafts verified with Gemma 4
+  writing the draft prose too, and 24 of 24 values in the agent's reply traced to a tool.
 - **Agent trace.** The Case Room's **Agent trace** tab lists every tool call the agent made on a case, with
   redacted arguments, a result summary taken from the tool's own result, latency, and the guard, maker-checker and
   verifier verdicts around it. Each run is sealed into the case's hash-chained audit log.
@@ -108,7 +119,7 @@ uv sync --all-extras                                                        # ad
 uv run python -m editions.amd.app.agent_demo --case 31009260000101 --demo   # the ADK agent on a fake OpenAI-compatible endpoint: tool-by-tool trace, verified outcome
 uv run python -m editions.amd.bench.voice_bench --fake                      # voice intake on the six samples (fake recogniser and text model)
 bash editions/amd/kickoff/run_all.sh --mode endpoint --dry-run              # the evidence run: prints every command, runs nothing
-uv run streamlit run deploy/demo/app.py                                     # the public demo: "Recorded run" replays prose recorded from an open model on AMD
+uv run streamlit run deploy/demo/app.py                                     # the public demo: "Recorded run" replays prose recorded from Gemma 4 on AMD
 ```
 
 **With Gemma 4 on AMD (endpoint mode).** Three variables point every model call at one OpenAI-compatible
@@ -120,12 +131,13 @@ synthetic data is sent.
 export WAPSI_LLM_BASE_URL="https://developer.amd.com.cn/radeon/api/v1"   # AMD Token Factory; or your own vLLM on AMD, ending in /v1
 export WAPSI_LLM_API_KEY="<your key>"
 export WAPSI_LLM_MODEL="Gemma-4-31B-IT"
+export WAPSI_AGENT_MIN_INTERVAL_S=4   # the shared key allows 20 requests a minute for the whole team: pace the agent
 
-uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only        # one request: is the model answering in plain language right now?
+uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only        # two live requests (never cached): is the model answering in plain language right now?
 uv run streamlit run deploy/demo/app.py                                     # officer app: Gemma 4 writes the prose; a chip names the model and the endpoint host
-uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live   # Google ADK driving Gemma 4 through native tool calls
-uv run streamlit run editions/amd/app/ui_app.py                             # the app with "Ask the agent" in the Case Room
-uv run python -m evals.harness --world demo --llm openai-compat --limit 10 --out evals/reports/amd   # golden cases, the real model writing every prose field
+uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live --prose endpoint   # Google ADK driving Gemma 4 through native tool calls; the draft prose on Gemma 4 too
+uv run streamlit run editions/amd/app/ui_app.py                             # the app with "Ask the agent" in the Case Room (without WAPSI_LLM_BASE_URL it says so and runs offline)
+uv run python -m evals.harness --world demo --llm openai-compat:Gemma-4-31B-IT --limit 10 --out evals/reports/amd   # golden cases, Gemma 4 alone writing every prose field
 bash editions/amd/kickoff/preflight.sh && bash editions/amd/kickoff/run_all.sh --mode endpoint       # the dated evidence bundle (about 100 requests)
 ```
 
@@ -224,7 +236,8 @@ Which account is a mule and which is an honest shop is a prediction. No language
   score of at least 0.60 is a mule, at most 0.35 an innocent holder, and anything between goes to the officer as
   UNKNOWN. Every score is shown as per-feature contributions with plain-English reasons.
 - **Optional learned scorers behind the same interface.** XGBoost, and a GraphSAGE graph neural network in pure
-  PyTorch that runs on ROCm; the heuristic is their fallback.
+  PyTorch, built to run on ROCm (prepared and CPU-tested; no AMD GPU run yet); the heuristic is their fallback and
+  the default.
 - **The amount is never predicted.** A hold is arithmetic over the traced money. A wrong label changes the
   paperwork (an EDD memo instead of an STR ground, or the reverse); it never changes how much is held.
 
@@ -259,14 +272,17 @@ hand, so it is not counted as recoverable, and it gets its own 90-day review clo
 
 Unless a row says otherwise, results come from synthetic data with the deterministic stub LLM.
 [Evaluation](docs/evaluation.md) explains the method; every figure here is also in
-[pitch/NUMBERS.md](pitch/NUMBERS.md). Figures measured with Gemma 4 on AMD are added to that file, with where they
-ran, when their results files are committed.
+[pitch/NUMBERS.md](pitch/NUMBERS.md), with where it ran. Rows that name Gemma 4 on AMD come from committed results
+files of the AMD Token Factory (models served on AMD GPUs by AMD's API); they are not MI300X benchmarks.
 
 | Check | Result | Source |
 |---|---|---|
 | The SOP's own worked example (Annexure-V, Illustration 2: five victims, ₹2,06,543 left) | all five pro-rata shares match the SOP to the paisa | `tests/test_sop_annexure_v.py` |
 | Demo world: 39 cases, 10 fraud typologies, 3 with injected instructions | holds exact 1.0, over-hold ₹0, false freezes 0, dispositions 1.0, drafts passing the verifier 1.0, injection leaks 0 | `evals/reports/demo.json` |
 | Demo world: money immobilised | Wapsi ₹29,19,245.69 in 84 accounts; whole-account freeze baseline ₹35,25,90,069.78 in 101 accounts (0.83%); 17 of those accounts get no hold at all | `evals/reports/demo.json` (`baseline`) |
+| Demo world: where the freeze sits | 96.9% of the freeze baseline sits in the three nodal / pool accounts (SOP 9.1(iii) already rules out freezing them whole; Wapsi holds ₹1,71,334.53 there). Honest merchants and customers: ₹82.99 L would be frozen; Wapsi holds ₹2.50 L, 3.0% of it | `evals/reports/demo-baseline-split.json` (`baseline.by_group`) |
+| Gemma 4 on AMD driving the ADK agent (AMD Token Factory, Gemma-4-31B-IT, 14-10-2026) | 5 tool calls behind "Open case 31009260000101" through native tool calls; that live run ended VERIFIED: 16 of 16 drafts verified, with Gemma 4 on AMD writing the draft prose too; 24 of 24 values in the agent's reply came from a tool; an analyst's approval refused by maker-checker; a median of 3.86 s per model call | `editions/amd/bench/results/agent-tokenfactory-20261014/` |
+| Showcase world with Gemma 4 on AMD writing the prose (AMD Token Factory, 14-10-2026) | drafts passing the verifier 1.0, prose replaced by fixed text on that run 0.0, holds exact 1.0 | `evals/reports/amd/showcase-gemma4-20261014.json` |
 | Demo world: time from complaint to hold plan | p95 0.35 s (laptop; no language model on that path); p95 0.72 s per case to verified drafts with the stub LLM | `evals/reports/demo.json` |
 | **Hard world**: 64 cases, 15 typologies incl. 5 realistic confounders (seed 7) | holds exact 1.0, over-hold ₹0, false freezes 0, drafts passing the verifier 1.0; dispositions 0.9198, mule P / R 0.8987 / 0.966, innocent-holder P / R 0.9429 / 0.6875, merchant P / R 1.0 / 1.0 | `evals/reports/hard.json` |
 | Hard world, held-out seed 101 (62 cases) | holds exact 1.0, over-hold ₹0, false freezes 0; dispositions 0.9139 (heuristic), 0.9569 with XGBoost trained on seed 202 | `evals/reports/hard-101.json` |
@@ -276,7 +292,7 @@ ran, when their results files are committed.
 | Tamper-evident audit log | 6 of 6 tampering attempts on a 40-event case log detected (edit, re-hash one event, delete, reorder, truncate, re-hash the whole tail), plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout of 151 texts | precision 0.9661, recall 0.75 | `evals/reports/guard-latest.json` |
 | Voice intake, 6 synthetic Hinglish voice notes (offline model) | every sample reconciles as documented: the showcase victim's note matches 9 of 9 claims; two notes with spoken "release the hold" instructions get them quoted, never followed; claimed figures the ledger lacks show as mismatch or not in ledger | `tests/intake`, `data/samples/voice/manifest.json` |
-| Test suite, after the event-week branches were merged | 2,212 tests pass, 0 fail (full suite, 14-10-2026); 1,765 at the pre-event baseline | `uv run pytest -q` |
+| Test suite, after the event-week branches were merged and reviewed | 2,226 tests, 0 fail (full suite, 14-10-2026): all pass with the docs index and the demo world built; a fresh clone runs 2,215 and skips 11 that need them (10 docs-search tests and 1 BigQuery-ledger test); 1,765 at the pre-event baseline | `uv run pytest -q` |
 
 **Every miss is a label, never money.** The hard world adds sleeper mules, task-scam victim chains, a labour
 contractor's salary pool, a festival-season home seller and same-second relays. Dispositions drop to 0.9198, but
@@ -331,7 +347,7 @@ showcase numbers are the parity test for all of them. Details: [Editions](docs/e
 
 | Layer | What it is | Status (2026-10-14) |
 |---|---|---|
-| [AMD](editions/amd/README.md) | **The hackathon entry.** Gemma 4 on AMD GPUs for prose, extraction and the agent; a GraphSAGE mule scorer on ROCm; endpoint, notebook and droplet modes. | Core and AMD layer code existed before the event and are tagged `amd-baseline`. Event-week work and every AMD measurement are listed in [docs/originality.md](docs/originality.md). |
+| [AMD](editions/amd/README.md) | **The hackathon entry.** Gemma 4 on AMD GPUs for prose, extraction and the agent; a GraphSAGE mule scorer prepared for ROCm; endpoint, notebook and droplet modes. | Core and AMD layer code existed before the event and are tagged `amd-baseline`. Event-week work and every AMD measurement are listed in [docs/originality.md](docs/originality.md). |
 | [Google ADK agent](editions/amd/AGENT.md) | The officer's agent, built with Google's open-source ADK (`editions/shared/`). In this entry its model is Gemma 4 on AMD. | Built and tested offline with a scripted model before the event; Gemma 4 on AMD as its model is event-week work, run live on 2026-10-14. |
 | [Optional managed-cloud adapters](editions/gcp/README.md) | BigQuery ledger, Firestore case store with a transaction-sealed audit chain, Model Armor guard, Cloud Run deploy scripts. Not part of the hackathon entry. | Built and unit-tested offline with fakes. Nothing is deployed. |
 
@@ -375,6 +391,17 @@ showcase numbers are the parity test for all of them. Details: [Editions](docs/e
   mobile numbers masked. See [SECURITY.md](SECURITY.md).
 - **Only synthetic data leaves the machine.** A shared model endpoint is a trial service; nothing real is ever
   sent to one, and no key is ever committed.
+
+## Models and licences
+
+| Model | Role in Wapsi | Licence / terms |
+|---|---|---|
+| Gemma 4 31B IT (`google/gemma-4-31B-it`; `Gemma-4-31B-IT` on the AMD Token Factory) | primary model: draft prose, field extraction and translation, the ADK agent | Apache-2.0 (model card, checked 14-10-2026); open weights, no licence gate |
+| Whisper large-v3-turbo (`openai/whisper-large-v3-turbo`) | speech to text on the open voice path (local, through transformers) | MIT |
+| DeepSeek-V4-Flash, Qwen3.8-27B, MiniCPM5-2B | optional failover (`WAPSI_LLM_MODELS`) and the configurable second-opinion model; used only through the AMD Token Factory API | the Token Factory's trial and development terms; no weights are downloaded |
+
+The Token Factory itself is a trial and development service ("do not send sensitive personal, health or financial
+data"): Wapsi sends it synthetic data only.
 
 ## Data and licence
 

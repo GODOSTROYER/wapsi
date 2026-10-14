@@ -127,8 +127,12 @@ def test_lablab_fields_carry_the_challenge_the_tags_and_a_cover_brief():
     challenge = text[text.index("## Selected challenge"):text.index("## Technologies and tags")]
     assert "Track 3: Reinvent Commerce" in challenge
     tags = text[text.index("## Technologies and tags"):text.index("## Cover image brief")]
-    for tag in ("AMD Developer Cloud", "ROCm", "Gemma", "ADK", "vLLM"):
-        assert tag in tags, tag
+    default = tags.split(chr(10) * 2)[1]  # the tag line itself; the paragraph after it says when to add more
+    for tag in ("AMD Token Factory", "Gemma", "ADK", "LiteLLM"):
+        assert tag in default, tag
+    # tag only what the submitted build used: hardware tags wait for a committed notebook or droplet run
+    for tag in ("AMD Developer Cloud", "ROCm", "vLLM", "AMD Instinct"):
+        assert tag not in default and tag in tags, tag
     assert "## Cover image brief" in text and "16:9" in text
     assert "15:00 UTC" in text, "the official deadline"
 

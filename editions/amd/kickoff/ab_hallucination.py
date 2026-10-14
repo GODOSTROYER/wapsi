@@ -60,6 +60,7 @@ for _p in (ROOT, ROOT / "src"):
         sys.path.insert(0, str(_p))
 
 from wapsi import money  # noqa: E402
+from wapsi.adapters.llm_env import self_hosted_name  # noqa: E402 - "vllm-rocm:" only when AMD is confirmed
 from wapsi.citations import KNOWN_IDS, registry  # noqa: E402
 from wapsi.draft.factsheet import quote_untrusted  # noqa: E402
 from wapsi.models import CaseBundle, DraftKind  # noqa: E402
@@ -392,7 +393,7 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         args.llm_model = args.llm_model or os.environ.get("WAPSI_LLM_SERVED_NAME", "wapsi-llm")
 
         raw_llm = bound_llm = OpenAICompatLLM(base_url=args.llm_url, model=args.llm_model, api_key=endpoint_api_key(),
-                                              timeout=args.timeout, name=f"vllm-rocm:{args.llm_model}",
+                                              timeout=args.timeout, name=self_hosted_name(args.llm_model),
                                               transport=transport)
         llm_name = bound_llm.name
         label = args.label or f"measured against {args.llm_url} ({args.llm_model})"

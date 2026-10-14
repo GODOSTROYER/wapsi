@@ -115,8 +115,9 @@ uv run pytest --ignore=tests/gcp --ignore=tests/amd -q  # core suite; should end
 With `uv sync --all-extras` (what CI runs), plain `uv run pytest` runs the edition suites too. Without the `amd`
 extra, always add `--ignore=tests/amd`: several of its modules import PyTorch directly and fail at collection.
 
-On 14-10-2026, after the event-week branches were merged, the full suite collected **2,212 tests** and passed
-with 0 failures (`pitch/NUMBERS.md`, row `cmd_tests`); at the pre-event baseline (07-10-2026) it was 1,765. The current per-area counts are under [Tests](#tests). Run time depends on the machine and on what
+On 14-10-2026, after the event-week branches were merged and reviewed, the full suite collected **2,226 tests**
+and passed with 0 failures (`pitch/NUMBERS.md`, row `cmd_tests`): all pass with the docs index and the demo world built; a fresh clone runs 2,215 and skips 11 that need them (10 docs-search tests and 1 BigQuery-ledger test). At the pre-event baseline (07-10-2026)
+it was 1,765. The current per-area counts are under [Tests](#tests). Run time depends on the machine and on what
 else is running.
 
 ---
@@ -226,20 +227,20 @@ uv run pytest -k escalation                     # by keyword
 uv run pytest --co -q | tail -1                 # count tests without running them
 ```
 
-On 14-10-2026 `uv run pytest --co -q` collected 2,212 tests (with `uv sync --all-extras`):
+On 14-10-2026 `uv run pytest --co -q` collected 2,226 tests (with `uv sync --all-extras`):
 
 | Area | Tests | Area | Tests |
 |---|---|---|---|
-| `tests/verify` | 381 | `tests/domain` | 88 |
+| `tests/verify` | 382 | `tests/domain` | 88 |
 | `tests/graph` | 288 | `tests/synth` | 49 |
-| `tests/ui` | 193 | `tests/audit` | 42 |
+| `tests/ui` | 195 | `tests/audit` | 42 |
 | `tests/draft` | 149 | `tests/pipeline` | 35 |
-| `tests/intake` (voice intake) | 131 | `tests/pitch` | 24 |
+| `tests/intake` (voice intake) | 131 | `tests/pitch` | 28 |
 | `tests/classify` | 110 | `tests/demo` (public demo) | 24 |
-| `tests/search` | 104 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, `test_env_names_agree.py`, `test_llm_failover.py`, ...) | 85 |
-| `tests/amd` (the AMD layer, the agent on an endpoint, the kickoff pipeline) | 276 | `tests/gcp` (ADK agent app, managed-cloud adapters) | 233 |
+| `tests/search` | 104 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, `test_env_names_agree.py`, `test_llm_failover.py`, ...) | 88 |
+| `tests/amd` (the AMD layer, the agent on an endpoint, the kickoff pipeline) | 280 | `tests/gcp` (ADK agent app, managed-cloud adapters) | 233 |
 
-The core suite (everything but `tests/gcp` and `tests/amd`) is 1,703 tests. The suites keep growing, so count
+The core suite (everything but `tests/gcp` and `tests/amd`) is 1,713 tests. The suites keep growing, so count
 your own checkout with `uv run pytest --co -q | tail -1`. `tests/amd` imports PyTorch at collection time: collecting that folder
 alone took 15 to 25 s here. For a fast loop on the core, add `--ignore=tests/gcp --ignore=tests/amd`.
 

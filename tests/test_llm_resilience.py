@@ -364,3 +364,34 @@ def test_endpoint_reported_cost_is_reported_not_estimated(tmp_path):
     again, _ = make(inner, tmp_path)
     again.complete(MSG)
     assert again.report()["cost_estimate_usd"]["saved_by_cache_paid_equivalent"] == 0.00002
+
+
+
+def test_one_shared_limiter_per_endpoint_host_only_ever_tightens():
+    from wapsi.adapters.llm_resilience import reset_shared_limiters, shared_limiter
+
+    reset_shared_limiters()
+    try:
+        assert shared_limiter("developer.amd.com.cn", rpm=0, min_interval_s=0.0) is None  # nothing to limit
+        a = shared_limiter("developer.amd.com.cn", rpm=18, min_interval_s=3.0)
+        b = shared_limiter("developer.amd.com.cn", rpm=20, min_interval_s=4.0)  # the agent asks for a longer gap
+        assert a is b and (a.rpm, a.min_interval_s, a.rpd) == (18, 4.0, 0)
+        assert shared_limiter("other.example.org", rpm=5, min_interval_s=0.0) is not a
+    finally:
+        reset_shared_limiters()
+
+
+def test_the_wait_board_says_what_is_being_waited_for():
+    from wapsi.adapters.llm_resilience import WaitBoard
+
+    clock = [100.0]
+    board = WaitBoard(clock=lambda: clock[0])
+    assert board.current() is None
+    seen = []
+    board.wait(30.0, "the endpoint's rate limit", sleep=lambda s: seen.append(board.current()))
+    assert seen == [(30.0, "the endpoint's rate limit")] and board.current() is None
+    token = board.begin(60.0, "the endpoint to recover")
+    clock[0] += 15.0
+    assert board.current() == (45.0, "the endpoint to recover")
+    board.end(token)
+    assert board.current() is None

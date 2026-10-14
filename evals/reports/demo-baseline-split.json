@@ -1,0 +1,153 @@
+{
+  "world": "demo",
+  "generated_at": "2026-10-14T10:53:34.616035+00:00",
+  "config": {
+    "rule": "PRO_RATA",
+    "llm": "fake-llm",
+    "scorer": "heuristic-v2",
+    "scorer_spec": "heuristic",
+    "search": true
+  },
+  "cases": 39,
+  "adversarial_cases": 3,
+  "metrics": {
+    "traced_amount_recall": 1.0,
+    "totals_abs_error_inr": 0.34,
+    "hold_exact_match_rate": 1.0,
+    "over_hold_inr": 0.0,
+    "false_freeze_count": 0,
+    "disposition_accuracy": 1.0,
+    "process_accuracy": 1.0,
+    "str_ground_accuracy": 1.0,
+    "escalation_precision": 1.0,
+    "escalation_recall": 1.0,
+    "role_precision": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "role_recall": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "draft_verification_pass_rate": 1.0,
+    "draft_numeric_accuracy": 1.0,
+    "citation_validity": 1.0,
+    "llm_only_hallucination_rate": null,
+    "llm_prose_fallback_rate": 0.0,
+    "injection_flag_recall": 1.0,
+    "injection_leaks": 0,
+    "p50_time_to_hold_plan_s": 0.0682,
+    "p95_time_to_hold_plan_s": 0.0821,
+    "p95_total_s": 0.2106
+  },
+  "baseline": {
+    "whole_account_freeze_inr": 352590069.78,
+    "wapsi_hold_inr": 2919245.69,
+    "accounts_frozen_baseline": 101,
+    "accounts_held": 84,
+    "by_group": {
+      "nodal_pool_escrow": {
+        "accounts": 3,
+        "whole_account_freeze_inr": 341618600.45,
+        "accounts_held": 3,
+        "wapsi_hold_inr": 171334.53
+      },
+      "merchant": {
+        "accounts": 10,
+        "whole_account_freeze_inr": 6215805.14,
+        "accounts_held": 0,
+        "wapsi_hold_inr": 0.0
+      },
+      "innocent_holder": {
+        "accounts": 10,
+        "whole_account_freeze_inr": 2083541.24,
+        "accounts_held": 10,
+        "wapsi_hold_inr": 250110.97
+      },
+      "mule": {
+        "accounts": 78,
+        "whole_account_freeze_inr": 2672122.95,
+        "accounts_held": 71,
+        "wapsi_hold_inr": 2497800.19
+      }
+    }
+  },
+  "per_typology": {
+    "T10_NODAL_POOL": {
+      "cases": 3,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T1_FANOUT_CASHOUT": {
+      "cases": 3,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T2_CHAIN_LAYERING": {
+      "cases": 3,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T3_MERCHANT_WASH": {
+      "cases": 4,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T4_CRYPTO_EXIT": {
+      "cases": 3,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T5_CROSS_BANK_HOP": {
+      "cases": 6,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T6_TRIANGULATION": {
+      "cases": 5,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T7_MULTI_VICTIM": {
+      "cases": 3,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T8_DORMANT_BURST": {
+      "cases": 4,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T9_DEVICE_CLUSTER": {
+      "cases": 5,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    }
+  },
+  "classification": {
+    "accounts": 106,
+    "truth": {
+      "INNOCENT_HOLDER": 10,
+      "MULE": 96
+    },
+    "predicted": {
+      "INNOCENT_HOLDER": 10,
+      "MULE": 96
+    },
+    "unknown_rate": 0.0,
+    "mule_auc": 1.0,
+    "best_single_feature_auc": 1.0,
+    "best_single_feature": "hist_distinct_payers_90d",
+    "victim_on_trail_called_mule": 0
+  },
+  "llm": null,
+  "prose_by_model": {
+    "fake-llm": 83
+  },
+  "ab_test": null,
+  "failures": []
+}

@@ -22,6 +22,12 @@ Every reply is also checked for being language at all (``sane``). A run with a t
 reported as unhealthy, exits 3 and writes no evidence file unless ``--keep-unhealthy`` is given, in which case the
 file is named ``...-UNHEALTHY.json`` and says so in its label. Never cite an unhealthy run.
 
+The model list and the health probe are **never** read from or written to the cache: the probe answers "is the
+model answering in plain language right now?", which an old answer cannot. The other chat replies are cached so a
+rerun is cheap, but a run in which any reply came from the cache is a replay, not a measurement: it exits 4 and
+writes nothing, unless ``--allow-replay`` is given, in which case the file keeps the date the replies were really
+measured and its label says "replayed from cache". ``--fresh`` ignores the cache for one run.
+
 The API key is read from the environment, sent only in the ``Authorization`` header, and never printed, cached or
 written to the evidence file. Results are AMD-served (the provider runs the models on AMD GPUs); they are not
 benchmarks of a dedicated MI300X.
@@ -102,13 +108,22 @@ def reply_is_sane(data: Any) -> tuple[bool, str | None]:
     return finish == "stop" and looks_like_language(str(message.get("content") or "")), finish
 
 
-class RecordingTransport(httpx.BaseTransport):
-    """Spaces requests out, caches good response bodies by request hash, and records latency, usage and sanity."""
+#: Request kinds that must reach the endpoint every time: they answer "is it healthy now?".
+UNCACHED_KINDS = frozenset({"models", "health_probe"})
 
-    def __init__(self, cache_dir: Path, spacing_s: float) -> None:
-        self._inner = httpx.HTTPTransport()
+
+class RecordingTransport(httpx.BaseTransport):
+    """Spaces requests out, caches good response bodies by request hash, and records latency, usage and sanity.
+
+    The model list and the health probe (``UNCACHED_KINDS``) are never cached. ``read_cache=False`` sends every
+    request live (good answers are still written, so a later rerun can replay them, labelled as a replay)."""
+
+    def __init__(self, cache_dir: Path, spacing_s: float, *, inner: httpx.BaseTransport | None = None,
+                 read_cache: bool = True) -> None:
+        self._inner = inner or httpx.HTTPTransport()
         self._cache = cache_dir
         self._spacing = spacing_s
+        self._read_cache = read_cache
         self._last = 0.0
         self.calls: list[dict[str, Any]] = []
         self.kind = "request"
@@ -117,8 +132,9 @@ class RecordingTransport(httpx.BaseTransport):
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         body = request.read()
         key = hashlib.sha256(request.method.encode() + b" " + str(request.url).encode() + b"\n" + body).hexdigest()
+        use_cache = self.kind not in UNCACHED_KINDS
         path = self._cache / f"{key}.json"
-        if path.exists():
+        if use_cache and self._read_cache and path.exists():
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.calls.append({**saved["record"], "kind": self.kind, "cached": True})
             return httpx.Response(saved["status"], json=saved["body"], request=request)
@@ -130,7 +146,8 @@ class RecordingTransport(httpx.BaseTransport):
         response.read()
         self._last = time.monotonic()
         self.live += 1
-        record: dict[str, Any] = {"status": response.status_code, "latency_s": round(self._last - started, 3)}
+        record: dict[str, Any] = {"status": response.status_code, "latency_s": round(self._last - started, 3),
+                                  "measured_at_utc": datetime.now(UTC).isoformat(timespec="seconds")}
         try:
             data = response.json()
         except ValueError:
@@ -144,8 +161,8 @@ class RecordingTransport(httpx.BaseTransport):
         if is_chat:
             record["sane"], record["finish_reason"] = reply_is_sane(data)
         self.calls.append({**record, "kind": self.kind, "cached": False})
-        # cache only good answers; never cache an error, a degenerate reply or any header
-        if response.status_code == 200 and data is not None and (not is_chat or record["sane"]):
+        # cache only good answers; never cache an error, a degenerate reply, a health check or any header
+        if use_cache and response.status_code == 200 and data is not None and (not is_chat or record["sane"]):
             path.write_text(json.dumps({"status": 200, "body": data, "record": record}), encoding="utf-8")
         keep = {k: v for k, v in response.headers.items() if k.lower() == "retry-after"}
         return httpx.Response(response.status_code, headers=keep, content=response.content, request=request)
@@ -160,7 +177,8 @@ def _chat(client: httpx.Client, base: str, payload: dict[str, Any]) -> dict[str,
         if response.status_code == 429:
             time.sleep(min(65.0, float(response.headers.get("retry-after") or 60)))
             continue
-        response.raise_for_status()
+        if response.status_code >= 400:  # say why (the body is the endpoint's error message; it holds no key)
+            raise RuntimeError(f"HTTP {response.status_code} from {base}/chat/completions: {response.text[:300]}")
         return response.json()
     raise RuntimeError("rate limited four times in a row; try again later")
 
@@ -230,7 +248,13 @@ def run_tools(client: httpx.Client, base: str, model: str, transport: RecordingT
               "total_recoverable": f"₹{want['total_recoverable']:,.2f}",
               "whole_account_freeze_baseline": f"₹{want['baseline_freeze_amount']:,.2f}",
               "note": "amount-specific holds; the baseline is a comparison figure, never a recommendation"}
-    messages += [choice["message"], {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)}]
+    # echo the assistant turn in the plain OpenAI shape: a provider's extra response fields (reasoning, refusal,
+    # annotations, nulls) are not request fields, and a strict gateway answers HTTP 400 to them
+    assistant = {"role": "assistant", "content": choice["message"].get("content") or "",
+                 "tool_calls": [{"id": c["id"], "type": "function",
+                                 "function": {"name": c["function"]["name"],
+                                              "arguments": c["function"].get("arguments") or "{}"}} for c in calls]}
+    messages += [assistant, {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)}]
     transport.kind = "tool_followup"
     second = _chat(client, base, {"model": model, "messages": messages, "tools": TOOLS, "temperature": 0,
                                   "max_tokens": 300})
@@ -274,7 +298,25 @@ def run_extraction(client: httpx.Client, base: str, model: str, transport: Recor
     return out
 
 
-def main(argv: list[str] | None = None) -> int:
+def health_probe(client: httpx.Client, base: str, model: str, transport: RecordingTransport) -> dict[str, Any]:
+    """The model list and one short chat request, both always live (never from the cache)."""
+    transport.kind = "models"
+    listed = [m.get("id") for m in client.get(f"{base}/models").raise_for_status().json().get("data", [])]
+    transport.kind = "health_probe"
+    probe = _chat(client, base, {"model": model, "max_tokens": 40, "temperature": 0, "messages": [
+        {"role": "system", "content": "You are a concise assistant."}, {"role": "user", "content": PROBE}]})
+    last = transport.calls[-1]
+    return {"ok": bool(last.get("sane")) and not last.get("cached"), "latency_s": last["latency_s"],
+            "finish_reason": probe["choices"][0].get("finish_reason"), "listed": listed,
+            "model_listed": model in listed, "cached": bool(last.get("cached"))}
+
+
+def replay_dates(calls: list[dict[str, Any]]) -> list[str]:
+    """The UTC dates on which the cached replies of a run were really measured ("unknown" for old cache files)."""
+    return sorted({str(c.get("measured_at_utc") or "unknown")[:10] for c in calls if c.get("cached")})
+
+
+def main(argv: list[str] | None = None, *, inner: httpx.BaseTransport | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -282,7 +324,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=None, help="evidence file (default: next to this script)")
     ap.add_argument("--spacing", type=float, default=5.0, help="minimum seconds between live requests")
     ap.add_argument("--cache", type=Path, default=Path(tempfile.gettempdir()) / "wapsi-token-factory-smoke")
-    ap.add_argument("--probe-only", action="store_true", help="one health request, then stop")
+    ap.add_argument("--fresh", action="store_true", help="send every request live this run (the cache is still "
+                    "written)")
+    ap.add_argument("--allow-replay", action="store_true", help="write the file even if some replies came from the "
+                    "cache; it then keeps their original date and says 'replayed from cache'")
+    ap.add_argument("--probe-only", action="store_true", help="one live health request, then stop")
     ap.add_argument("--keep-unhealthy", action="store_true", help="write the file even if a reply was degenerate")
     args = ap.parse_args(argv)
     base = os.environ.get("WAPSI_LLM_BASE_URL", "").rstrip("/")
@@ -292,22 +338,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Set WAPSI_LLM_BASE_URL and WAPSI_LLM_API_KEY (and optionally WAPSI_LLM_MODEL) first.")
         return 2
     args.cache.mkdir(parents=True, exist_ok=True)
-    transport = RecordingTransport(args.cache, max(4.0, args.spacing))
+    transport = RecordingTransport(args.cache, max(4.0, args.spacing), inner=inner, read_cache=not args.fresh)
     client = httpx.Client(transport=transport, timeout=120, headers={"Authorization": f"Bearer {key}"})
     now = datetime.now(UTC)
     try:
-        transport.kind = "models"
-        listed = [m.get("id") for m in client.get(f"{base}/models").raise_for_status().json().get("data", [])]
-        transport.kind = "health_probe"
-        probe = _chat(client, base, {"model": model, "max_tokens": 40, "temperature": 0, "messages": [
-            {"role": "system", "content": "You are a concise assistant."}, {"role": "user", "content": PROBE}]})
-        probe_ok = bool(transport.calls[-1].get("sane"))
-        print(f"health probe: {'ok' if probe_ok else 'DEGENERATE REPLY'} ({transport.calls[-1]['latency_s']} s, "
-              f"finish_reason={probe['choices'][0].get('finish_reason')}, model listed: {model in listed})")
+        probe = health_probe(client, base, model, transport)
+        probe_ok = probe["ok"]
+        print(f"health probe: {'ok' if probe_ok else 'DEGENERATE REPLY'} ({probe['latency_s']} s, live, "
+              f"finish_reason={probe['finish_reason']}, model listed: {probe['model_listed']})")
         if args.probe_only or not probe_ok:
             if not probe_ok:
                 print("The endpoint is not answering in plain language right now. Nothing written; try again later.")
             return 0 if probe_ok else 3
+        listed = probe["listed"]
         evidence: dict[str, Any] = {
             "label": f"AMD Token Factory, {model}, measured {now:%Y-%m-%d}",
             "measured_at_utc": now.isoformat(timespec="seconds"),
@@ -327,11 +370,18 @@ def main(argv: list[str] | None = None) -> int:
     lat = [c["latency_s"] for c in chat]
     healthy = all(c.get("sane") for c in chat)
     evidence["healthy"] = healthy
+    replayed = [c for c in chat if c.get("cached")]
+    dates = replay_dates(chat)
+    if replayed:
+        evidence["label"] = (f"AMD Token Factory, {model}, replayed from cache ({len(replayed)} of {len(chat)} "
+                             f"replies; originally measured {', '.join(dates)})")
+        evidence["replayed_from_cache"] = {"replies": len(replayed), "of": len(chat), "measured_on": dates}
     if not healthy:
         evidence["label"] += " (UNHEALTHY RUN: degenerate or truncated replies; do not cite)"
     evidence["requests"] = {
         "chat_requests": len(chat),
         "replies_sane": sum(1 for c in chat if c.get("sane")),
+        "replies_from_cache": len(replayed),
         "rate_limited_429": sum(1 for c in transport.calls if c["status"] == 429),
         "live_requests_this_run": transport.live,
         "latency_s_median": round(statistics.median(lat), 3),
@@ -347,7 +397,14 @@ def main(argv: list[str] | None = None) -> int:
     if not healthy and not args.keep_unhealthy:
         print("UNHEALTHY RUN: at least one reply was degenerate or truncated. Nothing written.")
         return 3
-    out = args.out or HERE / f"token-factory-smoke-{now:%Y-%m-%d}{'' if healthy else '-UNHEALTHY'}.json"
+    if replayed and not args.allow_replay:
+        print(f"REPLAY: {len(replayed)} of {len(chat)} replies came from the cache (measured {', '.join(dates)}), so "
+              "this run measured nothing new. Nothing written. Rerun with --fresh, or pass --allow-replay to write "
+              "a file labelled as a replay.")
+        return 4
+    stamp = dates[0] if replayed and dates and dates[0] != "unknown" else f"{now:%Y-%m-%d}"
+    suffix = ("-replayed" if replayed else "") + ("" if healthy else "-UNHEALTHY")
+    out = args.out or HERE / f"token-factory-smoke-{stamp}{suffix}.json"
     text = json.dumps(evidence, indent=2, ensure_ascii=False) + "\n"
     if key in text:  # belt and braces: the key must never reach the evidence file
         raise RuntimeError("refusing to write: the API key appears in the evidence")

@@ -32,6 +32,45 @@ SOURCE_NOTES = {
 }
 
 
+def wait_note(current: tuple[float, str] | None) -> str | None:
+    """'Waiting for the endpoint's rate limit (42 s)…' while a pause is in progress (``RATE_WAITS.current()``)."""
+    if not current or current[0] < 1:
+        return None
+    seconds, why = current
+    return f"Waiting for {why} ({seconds:.0f} s)… Nothing is lost: the agent continues on its own."
+
+
+def _ask_with_wait_notes(ask: Any, poll_s: float = 0.5) -> Any:
+    """Run ``ask()`` in a worker thread and, while it runs, show any rate-limit wait the endpoint clients announce,
+    so a 60-second ``Retry-After`` does not look like a frozen page."""
+    import concurrent.futures
+
+    import streamlit as st
+
+    try:
+        from wapsi.adapters.llm_resilience import RATE_WAITS
+    except ImportError:  # pragma: no cover - the package always has it
+        return ask()
+    slot = st.empty()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(ask)
+        shown = None
+        while True:
+            try:
+                return future.result(timeout=poll_s)
+            except concurrent.futures.TimeoutError:
+                note = wait_note(RATE_WAITS.current())
+                if note != shown:
+                    if note:
+                        slot.caption(note)
+                    else:
+                        slot.empty()
+                    shown = note
+            finally:
+                if future.done():
+                    slot.empty()
+
+
 def agent_capable(ds: object) -> bool:
     return callable(getattr(ds, "ask_agent", None)) and callable(getattr(ds, "agent_status", None))
 
@@ -163,7 +202,8 @@ def render_agent_chat(ctx: object) -> None:
         return
     history.append({"who": "officer", "text": question})
     with st.spinner("The agent is working: model turns, tool calls and checks…"):
-        out = ds.ask_agent(case_id, question, actor=viewer.actor, role=viewer.role)  # type: ignore[union-attr]
+        out = _ask_with_wait_notes(lambda: ds.ask_agent(case_id, question, actor=viewer.actor,  # type: ignore
+                                                        role=viewer.role))
     result = getattr(out, "data", None)
     history.append({"who": "agent", "text": out.message,
                     "meta": _meta(result) if result is not None else {"reply_source": "notice"}})
@@ -171,4 +211,5 @@ def render_agent_chat(ctx: object) -> None:
     st.rerun()
 
 
-__all__ = ["agent_capable", "render_agent_chat", "reply_meta_html", "status_html", "suggestions", "tool_mode_label"]
+__all__ = ["agent_capable", "render_agent_chat", "reply_meta_html", "status_html", "suggestions", "tool_mode_label",
+           "wait_note"]

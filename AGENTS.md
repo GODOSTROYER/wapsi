@@ -236,9 +236,13 @@ extraction, the demo container and the AMD kickoff scripts. `tests/test_env_name
   `wapsi.adapters.asr_transformers.TransformersASR` (local Whisper; the `asr` extra), `wapsi.intake.asr.FakeASR`.
   `wapsi.intake.extract.TranscriptExtractor` (JSON repair, schema validation, numbers grounded in the transcript),
   `wapsi.intake.llm_chain.ModelChain` / `is_degenerate` / `model_names(env, primary)`.
-- AMD edition: `editions.amd.app.settings.load_settings(env=None)` (`default_json_mode`, `is_stack_server`),
-  `editions.amd.app.services.build_services(...)` / `llm_name(base_url, model)` (the name a draft records says what
-  really served it: `vllm-rocm:<model>` only for this stack's own server), API `POST /cases/{ids}/process`,
+- AMD edition: `editions.amd.app.settings.load_settings(env=None)` (`default_json_mode`, `is_stack_server`; without
+  `WAPSI_LLM_BASE_URL` outside the compose stack (`WAPSI_STACK=1`) it switches to demo mode and says why in
+  `demo_reason`), `editions.amd.app.services.build_services(...)` / `build_prose_llm(settings)` (prose through
+  `ResilientLLM` on the endpoint's one shared limiter, `wapsi.adapters.llm_resilience.shared_limiter`, behind a
+  fail-fast `FailoverLLM`) / `llm_name(base_url, model)` (the name a draft records says what really served it: for a
+  server of one's own `wapsi.adapters.llm_env.self_hosted_name`, `vllm-rocm:<model>` only when AMD is confirmed by
+  `WAPSI_LLM_PLATFORM` / `WAPSI_LLM_ON_AMD` or a visible ROCm GPU, else `vllm:<model>`), API `POST /cases/{ids}/process`,
   `GET` / `POST /intake/voice`, `GET /agent`, `POST /agent/run`, `GET /agent/traces`, `GET /metrics`.
 - AMD kickoff (`editions/amd/kickoff/`, scripts, standard library where possible): `run_all.sh --mode endpoint |
   notebook | droplet [--dry-run | --stage a,b | --from a | --rehearsal]`, `preflight.sh [--detect]`,

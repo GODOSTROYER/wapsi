@@ -75,6 +75,13 @@ supervisor ([`src/wapsi/pipeline/run.py`](../src/wapsi/pipeline/run.py), `approv
 | Revenue, working capital | money a freeze would lock that stays free | ₹34.97 Cr of non-victim money left free; ₹29.19 L held against ₹35.26 Cr (0.83% of the freeze) | ₹70.73 L held against ₹39.55 Cr (1.79% of the freeze) | `baseline` in the reports |
 | Retention | honest accounts wrongly frozen | 0 false freezes | 0 false freezes | `metrics.false_freeze_count` |
 | Retention | accounts a freeze would lock that get no hold at all | 17 | 14 | `baseline` in the reports |
+| Retention | honest merchants and customers (merchants and innocent holders): money a freeze would lock against what Wapsi holds | ₹82.99 L would be frozen; Wapsi holds ₹2.50 L (3.0%) | not split | `baseline.by_group` in `demo-baseline-split.json` |
+
+**Where the headline freeze figure comes from, said once.** On the demo world, 96.9% of the freeze baseline sits in
+the three nodal / pool accounts, which SOP 9.1(iii) already says must not be frozen whole (hold the disputed amount
+only). A domain reader should weigh the headline 0.83% with that in mind: without the pool accounts the freeze is
+₹1.10 Cr against ₹27.48 L held (25.0%), and the retention line above is the effect on the bank's own merchants and
+customers.
 | Service quality | time from complaint to hold plan, p95 | p95 0.35 s | p95 0.50 s | `metrics.p95_time_to_hold_plan_s` |
 | Service quality | holds exact against an independent reference | 1.0, over-hold ₹0 | 1.0, over-hold ₹0 | `metrics.hold_exact_match_rate` |
 | Restoration | restoration process (P1 or P2) chosen correctly | 1.0 | reported in `hard.json` | `metrics.process_accuracy` |
@@ -93,10 +100,10 @@ shown to judges.
 
 | Workload in the product | Runs on | Status |
 |---|---|---|
-| Prose fields of every draft | Gemma 4 31B on AMD GPUs through the AMD Token Factory endpoint | built during the event; drafts passing the verifier TBD(tf_demo_pass) |
+| Prose fields of every draft | Gemma 4 31B on AMD GPUs through the AMD Token Factory endpoint | built during the event and run live on 2026-10-14: the showcase world with Gemma 4 writing the prose, drafts passing the verifier 1.0; the public demo replays 5 prose fields recorded from Gemma 4 on AMD (AMD Token Factory, 2026-10-14), labelled as a recording. Demo world: TBD(tf_demo_pass) |
 | Complaint and voice-note field extraction, translation | the same model and endpoint | built during the event and run live on 2026-10-14 on the six sample transcripts: 98.3% of the extracted values agree with the expected answers (AMD Token Factory, text model only); with Whisper transcribing: TBD(voice_asr_samples) |
-| The officer's agent and its tool calls (Google ADK) | the same model and endpoint | built during the event and run live on 2026-10-14: 5 tool calls behind "Open case 31009260000101" (AMD Token Factory, Gemma-4-31B-IT) |
-| GraphSAGE mule scorer | PyTorch on ROCm, AMD GPU notebook or MI300X droplet | code and a CPU development checkpoint exist; AMD GPU training TBD(gnn_amd_auc) |
+| The officer's agent and its tool calls (Google ADK) | the same model and endpoint | built during the event and run live on 2026-10-14: 5 tool calls behind "Open case 31009260000101" (AMD Token Factory, Gemma-4-31B-IT); that live run ended VERIFIED: 16 of 16 drafts verified, with Gemma 4 on AMD writing the draft prose too |
+| GraphSAGE mule scorer (optional; the transparent scorer is the default) | built to run on ROCm: AMD GPU notebook or MI300X droplet | prepared and CPU-tested; not yet run on AMD. AMD GPU training TBD(gnn_amd_auc) |
 | Dedicated serving of both models next to the GNN | vLLM on one MI300X (droplet mode) | compose stack and benchmarks prepared and tested offline; TBD(droplet_tokens_s) |
 
 The endpoint is a setting (`WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`), so the same build runs

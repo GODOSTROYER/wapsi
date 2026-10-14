@@ -28,6 +28,7 @@ from google.adk.plugins.base_plugin import BasePlugin
 from wapsi.agenttrace import AgentTrace, ToolTraceRecorder, trace_event
 
 from .context import get_services
+from .endpoint import MODEL_TIMING, ModelTiming
 from .identity import display_name, verified_role
 
 log = logging.getLogger("wapsi.agent.trace")
@@ -67,6 +68,14 @@ def _usage(llm_response: Any) -> tuple[int | None, int | None]:
     tin = getattr(u, "prompt_token_count", None)
     tout = getattr(u, "candidates_token_count", None)
     return (int(tin) if tin is not None else None, int(tout) if tout is not None else None)
+
+
+def _measured() -> tuple[float | None, float | None]:
+    """(HTTP time, pacing wait) of the model turn that just ended, when an endpoint client measured it."""
+    timing = MODEL_TIMING.get()
+    if timing is None or not timing.calls:
+        return None, None
+    return timing.http_ms, timing.waited_ms
 
 
 def persist_trace(trace: AgentTrace, store: Any | None = None) -> list[str]:
@@ -137,6 +146,7 @@ class ToolTracePlugin(BasePlugin):
 
     # ------------------------------------------------------------------ model turns
     async def before_model_callback(self, *, callback_context: Any, llm_request: Any) -> None:
+        MODEL_TIMING.set(ModelTiming())  # the endpoint client adds this turn's HTTP time and pacing wait
         try:
             seen = [json.dumps(p.function_response.response, ensure_ascii=False, default=str)
                     for c in (getattr(llm_request, "contents", None) or []) for p in (c.parts or [])
@@ -157,8 +167,10 @@ class ToolTracePlugin(BasePlugin):
             calls = [p.function_call.name for p in parts if getattr(p, "function_call", None) is not None]
             tin, tout = _usage(llm_response)
             err = getattr(llm_response, "error_code", None)
+            http_ms, waited_ms = _measured()
             self.recorder.model_end(run_id, calls=calls, tokens_in=tin, tokens_out=tout,
-                                    status="error" if err else "ok", note=str(err or ""))
+                                    status="error" if err else "ok", note=str(err or ""), latency_ms=http_ms,
+                                    waited_ms=waited_ms)
             text = _texts(content)
             if text.strip() and not calls:
                 self.recorder.output(run_id, text, agent=str(callback_context.agent_name))
@@ -168,8 +180,9 @@ class ToolTracePlugin(BasePlugin):
 
     async def on_model_error_callback(self, *, callback_context: Any, llm_request: Any, error: Exception) -> None:
         try:
+            http_ms, waited_ms = _measured()
             self.recorder.model_end(str(callback_context.invocation_id), status="error",
-                                    note=f"{type(error).__name__}")
+                                    note=f"{type(error).__name__}", latency_ms=http_ms, waited_ms=waited_ms)
         except Exception:  # noqa: BLE001
             log.exception("trace: model error")
         return None

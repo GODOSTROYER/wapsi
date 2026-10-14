@@ -172,6 +172,7 @@ services:
     profiles: ["gpu"]
     environment:
       WAPSI_DEMO_MODE: ${WAPSI_DEMO_MODE:-0}
+      WAPSI_STACK: "1"  # inside the stack: the llm service is the endpoint
       WAPSI_LLM_BASE_URL: http://llm:8000/v1
       WAPSI_LLM_MODEL: ${WAPSI_LLM_SERVED_NAME:-wapsi-llm}
       WAPSI_LLM_API_KEY: ${VLLM_API_KEY:-}

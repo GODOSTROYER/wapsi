@@ -220,7 +220,13 @@ def test_the_amd_app_builds_one_client_per_listed_model():
 
     voice = build_voice(svc, {**env, "WAPSI_VOICE_BACKEND": "open", "WAPSI_ASR_BACKEND": "fake"})
     chain = voice.extractor.chain
-    assert chain.models == [GEMMA, DEEPSEEK] and chain.llms[0] is svc.llm.primary
+    assert chain.models == [GEMMA, DEEPSEEK]
+    # its own raw client for the same model (the drafts' client is paced and cached by ResilientLLM)
+    assert chain.llms[0].model == GEMMA and chain.llms[0].base_url == TF and chain.llms[0] is not svc.llm.primary
+    assert chain.llms[0].name == svc.llm.name
+    # every drafting client paces on the endpoint's one shared limiter, and fails fast after an outage
+    assert svc.llm.fail_fast and len({id(m.limiter) for m in svc.llm.llms}) == 1
+    assert (svc.llm.primary.limiter.rpm, svc.llm.primary.limiter.min_interval_s) == (18, 3.0)
 
 
 def test_the_ui_live_endpoint_fails_over_when_a_list_is_set(monkeypatch, tmp_path):

@@ -10,7 +10,7 @@ Each item names the file or test that shows it. Answers to common questions are 
 
 | Part | Status today |
 |---|---|
-| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 2,212 tests passed on 2026-10-14 (`uv run pytest -q`; 1,765 at the pre-event baseline); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
+| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 2,226 tests passed on 2026-10-14 with the docs index and demo world built (a fresh clone runs 2,215 and skips 11 that need them; `uv run pytest -q`; 1,765 at the pre-event baseline); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
 | Legal corpus (SOP, BNSS, PML Rules, FIU-IND FAQ, RBI Fraud Risk Management Directions 2026) and regulatory radar | Real public texts, downloaded at build time. 121 of 121 checks pass (`wapsi.search.check_citations`, 2026-09-29): 32 citation quotes, 33 facts and 52 radar quotes are found word for word, and 3 judgments are cited by URL only. |
 | Bank data: customers, accounts, transactions, complaints | **Synthetic** (`wapsi.synth`, `wapsi.fixtures.showcase`) |
 | Other banks' transactions ("CFCFRMS responses") | **Simulated** (`Ledger.consortium_transactions`); Wapsi is a simulated CFCFRMS interface and labels every CFCFRMS action so |
@@ -18,7 +18,7 @@ Each item names the file or test that shows it. Answers to common questions are 
 | DoT FRI grades, MuleHunter-style scores, prior NCRP report counts | **Synthetic**, generated from the true labels with noise |
 | LLM in the committed evaluation reports | **Offline stand-in** (`FakeLLM`). Runs with Gemma 4 served on AMD are event-week work; their figures are published only from committed results files ([1.4](#l-llm)) |
 | Voice notes | **Synthetic**: six text-to-speech readings of synthetic scripts. The committed tests use the offline model's expected answers; the hosted multimodal model's request format is tested with a fake client. The open-model path (a Whisper-class speech model plus Gemma 4 on AMD for the fields) is event-week work. Accuracy on real, noisy Hinglish audio is **not measured** |
-| Agent trace | Working code. The local app shows a **recorded offline run** (real ADK app, tools and guards; scripted model). Live runs with Gemma 4 on AMD as the agent's model are event-week work. A traced voice-intake step keeps the caller's name in its redacted raw result (name masking is by key) |
+| Agent trace | Working code. The local app replays a **recorded live session** of the real ADK app on Gemma 4 served on AMD (AMD Token Factory, 14-10-2026), labelled as a recording; a scripted offline run is the fallback. Runs in a deployment with a key are recorded live. A traced voice-intake step keeps the caller's name in its redacted raw result (name masking is by key) |
 | Placing a lien, posting to CFCFRMS, filing with FIU-IND | **Not built.** Approvals create action *records* only. |
 | Sign-in and identity | **Not in the core.** The role is a string given by the caller. |
 | The model endpoint of the hackathon entry | A **shared trial API** that serves open models on AMD GPUs: no SLA, request limits, and replies that can degrade ([1.5](#l-endpoint)). Only synthetic data is sent to it |
@@ -105,9 +105,11 @@ sensitive data, so only synthetic data is ever sent.
 Reply quality can also degrade. During smoke runs on 2026-10-14 the Gemma 4 model on the shared endpoint answered
 every request for more than half an hour with text that was not language at all, cut off at the token limit,
 while another model on the same endpoint answered normally. Those runs recorded nothing: the smoke script
-(`pitch/amd/evidence/token_factory_smoke.py`) starts with a health probe and refuses to write a result when a
-reply is not plain language. The model is a setting (`WAPSI_LLM_MODEL`), so a run can move to another served
-model, but a figure is then reported under that model's name.
+(`pitch/amd/evidence/token_factory_smoke.py`) starts with a live health probe (never answered from its cache) and
+refuses to write a result when a reply is not plain language or when the replies were replayed from its cache. The
+model is a setting (`WAPSI_LLM_MODEL`), so a run can move to another served model, but a figure is then reported
+under that model's name. Later the same day the model answered normally again, and the committed Gemma 4 results
+were measured then.
 
 **Today:** no amount, account number, date or citation depends on the model. A request that fails, times out or
 is rejected by the prose checks is replaced by a fixed paragraph, so a case always completes and its numbers are

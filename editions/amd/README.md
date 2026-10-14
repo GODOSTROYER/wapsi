@@ -16,7 +16,7 @@ What runs on AMD in this edition:
   instead, where customer data never leaves the bank.
 - **A second, smaller model as judge.** It screens untrusted complaint text next to the deterministic rules; it can
   add a flag, never clear one.
-- **A GraphSAGE mule scorer** (PyTorch on ROCm) and an optional **LoRA fine-tune** of the drafting model, when a GPU
+- **A GraphSAGE mule scorer** (PyTorch, built to run on ROCm; CPU-tested, not yet run on AMD) and an optional **LoRA fine-tune** of the drafting model, when a GPU
   box is available (a ROCm notebook or an MI300X droplet).
 - **Predictions are never the language model's.** Mule, innocent-holder and merchant decisions come from a
   transparent scorer with per-feature contributions and from the GNN; the rules decide dispositions; the LLM is not
@@ -186,8 +186,14 @@ Disclosed in full; see also `docs/originality.md`. Commit dates are never rewrit
   endpoint mode, notebook mode and the notebook, the model plan, the golden-set evaluation stage, the mode-aware
   evidence bundle and pitch filler; and every run on AMD compute, with every number those runs produced
   (`evidence/`). The git history and the timestamps in each result file show when each run happened.
-- **Nothing in this folder is a measured result** except what is under `evidence/`. `bench/fixtures/` holds
-  hand-written samples of the amd-smi JSON shape with synthetic values, used only to test the parsers.
+- **Measured results in this folder** are only under `evidence/` (evidence bundles of `kickoff/run_all.sh`; none
+  committed yet), `bench/results/` (the AMD Token Factory runs of 2026-10-14: the agent and voice extraction) and
+  the "What was measured" section of [`AGENT.md`](AGENT.md), which describes the committed agent run.
+  `bench/fixtures/` holds hand-written samples of the amd-smi JSON shape with synthetic values, used only to test
+  the parsers, and `gnn/results/cpu-dev-*.json` are CPU development checks, not AMD results.
 
-All banking data is synthetic. Model licences: Gemma 4 (Apache-2.0) and Qwen3.6 (Apache-2.0, fallback only).
-Code is MIT.
+All banking data is synthetic. Models and their licences are listed in the root
+[README](../../README.md#models-and-licences): Gemma 4 (Apache-2.0, open weights), Whisper large-v3-turbo (MIT), and
+the failover / judge models used only through the AMD Token Factory API under its trial terms. The self-hosted
+fallback `Qwen/Qwen3.6-35B-A3B` of the model plan has not been used for any result; check its model card's licence
+before serving it. Code is MIT.

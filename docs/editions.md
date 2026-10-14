@@ -4,10 +4,13 @@ Wapsi is entered in one hackathon: the lablab.ai **AMD Developer Hackathon ACT I
 Track 3 "Reinvent Commerce". **The AMD edition is the entry.** It runs in three modes that share one codebase: an
 AMD-hosted model endpoint, a ROCm notebook and a single MI300X machine.
 
-The repository also holds a second platform layer, `editions/gcp`. It contains the officer's agent, built with
-Google's open-source Agent Development Kit (ADK), and a set of **optional managed-cloud adapters** for Google
-Cloud. The agent is part of the entry, with Gemma 4 on AMD as its model. The managed-cloud adapters are not: they
-are kept for a bank that wants a managed cloud, and nothing in the entry depends on them.
+The officer's agent, built with Google's open-source Agent Development Kit (ADK), is edition-neutral and lives in
+`editions/shared` (tools, guard / audit / trace plugins, instruction, the OpenAI-compatible endpoint model). The
+entry wires it in `editions/amd/app/agent.py`: one ADK agent with the ten officer tools, with Gemma 4 on AMD as its
+model. The repository also holds a second platform layer, `editions/gcp`: an ADK agent app with a hosted model (it
+adds an intake sub-agent and a `case_pipeline` workflow) and a set of **optional managed-cloud adapters** for Google
+Cloud. Neither is part of the entry: they are kept for a bank that wants a managed cloud, and nothing in the entry
+depends on them.
 
 Every edition is a thin layer under `editions/<platform>/` on top of the same portable core in `src/wapsi`. The
 core decides every number, disposition, draft and citation. A platform layer decides where the data lives, which
@@ -27,26 +30,27 @@ Status as of 2026-10-14, checked against the repository.
 | Prose and extraction model | Gemma 4 31B served on AMD GPUs, through `OpenAICompatLLM` | `GeminiLLM`, or Gemma through `OpenAICompatLLM` |
 | Agent | Google ADK agent with Gemma 4 on AMD as its model (LiteLLM connector) | the same ADK agent with a hosted model |
 | Speech to text | Whisper (open weights), local by default | the hosted model reads the audio |
-| Mule scorer | heuristic by default; GraphSAGE GNN in PyTorch on ROCm | heuristic |
+| Mule scorer | heuristic by default; an optional GraphSAGE GNN in PyTorch, built to run on ROCm (CPU-tested; no AMD GPU run yet) | heuristic |
 | Ledger | `ParquetLedger` | `BigQueryLedger`, or `ParquetLedger` |
 | Case store and audit chain | `FileCaseStore`: JSON files with atomic writes, chained on write | `FirestoreCaseStore`: one transaction per audit event, anchor in `audit_anchors/{case_id}` |
 | Guard | `RulesGuard`, plus an LLM judge when a second model is configured | `RulesGuard`, plus `ModelArmorGuard` when a template is configured |
-| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode ran live on 2026-10-14 (the agent and voice-note extraction on Gemma 4 through the AMD Token Factory); AMD measurements are published only from committed results files. No MI300X run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
+| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode ran live on 2026-10-14 (the agent with live draft prose, the showcase world through the harness, voice-note extraction and the demo's recorded prose, all on Gemma 4 through the AMD Token Factory); AMD measurements are published only from committed results files. No MI300X or AMD GPU notebook run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
 
 ## AMD: what runs where
 
 The hackathon asks that a meaningful part of the workload runs on AMD and that the AMD component is part of the
-working product. In Wapsi it is the language side of every case, and the learned mule scorer.
+working product. In Wapsi it is the language side of every case; the learned mule scorer is prepared for an AMD GPU
+as an optional extra. The status column says what has run on AMD so far.
 
-| Workload | Model | Where it runs | Decides a number? |
-|---|---|---|---|
-| The three prose fields of a case's drafts | Gemma 4 31B | AMD GPUs, through the model endpoint | no: placeholders only, the verifier recomputes |
-| Field extraction and translation of complaints and voice-note transcripts | Gemma 4 31B | the same endpoint | no: every extracted value is a claim, reconciled with the ledger |
-| The officer's agent and its tool calls | Gemma 4 31B through Google ADK | the same endpoint | no: figures come from tools |
-| Second opinion on untrusted text (judge) | a small open model, configurable | the same endpoint, or a second model on the same GPU | no: it can add a flag, never clear one |
-| Speech to text | Whisper, open weights | local by default; any GPU is faster | no |
-| Mule scoring | GraphSAGE GNN, pure PyTorch | ROCm on an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic |
-| Tracing, per-victim split, hold plan, verifier | no model | plain Python, any CPU | yes, all of them |
+| Workload | Model | Where it runs | Decides a number? | Status (14-10-2026) |
+|---|---|---|---|---|
+| The prose fields of a case's drafts | Gemma 4 31B | AMD GPUs, through the model endpoint | no: placeholders only, the verifier recomputes | run live (AMD Token Factory) |
+| Field extraction and translation of complaints and voice-note transcripts | Gemma 4 31B | the same endpoint | no: every extracted value is a claim, reconciled with the ledger | run live on the six sample transcripts |
+| The officer's agent and its tool calls | Gemma 4 31B through Google ADK | the same endpoint | no: figures come from tools | run live |
+| Second opinion on untrusted text (judge) | a small open model, configurable | the same endpoint, or a second model on the same GPU | no: it can add a flag, never clear one | wired, not yet measured |
+| Speech to text | Whisper, open weights | local by default; any GPU is faster | no | built and tested offline; not yet run in this entry |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, pure PyTorch, built to run on ROCm | an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic | prepared and CPU-tested; not yet run on AMD |
+| Tracing, per-victim split, hold plan, verifier | no model | plain Python, any CPU | yes, all of them | runs everywhere |
 
 ### Three modes, one codebase
 
@@ -58,7 +62,7 @@ The model endpoint is a setting. Nothing in the core knows which mode it is in.
 | Used for | everything on the language side: prose, extraction, the agent | GNN training on an AMD GPU, benchmarks | serving both models, the GNN and the app on one machine, so no request leaves it |
 | You need | a base URL, a key and a model name | a notebook instance from the AMD portal | a droplet from the AMD Developer Cloud |
 | Role in the entry | **primary**: the demo and the measurements run here | secondary | secondary |
-| Status (2026-10-14) | wired and exercised live with synthetic data; published figures are open slots until results files are committed | code prepared and CPU-tested; no AMD GPU run reported | stack, runbook and benchmark harness prepared and tested offline; not run on an MI300X |
+| Status (2026-10-14) | run live with synthetic data; the agent, voice-extraction and showcase-world figures are published from committed results files, the demo-world figures are still open slots | code prepared and CPU-tested; no AMD GPU run reported | stack, runbook and benchmark harness prepared and tested offline; not run on an MI300X |
 
 **Endpoint mode settings.** All of them come from the environment; none is ever committed.
 
@@ -81,7 +85,7 @@ The model endpoint is a setting. Nothing in the core knows which mode it is in.
 | No audio transcription and no audio input in chat; no embeddings | speech to text runs locally with Whisper; legal search is the repository's own pure-Python BM25, which needs no embeddings |
 | Per-account request and concurrency limits, a daily usage cap, HTTP 429 with `Retry-After` | live runs are sequential and spaced; the client retries 429 and 5xx with backoff and honours `Retry-After` |
 | A trial service with no SLA, and a rule not to send sensitive data | only synthetic data is ever sent; a case never blocks on the model, because a failed or rejected answer is replaced by a fixed paragraph |
-| Reply quality can degrade for a while | the smoke run starts with a health probe and refuses to record a result from a degraded endpoint (`pitch/amd/evidence/token_factory_smoke.py`) |
+| Reply quality can degrade for a while | the smoke run starts with a live health probe (never answered from a cache) and refuses to record a result from a degraded endpoint or from replayed answers (`pitch/amd/evidence/token_factory_smoke.py`) |
 
 **Notebook mode.** The GNN is pure PyTorch with standard operators only, so the same code runs on CPU and on ROCm
 (`--device auto`). Training, evaluation and the checkpoint format are described in `editions/amd/gnn/README.md`.
@@ -155,8 +159,9 @@ bash editions/amd/kickoff/run_all.sh --mode endpoint --dry-run   # prints every 
 bash editions/amd/kickoff/run_all.sh --rehearsal                 # the whole pipeline on CPU with stub models; never a result
 ```
 
-**The evaluation on the endpoint.** `uv run python -m evals.harness --world demo --llm openai-compat` scores
-the golden set with the configured endpoint writing every prose field, behind a rate limiter, 429 retries and a
+**The evaluation on the endpoint.** `uv run python -m evals.harness --world demo --llm openai-compat:Gemma-4-31B-IT`
+scores the golden set with Gemma 4 alone writing every prose field (`--llm openai-compat` fails over along
+`WAPSI_LLM_MODELS`, and the report then names every model that answered), behind a rate limiter, 429 retries and a
 per-host response cache ([Eval report format](eval-report.md)).
 
 ### One set of settings
@@ -169,7 +174,8 @@ Every piece reads the same names. A key is only ever in the shell or in a privat
 | `WAPSI_LLM_JSON_MODE` | prose and extraction | `json_object` by default for any endpoint that is not your own server; `json_schema` for your own vLLM with guided decoding |
 | `WAPSI_LLM_MODELS` | the drafts' prose (the app, the demo, the eval harness), voice intake, the agent, the kickoff model plan | an ordered, comma-separated list to fail over along when a model is withdrawn or answers in garbage (`WAPSI_LLM_FALLBACK_MODELS` is read as the same list). Each draft, voice note and agent run names the model that answered, and the harness report counts prose per model (`prose_by_model`). The kickoff run uses it only with `WAPSI_ALLOW_MODEL_FALLBACK=1`: a measurement is never credited to a model that did not produce it |
 | `WAPSI_LLM_PLATFORM` (or `WAPSI_LLM_ON_AMD=1`) | the draft chip, voice intake, the agent's label | the deployer's statement that an endpoint which is not AMD's own host runs on AMD hardware. Never guessed. The kickoff evidence wants the hardware itself: `WAPSI_ENDPOINT_HARDWARE` |
-| `WAPSI_LLM_RPM`, `WAPSI_LLM_MIN_INTERVAL_S`, `WAPSI_LLM_MAX_CONCURRENCY` | the eval harness, the demo, the kickoff client, the benchmarks | pacing below a shared key's limits |
+| `WAPSI_LLM_RPM`, `WAPSI_LLM_MIN_INTERVAL_S`, `WAPSI_LLM_MAX_CONCURRENCY` | the eval harness, the demo, the kickoff client, the benchmarks, the AMD app | pacing below a shared key's limits. The AMD app paces the drafts' prose and the agent's model turns on one process-wide limiter per endpoint host (default 18 a minute and 3 s apart for a shared endpoint, none for its own server); the agent's own gap is `WAPSI_AGENT_MIN_INTERVAL_S`, and the "Ask the agent" box says when a rate-limit wait is in progress |
+| `WAPSI_STACK`, `WAPSI_LLM_CACHE_DIR` | the AMD app | `WAPSI_STACK=1`: inside the compose stack, where the `llm` service is the default endpoint; outside it, an unset `WAPSI_LLM_BASE_URL` switches the app to offline stand-ins with a notice on every page. `WAPSI_LLM_CACHE_DIR`: the prose answers' prompt-hash cache (default `<WAPSI_STATE_DIR>/llm-cache`, `off` for none) |
 | `WAPSI_AGENT_*` | the agent | agent-only overrides (another model or endpoint, tool mode, limits); see `editions/amd/AGENT.md` |
 | `WAPSI_VOICE_BACKEND` | Voice Intake, the agent's intake tool, the AMD API | `auto`, `open` (Whisper plus the endpoint above), `gemini` or `fake` |
 | `WAPSI_ASR_BACKEND`, `WAPSI_ASR_BASE_URL`, `WAPSI_ASR_API_KEY`, `WAPSI_ASR_MODEL`, `WAPSI_ASR_LANGUAGE`, `WAPSI_ASR_DEVICE`, `WAPSI_ASR_ON_AMD` | the speech recogniser | local Whisper or an OpenAI-compatible transcription endpoint; see [Voice intake](voice-intake.md) |
@@ -193,12 +199,17 @@ Example files: `deploy/demo/.env.example` (the demo container), `editions/amd/ki
   `amd-smi` output shape for parser tests; they are not measurements.
 - The app's extra dependencies are the `amd-app` extra (FastAPI, uvicorn); training uses the `amd` extra.
 
-## The ADK agent app and the optional managed-cloud adapters
+## The optional managed-cloud app (`editions/gcp`; not part of the entry)
 
 **Folder:** [`editions/gcp`](../editions/gcp/README.md). Diagram and service-by-service table:
 [`editions/gcp/architecture.md`](../editions/gcp/architecture.md).
 
-**The agent (used by the entry)**
+The entry's agent is the edition-neutral one in `editions/shared`, wired by `editions/amd/app/agent.py`: one ADK
+`LlmAgent` with the ten officer tools and the trace, guard, audit and notice plugins, on Gemma 4 served on AMD
+([`editions/amd/AGENT.md`](../editions/amd/AGENT.md)). The Google Cloud app below builds a larger app around the
+same tools and plugins.
+
+**The ADK app with a hosted model**
 
 - Two ADK apps: `wapsi_officer` (an `LlmAgent` with ten pipeline tools, such as `trace_money`, `hold_plan`,
   `draft_documents` and `approve_draft`, and an intake sub-agent) and `case_pipeline` (a deterministic ADK
@@ -245,7 +256,7 @@ flowchart TB
         DOCS["data/docs<br/>citations.json, facts.json"]
         SK[".claude/skills<br/>6 skills, mirrored to .agents/skills"]
     end
-    AM["editions/amd (the entry)<br/>Gemma 4 on AMD, GNN on ROCm,<br/>endpoint / notebook / droplet"] --> CORE
+    AM["editions/amd (the entry)<br/>Gemma 4 on AMD, GNN prepared for ROCm,<br/>endpoint / notebook / droplet"] --> CORE
     AG["editions/gcp/app<br/>Google ADK agent"] --> CORE
     AG --> AM
     GC["optional managed-cloud adapters<br/>BigQuery, Firestore, Model Armor"] --> CORE

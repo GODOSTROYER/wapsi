@@ -32,6 +32,7 @@ from wapsi.agenttrace.summarize import (
     as_text,
     case_of,
     grounding_facts,
+    grounding_numbers,
     reply_grounding,
     result_guards,
     status_of,
@@ -69,6 +70,7 @@ class _Run:
     pending_output_guards: list[GuardVerdict] = field(default_factory=list)
     amounts: set[float] = field(default_factory=set)
     accounts: set[str] = field(default_factory=set)
+    numbers: set[str] = field(default_factory=set)  # every number the tool results held (grounding_numbers)
 
 
 class ToolTraceRecorder:
@@ -189,9 +191,11 @@ class ToolTraceRecorder:
         try:
             with self._lock:
                 run = self._run(run_id)
+                context_texts = list(context_texts)
                 amounts, accounts = grounding_facts(context_texts)
                 run.amounts |= amounts
                 run.accounts |= accounts
+                run.numbers |= grounding_numbers(context_texts)
                 t = self.clock()
                 step = self._add(run, kind="model", name=model or "model", agent=agent, started_at=self._stamp(run, t))
                 run.open_model = (step, t)
@@ -201,7 +205,10 @@ class ToolTraceRecorder:
             log.exception("trace: model start not recorded")
 
     def model_end(self, run_id: str, *, calls: Iterable[str] = (), tokens_in: int | None = None,
-                  tokens_out: int | None = None, status: str = "ok", note: str = "") -> None:
+                  tokens_out: int | None = None, status: str = "ok", note: str = "",
+                  latency_ms: float | None = None, waited_ms: float | None = None) -> None:
+        """``latency_ms``: the model call's own time, measured at the HTTP request (else the time between start and
+        end); ``waited_ms``: the pause before it for the endpoint's rate limit."""
         try:
             with self._lock:
                 run = self._run(run_id)
@@ -212,7 +219,8 @@ class ToolTraceRecorder:
                 else:
                     step, t0 = run.open_model
                     run.open_model = None
-                step.latency_ms = self._ms(t0, t)
+                step.latency_ms = round(float(latency_ms), 3) if latency_ms is not None else self._ms(t0, t)
+                step.waited_ms = round(float(waited_ms), 3) if waited_ms else None
                 step.calls = [str(c) for c in calls]
                 step.tokens_in, step.tokens_out = tokens_in, tokens_out
                 step.status = status
@@ -276,6 +284,7 @@ class ToolTraceRecorder:
                     amounts, accounts = grounding_facts([as_text(result)])
                     run.amounts |= amounts
                     run.accounts |= accounts
+                    run.numbers |= grounding_numbers([as_text(result)])
         except Exception:  # noqa: BLE001
             log.exception("trace: tool end not recorded")
 
@@ -290,7 +299,7 @@ class ToolTraceRecorder:
                                  summary=redact_text(text or "", max_len=PROMPT_CHARS))
                 step.guards.extend(run.pending_output_guards)
                 run.pending_output_guards = []
-                step.verifier = verifier or reply_grounding(text or "", run.amounts, run.accounts)
+                step.verifier = verifier or reply_grounding(text or "", run.amounts, run.accounts, run.numbers)
                 if not step.verifier.passed:
                     step.status = "flagged"
         except Exception:  # noqa: BLE001

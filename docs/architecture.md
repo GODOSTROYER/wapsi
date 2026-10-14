@@ -418,9 +418,11 @@ flowchart LR
 - **Who may read it.** `AgentTrace.user_id` is the authenticated user (the IAP e-mail on Cloud Run).
   `GET /wapsi/traces` returns an analyst's own runs only; supervisors and auditors see all.
 
-With no live run, `wapsi.agenttrace.demo.recorded_traces` serves the recorded offline run of the showcase cases
-(`showcase_recording.json`, written by `python -m editions.gcp.app.trace_demo --write`: the real ADK app, tools
-and guards, with a scripted model).
+With no run of its own, the Agent trace tab replays `wapsi.agenttrace.demo.live_recorded_traces`: a live session of
+the real ADK app on Gemma 4 served on AMD (`showcase_gemma_recording.json`, from
+`editions/amd/bench/results/agent-tokenfactory-20261014/`), labelled "Recorded live run, replayed". Without it,
+`recorded_traces` serves the recorded offline run of the showcase cases (`showcase_recording.json`, written by
+`python -m editions.gcp.app.trace_demo --write`: the real ADK app, tools and guards, with a scripted model).
 
 ## Audit chain storage
 
@@ -747,8 +749,9 @@ returns.
 Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-10-07, after the voice-intake,
 agent-trace and Firestore audit-seal work was merged, it collected 1,765 tests and the full suite passed with 0
 failures; 291 of the tests were in the edition suites `tests/gcp` (178) and `tests/amd` (113). On 2026-10-14, after
-the five event-week branches were merged, it collected 2,212 tests and the full suite passed with 0 failures; 509 of
-them are in `tests/gcp` (233) and `tests/amd` (276).
+the five event-week branches were merged and reviewed, it collected 2,226 tests and the full suite passed with 0
+failures; 513 of them are in `tests/gcp` (233) and `tests/amd` (280). A fresh clone, without the gitignored docs
+index and demo world, runs 2,215 and skips 11.
 
 ## Limitations
 

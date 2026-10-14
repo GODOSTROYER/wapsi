@@ -94,20 +94,52 @@ def load_ledger(world_path: str | None) -> Ledger:
     return showcase_ledger()
 
 
-def llm_name(base_url: str, model: str) -> str:
+def llm_name(base_url: str, model: str, env: Any = None) -> str:
     """The name drafts record for the model (``Draft.llm_model``; the UI's chip reads it back). It says what really
-    serves the model: ``vllm-rocm:<model>`` for this stack's own vLLM-ROCm server, otherwise the endpoint
+    serves the model: for this stack's own server ``vllm-rocm:<model>`` only when AMD is confirmed (the compose
+    file's ``WAPSI_LLM_PLATFORM=AMD``, or ROCm visible here), else ``vllm:<model>``; otherwise the endpoint
     (``Gemma-4-31B-IT on AMD @ developer.amd.com.cn`` for the AMD Token Factory; "on AMD" for any other host only
-    when the deployer states it with ``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD``)."""
-    from wapsi.adapters.llm_env import declared_platform, platform_for, served_name
+    when the deployer states it with ``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD``). Never guessed."""
+    from wapsi.adapters.llm_env import declared_platform, platform_for, self_hosted_name, served_name
     from wapsi.adapters.llm_openai_compat import endpoint_host
 
     from .settings import is_stack_server
 
     if is_stack_server(base_url):
-        return f"vllm-rocm:{model}"
+        return self_hosted_name(model, env)
     host = endpoint_host(base_url)
-    return served_name(model, host, platform_for(host, declared_platform()))
+    return served_name(model, host, platform_for(host, declared_platform(env)))
+
+
+def build_prose_llm(settings: AmdSettings) -> LLM:
+    """The drafts' prose client: one ``OpenAICompatLLM`` per model of ``WAPSI_LLM_MODELS``, each behind
+    ``ResilientLLM`` (prompt-hash cache, 429 / 503 retries that honour ``Retry-After``), all sharing the endpoint's
+    one process-wide limiter (``shared_limiter``: the agent's model turns pace on it too), behind a fail-fast
+    ``FailoverLLM`` even for a single model: after a connection error the endpoint rests for a minute and the
+    drafts get their fixed paragraph at once, instead of every prose field waiting on an unreachable host."""
+    from wapsi.adapters.llm_failover import FailoverLLM
+    from wapsi.adapters.llm_openai_compat import OpenAICompatLLM, endpoint_host
+    from wapsi.adapters.llm_replay import prose_answer_problem
+    from wapsi.adapters.llm_resilience import ResilientLLM, announced_sleep, shared_limiter
+    from wapsi.intake.llm_chain import is_degenerate
+
+    def unusable(messages: Any, text: str) -> str | None:
+        """An HTTP 200 with garbage is refused before the cache sees it (never cached, never replayed)."""
+        return prose_answer_problem(messages, text) or ("degenerate output" if is_degenerate(text) else None)
+
+    host = endpoint_host(settings.llm_base_url)
+    limiter = shared_limiter(host or settings.llm_base_url, rpm=settings.llm_rpm,
+                             min_interval_s=settings.llm_min_interval_s)
+    members = []
+    for model in (settings.llm_model, *settings.llm_fallback_models):
+        name = llm_name(settings.llm_base_url, model)
+        inner = OpenAICompatLLM(base_url=settings.llm_base_url, model=model, timeout=settings.llm_timeout_s,
+                                json_mode=settings.llm_json_mode, max_retries=0, name=name)
+        members.append(ResilientLLM(inner, model_id=model, backend="openai-compatible", rpm=0, rpd=0,
+                                    min_interval_s=0.0, limiter=limiter, cache_dir=settings.llm_cache_dir,
+                                    cache_namespace=host, max_retries=1, name=name, sleep=announced_sleep(),
+                                    accept=unusable))
+    return FailoverLLM(members, fail_fast=True)
 
 
 def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = None,
@@ -128,15 +160,9 @@ def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = Non
 
             llm = FakeLLM(name="fake-llm (demo mode)")
         else:
-            from wapsi.adapters.llm_failover import build as failover
-            from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
-
             # one client per model of WAPSI_LLM_MODELS: a model that is withdrawn or answers in garbage is skipped
             # and the next one writes the prose (each draft records which one did)
-            llm = failover([OpenAICompatLLM(base_url=settings.llm_base_url, model=model,
-                                            timeout=settings.llm_timeout_s, json_mode=settings.llm_json_mode,
-                                            name=llm_name(settings.llm_base_url, model))
-                            for model in (settings.llm_model, *settings.llm_fallback_models)])
+            llm = build_prose_llm(settings)
 
     guard: Guard = RulesGuard()
     if verifier_llm is None and settings.verifier_base_url and not settings.demo_mode:
@@ -182,7 +208,15 @@ def build_voice(services: Services, env: Any = None) -> Any:
 
     # the first drafting client; voice builds its own chain along the same WAPSI_LLM_MODELS list (health probe,
     # the JSON-mode ladder per client), sharing what the drafts' failover learnt through the health registry
+    from wapsi.adapters.llm_resilience import ResilientLLM
+
     head = services.llm.primary if isinstance(services.llm, FailoverLLM) else services.llm
+    if isinstance(head, ResilientLLM):  # the drafts' paced client: voice gets its own raw client (one retry)
+        from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
+
+        s = services.settings
+        head = OpenAICompatLLM(base_url=s.llm_base_url, model=s.llm_model, timeout=s.llm_timeout_s,
+                               json_mode=s.llm_json_mode, max_retries=1, name=llm_name(s.llm_base_url, s.llm_model))
     served_by, on_amd = llm_provider(str(getattr(head, "base_url", "") or ""), e)
     return safe_voice_model(e, text_llm=head, served_by=served_by, llm_on_amd=on_amd)
 

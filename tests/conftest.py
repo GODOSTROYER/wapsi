@@ -19,6 +19,7 @@ VOICE_ENV = (
     "WAPSI_LLM_HEALTH_TTL_S", "WAPSI_LLM_HEALTH_PROBE", "WAPSI_ASR_BACKEND", "WAPSI_ASR_BASE_URL",
     "WAPSI_ASR_API_KEY", "WAPSI_ASR_MODEL", "WAPSI_ASR_LANGUAGE", "WAPSI_ASR_PROMPT", "WAPSI_ASR_DEVICE",
     "WAPSI_ASR_TIMEOUT_S", "WAPSI_ASR_CHAT_AUDIO", "WAPSI_ASR_ON_AMD", "RADEON_API_KEY", "GEMINI_API_KEY",
+    "WAPSI_LLM_RPM", "WAPSI_LLM_MIN_INTERVAL_S", "WAPSI_AGENT_MIN_INTERVAL_S", "WAPSI_STACK", "WAPSI_LLM_CACHE_DIR",
     "GOOGLE_API_KEY",
 )  # fmt: skip
 
@@ -33,8 +34,12 @@ def offline_voice_env(monkeypatch, tmp_path_factory):
     except ImportError:  # a partial install: nothing to reset
         yield
         return
+    from wapsi.adapters.llm_resilience import reset_shared_limiters
+
     llm_chain.HEALTH.reset()
     backends.reset_probe_cache()
+    reset_shared_limiters()
     yield
     llm_chain.HEALTH.reset()
     backends.reset_probe_cache()
+    reset_shared_limiters()

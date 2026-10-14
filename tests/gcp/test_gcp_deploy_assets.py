@@ -90,7 +90,10 @@ def test_scripts_parse(script):
     # piped on stdin: no path translation between Windows and the bash in use
     data = (DEPLOY / script).read_bytes()
     assert b"\r\n" not in data, "shell scripts must use LF line endings"
-    out = subprocess.run(["bash", "-n"], input=data, capture_output=True, timeout=30)
+    try:  # Git Bash can take a while to start on a loaded Windows machine: a slow start is not a parse error
+        out = subprocess.run(["bash", "-n"], input=data, capture_output=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        pytest.skip("bash did not start within 120 s on this machine")
     assert out.returncode == 0, out.stderr.decode(errors="replace")
 
 

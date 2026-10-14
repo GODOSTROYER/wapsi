@@ -17,6 +17,10 @@ Draft prose (the pipeline's own LLM calls inside ``open_case``) uses the offline
 ``--prose endpoint`` is given, so a live run spends one endpoint request per model turn (plus two for the
 capability probe, cached for a day in the state directory).
 
+``--out FILE`` writes one JSON results file: the outcome (with the model that wrote each draft's prose), what the
+endpoint reported for the agent's model calls, and every run's redacted trace (model turns timed at the HTTP
+request, with the rate-limit wait apart). Nothing secret is in it: no key, no header.
+
 Exit code: 0 = the run finished and the outcome verified (plan policy check, every draft, reply grounding, audit
 chain); 1 = it did not; 2 = configuration or dependency problem. Latencies of an offline run are measured against
 the fake endpoint on this machine's CPU; they are not model or GPU measurements.
@@ -29,9 +33,11 @@ import json
 import os
 import sys
 import tempfile
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from wapsi.fixtures import showcase as sc
@@ -90,6 +96,7 @@ def verified_outcome(services: Any, case_id: str, results: list[Any]) -> dict[st
     chain = services.store.verify_audit(case_id)
     traces = [e for e in bundle.audit if e.action == TRACE_ACTION]
     plan = bundle.plan
+    with_prose = [d for d in bundle.drafts if "llm_fallback" in d.structured]
     grounded = [r.grounded for r in results if r.grounded is not None]
     out: dict[str, Any] = {
         "case_id": case_id,
@@ -98,6 +105,9 @@ def verified_outcome(services: Any, case_id: str, results: list[Any]) -> dict[st
         "plan_policy_check": bool(plan_check and plan_check.passed),
         "drafts": len(bundle.drafts),
         "drafts_verified": passed,
+        "drafts_with_prose": len(with_prose),
+        "drafts_with_prose_fallback": sum(1 for d in with_prose if d.structured.get("llm_fallback")),
+        "prose_by_model": dict(Counter(d.llm_model for d in with_prose if d.llm_model)),
         "audit_chain_ok": chain.ok,
         "audit_events": len(bundle.audit),
         "agent_traces_sealed": sum(1 for e in traces if e.hash),
@@ -143,6 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--state-dir", default=None, help="case store directory (default: a fresh temporary directory; "
                                                       "pass the UI's WAPSI_STATE_DIR to see the trace there)")
     ap.add_argument("--json", action="store_true", help="print one JSON document instead of text")
+    ap.add_argument("--out", type=Path, default=None, help="also write a JSON results file: outcome, model-call "
+                    "measurements and every run's redacted trace (no key, no header)")
     return ap
 
 
@@ -257,6 +269,19 @@ def main(argv: list[str] | None = None, *, fake: Any | None = None) -> int:
                          ensure_ascii=False, indent=2))
     else:
         _print_outcome(outcome, measured, state_dir)
+    if args.out is not None:
+        doc = {"label": measured["label"], "live": live, "measured_at_utc": datetime.now(UTC).isoformat(
+                   timespec="seconds"), "case": case_id, "draft_prose": "endpoint" if prose_live else "offline FakeLLM",
+               "endpoint": e.describe(), "outcome": outcome, "measured": measured,
+               "runs": [r.as_dict(include_trace=True) for r in results]}
+        text = json.dumps(doc, ensure_ascii=False, indent=2, default=str) + "\n"
+        key = (e.api_key or "").strip()
+        if key and key in text:  # belt and braces: the key must never reach a results file
+            print("error: refusing to write the results file: the API key appears in it", file=sys.stderr)
+            return EXIT_CONFIG
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(text, encoding="utf-8")
+        say(f"  results file: {args.out}")
     return EXIT_OK if outcome.get("verified") else EXIT_NOT_VERIFIED
 
 
@@ -280,6 +305,8 @@ def _print_outcome(o: dict[str, Any], m: dict[str, Any], state_dir: str) -> None
         ("case", f"{o['case_id']} ({o['case_status']})"),
         ("plan policy check", "passed" if o["plan_policy_check"] else "FAILED"),
         ("drafts verified", f"{o['drafts_verified']} of {o['drafts']}"),
+        ("draft prose written by", ", ".join(f"{k} ({v})" for k, v in sorted(o.get("prose_by_model", {}).items()))
+         or "-"),
         ("reply grounding", f"{o['replies_grounded']} of {o['replies_checked']} replies quote only tool values"
                             + (f"; {o['replies_replaced']} replaced by the tool-result summary"
                                if o["replies_replaced"] else "")),

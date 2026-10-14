@@ -24,7 +24,7 @@ EDD, s.106, Process 1 / 2) are explained in the [Glossary](glossary.md).
 | Hallucination stress test (demo world) | a stub LLM that writes a wrong rupee amount into every prose field | 27.57% of drafts had their prose rejected and replaced by fixed text; drafts passing verification still 1.0; holds still exact | `evals/reports/baseline/demo-fake-hallucinate.json` |
 | Prompt-injection guard, blind holdout | 151 texts written by a separate agent that never saw the rules | precision 0.9661, recall 0.75, false-positive rate 0.0267 | `evals/reports/guard-latest.json` |
 | Audit-log tamper drill | the showcase case's 40-event hash-chained log | 6 of 6 tampering attempts detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
-| Test suite | `tests/` | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | `uv run pytest -q` |
+| Test suite | `tests/` | 2,226 tests, 0 fail (full suite, 14-10-2026): all pass with the docs index and the demo world built; a fresh clone runs 2,215 and skips 11 that need them (10 docs-search tests and 1 BigQuery-ledger test) | `uv run pytest -q` |
 
 Two things stand out. **Hold amounts were exact in every world**, including the hard world built to break the
 classifier. **Every error that remains is a label, never money**: an innocent holder taken for a mule or the
@@ -230,8 +230,10 @@ window. That is what freezing every touched account would immobilise.
 | Money immobilised | ₹35,25,90,069.78 in 101 accounts | **₹29,19,245.69 in 84 accounts** |
 
 Wapsi holds about 0.83% of what the freeze would lock up, and every rupee it holds is victim money. The split by
-account type shows where the difference comes from (computed from the same run's `HoldPlan` and `TraceResult`
-objects; this split is not stored in the report):
+account group shows where the difference comes from. The harness stores it in every report as
+`baseline.by_group` (nodal / pool / escrow by account type, else the role the plan decided); the figures below are
+from `evals/reports/demo-baseline-split.json`, a re-run of the same world whose totals equal `demo.json`'s to the
+paisa:
 
 | Account type | Whole-account freeze | Wapsi holds | Why |
 |---|---:|---:|---|
@@ -241,8 +243,12 @@ objects; this split is not stored in the report):
 | Mules (78) | ₹26,72,122.95 | ₹24,97,800.19 in 71 accounts | hold `min(victim money, balance)` |
 | **All home-bank accounts (101)** | **₹35,25,90,069.78** | **₹29,19,245.69 in 84 accounts** | |
 
-Most of the gap comes from the three pool and nodal accounts, which carry crores of other customers' money. The
-innocent holders show the second effect: a freeze would lock ₹20,83,541.24 of their money, of which only
+Most of the gap comes from the three pool and nodal accounts, which carry crores of other customers' money: 96.9%
+of the baseline. SOP 9.1(iii) already says such accounts must not be frozen whole, so a domain reader should weigh
+the headline 0.83% with that in mind: without them the freeze is ₹1,09,71,469.33 against ₹27,47,911.16 held (25%).
+The Track 3 figure is the bank's own honest merchants and customers (merchants and innocent holders): a freeze
+would lock ₹82,99,346.38 of their money; Wapsi holds ₹2,50,110.97, 3% of it. The innocent holders show the second
+effect: a freeze would lock ₹20,83,541.24 of their money, of which only
 ₹2,50,110.97 (12%) is victim money. Mule accounts hold little besides victim money, so there the two figures are
 close. Seven of the 78 mules hold nothing: they were emptied, or passed the money on in full.
 
@@ -504,21 +510,22 @@ same demo-world check (3 of 3 adversarial, 0 of 40 benign flagged).
 
 The full suite passed with 0 failures on 14-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`), after the five
 event-week branches were merged (the AMD kickoff pipeline, the public demo, open-model voice intake, the ADK agent
-on an OpenAI-compatible endpoint, the docs and pitch): 2,212 tests. At the pre-event baseline (07-10-2026) it was
+on an OpenAI-compatible endpoint, the docs and pitch) and the review fixes after them: 2,226 tests. A fresh clone,
+without the gitignored docs index and demo world, runs 2,215 and skips 11. At the pre-event baseline (07-10-2026) it was
 1,765. By area:
 
 | Area | Tests | Area | Tests |
 |---|---:|---|---:|
-| `tests/verify` | 381 | `tests/domain` | 88 |
+| `tests/verify` | 382 | `tests/domain` | 88 |
 | `tests/graph` | 288 | `tests/synth` | 49 |
-| `tests/ui` | 193 | `tests/audit` | 42 |
+| `tests/ui` | 195 | `tests/audit` | 42 |
 | `tests/draft` | 149 | `tests/pipeline` | 35 |
-| `tests/intake` (voice intake) | 131 | `tests/pitch` | 24 |
+| `tests/intake` (voice intake) | 131 | `tests/pitch` | 28 |
 | `tests/classify` | 110 | `tests/demo` (public demo) | 24 |
-| `tests/search` | 104 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, `test_env_names_agree.py`, `test_llm_failover.py`, ...) | 85 |
-| `tests/amd` (the AMD layer, the agent on an endpoint, the kickoff pipeline) | 276 | `tests/gcp` (ADK agent app, managed-cloud adapters) | 233 |
+| `tests/search` | 104 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, `test_env_names_agree.py`, `test_llm_failover.py`, ...) | 88 |
+| `tests/amd` (the AMD layer, the agent on an endpoint, the kickoff pipeline) | 280 | `tests/gcp` (ADK agent app, managed-cloud adapters) | 233 |
 
-The core suite (everything except `tests/gcp` and `tests/amd`) is 1,703 tests. The voice
+The core suite (everything except `tests/gcp` and `tests/amd`) is 1,713 tests. The voice
 intake tests run every bundled sample through the offline model on both ledgers they retell (the showcase ledger
 and the demo world) and check each sample's expected matches, statuses and injection flag; the agent-trace tests
 cover the recorder, redaction, summaries, size bounding and the audit round trip; `tests/gcp` adds the ADK voice

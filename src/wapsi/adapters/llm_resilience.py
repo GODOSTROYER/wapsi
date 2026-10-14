@@ -375,6 +375,91 @@ class RateLimiter:
         return waited
 
 
+# --------------------------------------------------------------------------- shared pacing: one endpoint, one account
+
+
+class WaitBoard:
+    """What this process is waiting for right now (a rate-limit pause or a server's ``Retry-After``), so a page can
+    say "waiting for the endpoint's rate limit (N s)" instead of looking frozen. Thread-safe; holds no secret."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._waits: dict[int, tuple[float, str]] = {}
+        self._next = 0
+
+    def wait(self, seconds: float, why: str, sleep: Callable[[float], None] | None = None) -> None:
+        """Sleep ``seconds`` (blocking) while announcing ``why``."""
+        if seconds <= 0:
+            return
+        with self._lock:
+            self._next += 1
+            token = self._next
+            self._waits[token] = (self._clock() + seconds, why)
+        try:
+            (sleep or _sleep)(seconds)
+        finally:
+            with self._lock:
+                self._waits.pop(token, None)
+
+    def begin(self, seconds: float, why: str) -> int:
+        """Announce a wait that the caller performs itself (an ``asyncio.sleep``); pass the token to ``end``."""
+        with self._lock:
+            self._next += 1
+            self._waits[self._next] = (self._clock() + max(0.0, seconds), why)
+            return self._next
+
+    def end(self, token: int) -> None:
+        with self._lock:
+            self._waits.pop(token, None)
+
+    def current(self) -> tuple[float, str] | None:
+        """(seconds left, why) of the longest wait in progress, or ``None``."""
+        with self._lock:
+            if not self._waits:
+                return None
+            until, why = max(self._waits.values())
+        return max(0.0, until - self._clock()), why
+
+
+RATE_WAITS = WaitBoard()
+RATE_LIMIT_WAIT = "the endpoint's rate limit"
+
+
+def announced_sleep(why: str = RATE_LIMIT_WAIT) -> Callable[[float], None]:
+    """A ``sleep`` for ``RateLimiter`` / ``ResilientLLM`` that shows the wait on ``RATE_WAITS``."""
+    return lambda seconds: RATE_WAITS.wait(seconds, why)
+
+
+_SHARED_LIMITERS: dict[str, RateLimiter] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def shared_limiter(key: str, *, rpm: int, min_interval_s: float) -> RateLimiter | None:
+    """One process-wide limiter per endpoint (``key``: its host), shared by every client of the same account: the
+    drafts' prose, voice intake and the agent's model turns. ``None`` when there is nothing to limit. A second
+    caller can only tighten it (the lower RPM, the longer gap). No per-day budget: the endpoint enforces its own."""
+    rpm, gap = max(0, int(rpm)), max(0.0, float(min_interval_s))
+    if not rpm and not gap:
+        return None
+    with _SHARED_LOCK:
+        lim = _SHARED_LIMITERS.get(key)
+        if lim is None:
+            lim = RateLimiter(rpm, 0, min_interval_s=gap, sleep=announced_sleep())
+            _SHARED_LIMITERS[key] = lim
+        else:
+            if rpm and (not lim.rpm or rpm < lim.rpm):
+                lim.rpm = rpm
+            lim.min_interval_s = max(lim.min_interval_s, gap)
+        return lim
+
+
+def reset_shared_limiters() -> None:
+    """Forget every shared limiter (tests)."""
+    with _SHARED_LOCK:
+        _SHARED_LIMITERS.clear()
+
+
 # --------------------------------------------------------------------------- cache
 
 

@@ -43,6 +43,11 @@ class AmdDataSource(ShowcaseDataSource):
         self.refresh()
         return super().list_cases()
 
+    def deployment_notice(self) -> tuple[str, str] | None:
+        """Shown on every page when demo mode was switched on because no endpoint is configured (not on purpose)."""
+        reason = self.services.settings.demo_reason
+        return ("Offline stand-ins, no model endpoint configured", reason) if reason else None
+
     def voice_model(self) -> Any:
         """The edition's voice-intake model (the Voice Intake page asks the data source first): Whisper plus this
         edition's LLM on the open path, the offline model in demo mode. Built once, kept loaded."""

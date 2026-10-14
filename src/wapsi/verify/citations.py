@@ -74,11 +74,15 @@ def check_citations(draft: Draft, search: DocSearch | None = None) -> list[Check
     if not declared and draft.kind in _NEEDS_CITATION:
         results.append(warn(NAME, "no_citations", f"{draft.kind} draft cites no legal basis"))
 
+    by_url: list[str] = []
     if search is not None:
         missing = []
         for cid in dict.fromkeys(c for c in [*declared, *tokens] if c in KNOWN_IDS):
             cit = search.citation(cid)
             if cit is None or not cit.quote.strip():
+                if cited_by_url(cid, cit):
+                    by_url.append(cid)  # a judgment cited by its URL by design: nothing to quote, nothing missing
+                    continue
                 missing.append(cid)
         if missing:
             results.append(
@@ -91,5 +95,23 @@ def check_citations(draft: Draft, search: DocSearch | None = None) -> list[Check
             )
 
     if not any(not r.passed and r.severity == "error" for r in results):
-        results.append(ok(NAME, f"{len(tokens)} cited id(s), {len(declared)} declared, all in the registry"))
+        note = f"; cited by URL (no quote by design): {', '.join(by_url)}" if by_url else ""
+        results.append(ok(NAME, f"{len(tokens)} cited id(s), {len(declared)} declared, all in the registry{note}"))
     return results
+
+
+def cited_by_url(citation_id: str, found: object | None = None) -> bool:
+    """True for a registry entry that is cited by its URL with no stored quote, by design (the court judgments,
+    ``CASE-*``: ``data/docs/citations.json`` keeps ``quote`` empty and gives the URL). Such an id is never reported
+    as a missing quote."""
+    from wapsi.citations import registry
+
+    entry = found if found is not None else registry().get(citation_id)
+    if entry is None:
+        entry = registry().get(citation_id)
+    quote = str(getattr(entry, "quote", "") or "").strip()
+    url = str(getattr(entry, "url", "") or "").strip()
+    if not quote and url:
+        return True
+    reg = registry().get(citation_id)  # the search index may hold a copy without the URL
+    return bool(reg is not None and not str(reg.quote or "").strip() and str(reg.url or "").strip())

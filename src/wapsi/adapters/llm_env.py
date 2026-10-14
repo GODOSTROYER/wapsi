@@ -79,6 +79,71 @@ def on_amd(base_url: str | None, env: Mapping[str, str] | None = None) -> bool:
     return "amd" in (platform_for(host, declared_platform(env)) or "").lower()
 
 
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0", "host.docker.internal"})
+OFFLINE_SUFFIXES = (".offline", ".test", ".invalid", ".localhost", ".example")  # in-process fakes, never a network
+SHARED_ENDPOINT_RPM = 18  # the AMD Token Factory allows 20 a minute per team: keep two in hand for teammates
+SHARED_ENDPOINT_GAP_S = 3.0  # and space requests out, so one burst cannot earn a 60-second Retry-After
+
+
+def _host_of(base_url: str) -> str:
+    from urllib.parse import urlsplit
+
+    return (urlsplit(base_url if "://" in base_url else f"//{base_url}").hostname or "").lower()
+
+
+def is_local_server(base_url: str) -> bool:
+    """True for a model server next to the app: a loopback address, or a bare service name such as the AMD compose
+    file's ``llm``. Any other host is somebody's endpoint (the AMD Token Factory, a vLLM behind a public URL). This
+    says where the server is, never what hardware it runs on (``self_hosted_name``)."""
+    host = _host_of(base_url)
+    return host in LOCAL_HOSTS or "." not in host
+
+
+def is_offline_fake(base_url: str) -> bool:
+    """An in-process fake endpoint (``*.offline``, ``*.test``, ...): no network, nothing to pace."""
+    return _host_of(base_url).endswith(OFFLINE_SUFFIXES)
+
+
+def pacing(base_url: str | None, env: Mapping[str, str] | None = None) -> tuple[int, float]:
+    """(requests per minute, minimum seconds between requests) for a client of ``base_url``.
+
+    ``WAPSI_LLM_RPM`` / ``WAPSI_LLM_MIN_INTERVAL_S`` win. Otherwise a shared endpoint (any host that is neither a
+    local server nor an offline fake: the AMD Token Factory allows 20 requests a minute for the whole team) gets
+    ``SHARED_ENDPOINT_RPM`` and ``SHARED_ENDPOINT_GAP_S``, and a server of one's own gets no limit."""
+    env = os.environ if env is None else env
+    shared = bool(base_url) and not is_local_server(base_url or "") and not is_offline_fake(base_url or "")
+
+    def num(key: str, default: float) -> float:
+        raw = (env.get(key) or "").strip()
+        try:
+            return max(0.0, float(raw)) if raw else default
+        except ValueError as exc:
+            raise ValueError(f"{key} must be a number, got {raw!r}") from exc
+
+    rpm = int(num("WAPSI_LLM_RPM", SHARED_ENDPOINT_RPM if shared else 0))
+    return rpm, num("WAPSI_LLM_MIN_INTERVAL_S", SHARED_ENDPOINT_GAP_S if shared else 0.0)
+
+
+def rocm_visible() -> bool:
+    """True when this machine shows an AMD ROCm GPU: the ``/dev/kfd`` device, ``amd-smi`` / ``rocm-smi`` on the PATH,
+    or an already imported PyTorch built for ROCm (``torch.version.hip``). Never imports PyTorch."""
+    import shutil
+    import sys
+
+    if Path("/dev/kfd").exists() or shutil.which("amd-smi") or shutil.which("rocm-smi"):
+        return True
+    torch = sys.modules.get("torch")
+    return bool(getattr(getattr(torch, "version", None), "hip", None))
+
+
+def self_hosted_name(model: str, env: Mapping[str, str] | None = None) -> str:
+    """The name drafts record for a vLLM server of one's own (a local or compose-stack host): ``vllm-rocm:<model>``
+    only when AMD is confirmed (the deployer's ``WAPSI_LLM_PLATFORM=AMD`` / ``WAPSI_LLM_ON_AMD=1``, which the AMD
+    compose file sets, or ROCm visible on this machine), else ``vllm:<model>``. Never guessed from the host name."""
+    amd = "amd" in (declared_platform(env) or "").lower() or rocm_visible()
+    return f"{'vllm-rocm' if amd else 'vllm'}:{model}"
+
+
 def platform_for(host: str | None, declared: str | None = None) -> str | None:
     """Where the endpoint's GPUs are: the deployer's statement (``WAPSI_LLM_PLATFORM``) if there is one, ``AMD`` for
     AMD's own hosts, else ``None`` (never guessed)."""
@@ -304,7 +369,10 @@ def parse_served(name: str | None) -> Writer | None:
     if m:
         return Writer(kind, raw, model=m.group("model").strip(), host=m.group("host"),
                       platform=(m.group("platform") or "").strip() or None, recorded_on=recorded_on)
-    if base.lower().startswith("vllm-rocm:"):  # the AMD edition's own vLLM-ROCm service
+    if base.lower().startswith("vllm-rocm:"):  # a vLLM server of one's own, AMD confirmed (self_hosted_name)
         return Writer("recorded" if noted else "other", raw, model=base.split(":", 1)[1],
                       platform="AMD (vLLM-ROCm)", recorded_on=recorded_on)
+    if base.lower().startswith("vllm:"):  # a vLLM server of one's own; its hardware was not confirmed
+        return Writer("recorded" if noted else "other", raw, model=base.split(":", 1)[1],
+                      platform=None, recorded_on=recorded_on)
     return Writer("recorded" if noted else "other", raw, model=base, recorded_on=recorded_on)

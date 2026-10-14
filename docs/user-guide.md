@@ -317,9 +317,13 @@ Where the runs come from:
   recorded by the agent app's `ToolTracePlugin` and sealed into the audit log of each case it touched, as an
   "Agent run recorded (tool trace)" event. The tab reads those events, so the case's hash chain covers each run.
   The run header then carries the chip **In the case's hash-chained audit log**.
-- **Recorded offline run.** With no live run on the case, the showcase cases show a recording made with the real
-  ADK app, its real tools and guards, driven by a scripted model instead of a live one (no API key). A callout says
-  so: "Recorded offline run." Its latencies were measured on a laptop CPU.
+- **Recorded live run, replayed.** With no run of its own on the case, the showcase case replays a live session
+  recorded on 14-10-2026: the real ADK app, its real tools and guards, with Gemma 4 served on AMD GPUs (AMD Token
+  Factory) choosing every tool call. A callout says so: "Recorded live run, replayed." Model latencies are the
+  requests to that endpoint from a laptop; waits for the endpoint's rate limit are shown apart.
+- **Recorded offline run.** If that recording is absent, the showcase cases show a recording made with the same
+  app driven by a scripted model (no API key). A callout says so: "Recorded offline run." Its latencies were
+  measured on a laptop CPU.
 - **Nothing recorded.** Other cases show "No agent runs on this case yet" and explain what will appear.
 
 What the tab shows:
@@ -1021,7 +1025,8 @@ the recording changed nothing. On **Audit** (scope "This case") the link appears
 ### Step 12 (optional): see what the agent did
 
 Pick `CASE-31009260000101` in the sidebar, go to **Case Room** and open the **Agent trace · 8** tab. The callout
-"Recorded offline run." explains that this run was made with the real ADK app and tools and a scripted model.
+"Recorded live run, replayed." explains that this session was made with the real ADK app and tools and Gemma 4
+served on AMD (AMD Token Factory, 14-10-2026), and is replayed here.
 
 - Run 1 shows the five tool calls behind "Open case 31009260000101", each with its result line and checks: the hold
   plan's **Policy check · 1/1 passed**, **Verifier · 17/17 passed** and **Drafts verified · 16/16 passed**, and

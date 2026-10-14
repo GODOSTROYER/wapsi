@@ -2,8 +2,8 @@
 
 Every number in `pitch/` traces to a file in this repository. This page maps each one to its source file and field.
 `uv run python pitch/check_numbers.py` re-reads every source, compares it with the **Value** column, and fails if
-any rupee amount, percentage, dollar amount or GB figure written in `pitch/**/*.md` is missing from the
-**Pitched as** column below. `tests/pitch/test_pitch_pack.py` runs the same check in the test suite.
+any rupee amount, percentage, dollar amount or GB figure written in `pitch/**/*.md`, `README.md` or `docs/index.md`
+is missing from the **Pitched as** column below. `tests/pitch/test_pitch_pack.py` runs the same check in the test suite.
 
 Rules for editing the pitch:
 - Add the row here first, then use the number. No row, no number.
@@ -69,6 +69,11 @@ One victim, one impersonation call, ₹4,80,000 stolen. These are the numbers ev
 | sc1_kirana_sale | the kirana shop sold ₹1,200 of groceries to a mule | 1200 | src/wapsi/fixtures/showcase.py | `text:_t("TX-007", _ist(9, 10, 11, 40), B, K, 1200.0, Channel.UPI, "622210000007", "order 5521"),` |
 | sc1_landlord_balance | landlord balance ₹1,55,000, all of it frozen under the baseline | 155000 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][L]` |
 | sc1_landlord_rent | the landlord received ₹5,000 of rent from a mule | 5000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-003", _ist(9, 10, 11, 15), A, L, 5000.0, Channel.UPI, "622210000003", "rent Sept"),` |
+| sc1_atm_each | each of the first mule's two ATM withdrawals is ₹50,000 | 50000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-004", _ist(9, 10, 11, 20), A, None, 50000.0, Channel.ATM, "ATM000000004", label="ATM PUNE-SHIVAJINAGAR-07"),` |
+| sc1_atm_two | the first mule withdraws ₹1,00,000 in two ATM withdrawals | 100000 | derived | `calc:2 * sc1_atm_each` |
+| sc1_pool_payment | the second mule pays ₹20,000 into the payment-aggregator pool | 20000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-008", _ist(9, 10, 11, 45), B, P, 20000.0, Channel.UPI, "622210000008", "wallet topup"),` |
+| sc1_b_to_d | the second mule passes ₹2,50,000 to the third | 250000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-009", _ist(9, 10, 12, 5), B, D, 250000.0, Channel.IMPS, "425310000009"),` |
+| sc1_d_to_e | the third mule sends ₹2,00,000 to the other bank | 200000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-010", _ist(9, 10, 12, 30), D, E, 200000.0, Channel.IMPS, "425310000010"),` |
 | sc1_mule_balances | three mule accounts hold ₹1,23,800 between them | 123800 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][A] + SHOWCASE_1["balance_now"][B] + SHOWCASE_1["balance_now"][D]` |
 | sc1_honest_frozen | ₹5,02,26,200 of the frozen money sits in three honest accounts (landlord, kirana shop, payment-aggregator pool) | 50226200 | derived | `calc:sc1_kirana_balance + sc1_landlord_balance + sc1_pool_balance` |
 | sc1_honest_share | 99.75% of what the freeze locks belongs to people who did nothing wrong | 99.75 | derived | `calc:100 * sc1_honest_frozen / sc1_baseline` |
@@ -140,6 +145,48 @@ One victim, one impersonation call, ₹4,80,000 stolen. These are the numbers ev
 | demo_merchant_precision | merchant precision 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.role_precision.MERCHANT` |
 | demo_merchant_recall | merchant recall 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.role_recall.MERCHANT` |
 | demo_process | restoration process (P1 or P2) chosen correctly 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.process_accuracy` |
+
+## Demo world: where the freeze baseline sits (`evals/reports/demo-baseline-split.json`)
+
+The same world, code and seed as `demo.json`, re-run on 14-10-2026 with the stub LLM so the report stores the split
+by account group (`baseline.by_group`: nodal / pool / escrow by account type, else the role the plan decided). Its
+totals equal `demo.json`'s to the paisa; only its timings differ (another load on the laptop), and no timing is
+quoted from it. Command: `uv run python -m evals.harness --world demo --report-name demo-baseline-split`.
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| split_total_check | the split adds up to the same ₹35.26 Cr baseline | 352590069.78 | evals/reports/demo-baseline-split.json | `json:baseline.whole_account_freeze_inr` |
+| split_pool_accounts | 3 nodal / pool accounts | 3 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.nodal_pool_escrow.accounts` |
+| split_pool_freeze | the three nodal / pool accounts: ₹34,16,18,600.45 (₹34.16 Cr) of the freeze | 341618600.45 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.nodal_pool_escrow.whole_account_freeze_inr` |
+| split_pool_share | 96.9% of the freeze baseline sits in the three nodal / pool accounts | 96.9 | derived | `calc:100 * split_pool_freeze / demo_freeze` |
+| split_pool_hold | Wapsi holds ₹1,71,334.53 in them, the disputed amount only (SOP 9.1(iii)) | 171334.53 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.nodal_pool_escrow.wapsi_hold_inr` |
+| split_merchant_accounts | 10 merchants | 10 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.merchant.accounts` |
+| split_merchant_freeze | merchants: ₹62,15,805.14 frozen under the baseline | 6215805.14 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.merchant.whole_account_freeze_inr` |
+| split_merchant_hold | merchants: ₹0 held (goods delivered, update only) | 0.0 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.merchant.wapsi_hold_inr` |
+| split_ih_accounts | 10 innocent holders | 10 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.innocent_holder.accounts` |
+| split_ih_freeze | innocent holders: ₹20,83,541.24 frozen under the baseline | 2083541.24 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.innocent_holder.whole_account_freeze_inr` |
+| split_ih_hold | innocent holders: ₹2,50,110.97 held, the victim money only | 250110.97 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.innocent_holder.wapsi_hold_inr` |
+| split_mule_freeze | mules: ₹26,72,122.95 frozen under the baseline | 2672122.95 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.mule.whole_account_freeze_inr` |
+| split_mule_hold | mules: ₹24,97,800.19 held | 2497800.19 | evals/reports/demo-baseline-split.json | `json:baseline.by_group.mule.wapsi_hold_inr` |
+| split_honest_freeze | honest merchants and customers: ₹82,99,346.38 would be frozen | 8299346.38 | derived | `calc:split_merchant_freeze + split_ih_freeze` |
+| split_honest_freeze_l | ₹82.99 L (₹82.99 lakh) | 82.99 | derived | `calc:split_honest_freeze / 100000` |
+| split_honest_hold | Wapsi holds ₹2,50,110.97 of it | 250110.97 | derived | `calc:split_merchant_hold + split_ih_hold` |
+| split_honest_hold_l | ₹2.50 L (₹2.50 lakh) | 2.50 | derived | `calc:split_honest_hold / 100000` |
+| split_honest_pct | 3.0% of what the freeze would lock on honest merchants and customers | 3.0 | derived | `calc:100 * split_honest_hold / split_honest_freeze` |
+| split_nonpool_freeze | without the pool accounts the freeze is ₹1,09,71,469.33 (₹1.10 Cr) | 10971469.33 | derived | `calc:demo_freeze - split_pool_freeze` |
+| split_nonpool_freeze_cr | ₹1.10 Cr | 1.10 | derived | `calc:split_nonpool_freeze / 10000000` |
+| split_nonpool_hold | against ₹27,47,911.16 (₹27.48 L) held | 2747911.16 | derived | `calc:demo_hold - split_pool_hold` |
+| split_nonpool_hold_l | ₹27.48 L | 27.48 | derived | `calc:split_nonpool_hold / 100000` |
+| split_nonpool_pct | 25.0% of the freeze outside the pool accounts | 25.0 | derived | `calc:100 * split_nonpool_hold / split_nonpool_freeze` |
+
+## Five held-out demo-size worlds, unseen seeds (`evals/reports/classify-after-heldout-*.json`)
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| heldout_ih_recall_min | innocent-holder recall 75% to 100% across the five held-out worlds (lowest, seed 303) | 0.75 | evals/reports/classify-after-heldout-303.json | `json:report.metrics.role_recall.INNOCENT_HOLDER` |
+| heldout_ih_recall_max | innocent-holder recall up to 100% (seed 202) | 1.0 | evals/reports/classify-after-heldout-202.json | `json:report.metrics.role_recall.INNOCENT_HOLDER` |
+| heldout_disp_min | disposition accuracy 98.4% to 100% (lowest, seed 303) | 0.984 | evals/reports/classify-after-heldout-303.json | `json:report.metrics.disposition_accuracy` |
+| heldout_disp_max | disposition accuracy up to 100% (seed 202) | 1.0 | evals/reports/classify-after-heldout-202.json | `json:report.metrics.disposition_accuracy` |
 
 ## Hallucination stress test: stub LLM writes a wrong rupee amount into every prose field (`evals/reports/baseline/demo-fake-hallucinate.json`)
 
@@ -233,14 +280,15 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | scorer_features | over 33 behavioural features | 33 | src/wapsi/classify/features.py | `py:len(FEATURE_COLUMNS)` |
 | scorer_mule_threshold | score at or above 0.6 is a mule | 0.6 | src/wapsi/config.py | `text:mule_threshold: float = 0.6` |
 | scorer_innocent_threshold | score at or below 0.35 is an innocent holder | 0.35 | src/wapsi/config.py | `text:innocent_threshold: float = 0.35` |
-## The Google ADK agent (`editions/gcp/app/`)
+## The Google ADK agent (`editions/shared/tools.py`)
 
-The agent is built with Google's open-source Agent Development Kit. Its tools are the pipeline's own functions; the
-model behind it is a setting (Gemma 4 served on AMD for this entry).
+The agent is built with Google's open-source Agent Development Kit. Its tools are the pipeline's own functions
+(`OFFICER_TOOLS`, shared by the AMD entry and the optional Google Cloud app); the model behind it is a setting
+(Gemma 4 served on AMD for this entry).
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
-| gcp_tools | ADK agent with 10 pipeline tools | 10 | editions/gcp/architecture.md | `text:10 pipeline tools` |
+| gcp_tools | ADK agent with 10 pipeline tools | 10 | editions/shared/tools.py | `py:len(OFFICER_TOOLS)` |
 
 ## Voice intake samples and the recorded agent run (`data/samples/voice/`, `src/wapsi/agenttrace/`)
 
@@ -261,16 +309,43 @@ guards; scripted model).
 
 ## Measured with Gemma 4 served on AMD (AMD Token Factory, 2026-10-14; committed results files)
 
-Smoke runs made during the event on synthetic data. The model ran on AMD GPUs on the provider's side (AMD's Token
-Factory API); latency is measured at the client and includes the network. These are not benchmarks of a dedicated
-MI300X. The agent run is written up in `editions/amd/AGENT.md` ("What was measured"); the voice run is
-`editions/amd/bench/results/voice-tokenfactory-20261014/` (the text model only: the samples' scripts stood in for
-the speech recogniser, so no speech model ran).
+Runs made during the event on synthetic data. The model ran on AMD GPUs on the provider's side (AMD's Token Factory
+API); latency is measured at the client, from a laptop in India, and includes the network. These are not
+benchmarks of a dedicated MI300X. Results files:
+
+- the agent: `editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json`, written by
+  `uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live --prose endpoint --demo --out ...`
+  with no failover list (Gemma 4 alone), so the draft prose inside the run was Gemma 4's too;
+- the showcase world through the harness: `evals/reports/amd/showcase-gemma4-20261014.json`
+  (`--llm openai-compat:Gemma-4-31B-IT`, one model, failover off). Its five prose answers were served from the
+  prompt-hash cache written by the same day's recording run (the same model, 23 minutes earlier; the report says
+  6 cache hits), and its two raw-model summaries were live;
+- the public demo's recorded prose: `data/recordings/demo_prose.json` (`meta.runs`, last entry);
+- the smoke run: `pitch/amd/evidence/token-factory-smoke-2026-10-14-replayed.json` (`pitch/amd/evidence/token_factory_smoke.py --allow-replay`). Its label says
+  "replayed from cache (1 of 9 replies)": the one replayed reply is the first tool-calling turn (`calls`, `cached`);
+  the health probe, the four pipeline prose requests, the tool follow-up and both extractions were live;
+- voice: `editions/amd/bench/results/voice-tokenfactory-20261014/` (the text model only: the samples' scripts stood
+  in for the speech recogniser, so no speech model ran).
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
-| tf_agent_tool_calls | 5 tool calls behind "Open case 31009260000101", Gemma 4 driving the ADK agent through native tool calls (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 5 | editions/amd/AGENT.md | `text:Showcase case, "Open case 31009260000101": 5 tool calls, 6 model turns, reply grounded` |
-| tf_agent_drafts | that agent run on the AMD Token Factory ended VERIFIED: 16 of 16 drafts verified | 16 | editions/amd/AGENT.md | `text:16 of 16 drafts verified` |
+| tf_agent_tool_calls | 5 tool calls behind "Open case 31009260000101", Gemma 4 driving the ADK agent through native tool calls (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 5 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:runs.0.summary.tool_calls` |
+| tf_agent_drafts | that live run ended VERIFIED: 16 of 16 drafts verified, with Gemma 4 on AMD writing the draft prose too | 16 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:outcome.drafts_verified` |
+| tf_agent_prose | 3 of 3 prose fields in that run written by Gemma 4 on AMD | 3 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:outcome.drafts_with_prose` |
+| tf_agent_prose_fallback | 0 of them replaced by the fixed paragraph | 0 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:outcome.drafts_with_prose_fallback` |
+| adk_grounding | reply grounding of the live run: 24 of 24 values in the agent's reply (17 amounts, 7 account numbers) came from a tool | 24 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:runs.0.trace.steps.12.verifier.checked` |
+| tf_agent_replies | 4 of 4 replies in that session quoted only values a tool returned | 4 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:outcome.replies_grounded` |
+| tf_agent_refused | an analyst's approval refused by maker-checker in the live session | 1 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:runs.2.summary.blocked` |
+| tf_agent_calls | 12 model calls in the session, 0 errors | 12 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:measured.model_calls` |
+| tf_agent_p50_ms | a median of 3.86 s per model call (the HTTP request, laptop in India to the AMD Token Factory) | 3863.3 | editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json | `json:measured.latency_ms_p50` |
+| tf_showcase_pass | showcase world with Gemma 4 writing the prose: drafts passing the verifier 1.0 (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 1.0 | evals/reports/amd/showcase-gemma4-20261014.json | `json:metrics.draft_verification_pass_rate` |
+| tf_showcase_fallback | prose replaced by fixed text on that run 0.0 | 0.0 | evals/reports/amd/showcase-gemma4-20261014.json | `json:metrics.llm_prose_fallback_rate` |
+| tf_showcase_hold_exact | holds exact 1.0 with Gemma 4 in the loop | 1.0 | evals/reports/amd/showcase-gemma4-20261014.json | `json:metrics.hold_exact_match_rate` |
+| tf_smoke_latency | one prose request takes a median of 8.29 s (one request at a time, from a laptop in India; AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 8.29 | pitch/amd/evidence/token-factory-smoke-2026-10-14-replayed.json | `json:pipeline.latency_s_median` |
+| tf_tokens_case_in | showcase case 1 uses 25,914 prompt tokens for its prose (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 25914 | pitch/amd/evidence/token-factory-smoke-2026-10-14-replayed.json | `json:pipeline.prompt_tokens` |
+| tf_tokens_case_out | and 636 completion tokens (AMD Token Factory smoke run) | 636 | pitch/amd/evidence/token-factory-smoke-2026-10-14-replayed.json | `json:pipeline.completion_tokens` |
+| tf_smoke_drafts | 16 of 16 drafts passing the verifier in the AMD Token Factory smoke run, holds equal to the hand-computed fixture | 16 | pitch/amd/evidence/token-factory-smoke-2026-10-14-replayed.json | `json:pipeline.drafts_passing_verifier` |
+| tf_recorded_prose | the public demo replays 5 prose fields recorded from Gemma 4 on AMD (AMD Token Factory, 2026-10-14), labelled as a recording | 5 | data/recordings/demo_prose.json | `len:entries` |
 | tf_voice_notes | Gemma 4 on AMD answered for all 6 sample transcripts (AMD Token Factory, text model only) | 6 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.answers_by_model.Gemma-4-31B-IT` |
 | tf_voice_extract_p50 | a median of 7.5 s per note to translate and extract the fields (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 7.5 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.extract_s.p50` |
 | tf_voice_agreement | share of extracted values that agree with the samples' expected answers (AMD Token Factory run) | 0.9833 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.value_agreement` |
@@ -307,7 +382,7 @@ measured on one. Measured memory per container is the slot `droplet_vram`.
 | cmd_drill | 6/6 tampering attempts detected (plus an in-store edit), 40-event chain | 6 | src/wapsi/audit/drill.py | `cmd:uv run python -m wapsi.audit drill` |
 | cmd_policy | 48/48 policy re-checks pass on showcase case 1 | 48 | .claude/skills/lien-calculator/scripts/hold_plan.py | `cmd:uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101 --world showcase-memory` |
 | cmd_str_slots | 78 numbers in the STR recomputed by the verifier | 78 | .claude/skills/str-drafter/scripts/draft_and_verify.py | `cmd:uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory` |
-| cmd_tests | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | 2212 | pyproject.toml | `cmd:uv run pytest -q` |
+| cmd_tests | 2,226 tests, 0 fail (full suite, 14-10-2026), with the docs index and demo world built; a fresh clone runs 2,215 and skips 11 | 2226 | pyproject.toml | `cmd:uv run pytest -q` |
 | cmd_trace_run1 | 5 tool calls behind "Open case 31009260000101" (agent trace demo, 07-10-2026) | 5 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
 | cmd_trace_case | Agent trace · 8: 8 tool calls in 4 runs on the showcase case, 2 blocked (agent trace demo, 07-10-2026) | 8 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
 
@@ -329,6 +404,11 @@ run's prose fallback rate and a few draft bodies, and look at the timings: a fal
 that all stop at the token limit and take several times longer than usual, are the signature of a degraded model.
 A figure from an unhealthy run is discarded.
 
+**One model per figure.** A figure pitched as Gemma 4's comes from a run in which Gemma 4 wrote everything the
+figure counts: run the harness with `--llm openai-compat:Gemma-4-31B-IT` (one model, failover off), or check that the
+report's `prose_by_model` (and, for the raw-model comparison, `ab_test.llm_only.answered_by`) names Gemma 4 alone
+before a figure is filled. A run that a failover model partly wrote is reported under the models that wrote it.
+
 **Filling slots from a kickoff run.** `uv run python editions/amd/kickoff/fill_pitch.py --evidence <evidence.json>`
 does the steps above for every slot an evidence bundle carries (dry-run diff; `--write` applies it): it replaces
 each `TBD(slot_id)` in the pitch, adds the rows that back the figure to a generated section of this page and
@@ -337,16 +417,13 @@ files.
 
 | Slot | Will be pitched as | Where it runs | Planned source |
 |---|---|---|---|
-| tf_showcase_pass | showcase world, drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_verification_pass_rate`) |
 | tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_p95 | demo world, p95 seconds per case, trace to verified drafts, with the real model | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.p95_total_s`) |
+| tf_call_latency | drafting request latency at p50 in the kickoff run (the smoke run's 8.29 s is a separate, one-at-a-time figure) | AMD Token Factory, Gemma-4-31B-IT | filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | ab_bound_wrong | the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0) | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_numeric_accuracy`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_call_latency | median seconds per prose request, one request at a time | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.latency_s_median`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_tokens_case | prompt and completion tokens for one showcase case | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.prompt_tokens`, `pipeline.completion_tokens`) |
-| adk_grounding | reply grounding of that run: values in the reply that came from a tool | AMD Token Factory, Gemma-4-31B-IT | the same agent trace |
 | voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | `uv run python -m editions.amd.bench.voice_bench --asr local` (`voice_bench.json` under `editions/amd/bench/results/`) |
 | voice_asr_seconds | seconds to transcribe the 31-second note | local Whisper; state CPU or the GPU used | open-model voice run |
 | gnn_amd_auc | GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |

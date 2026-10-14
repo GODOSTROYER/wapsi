@@ -188,6 +188,24 @@ def test_reply_grounding_flags_values_not_in_tool_results():
     none = reply_grounding("Only a supervisor can approve.", set(), set())
     assert none.passed and none.checked == 0
 
+
+def test_reply_grounding_catches_amounts_written_without_a_rupee_sign():
+    """'Hold 45000' is a figure as much as '₹45,000.00': a bare number of four or more digits no tool returned fails."""
+    bad = reply_grounding("Hold 45000 on HB01-1000000001 today; the victim lost 4,80,000.", {43200.0, 480000.0},
+                          {"HB01-1000000001"})
+    assert not bad.passed and bad.failed == 1 and "45000" in bad.detail
+    ok = reply_grounding("Hold 43200 on HB01-1000000001 (NCRP 31009260000101, reported 10-09-2026).", {43200.0},
+                         {"HB01-1000000001"}, {"31009260000101"})
+    assert ok.passed and ok.checked == 2  # the account and 43200 (a known amount); a 14-digit id is not an amount
+    counts = reply_grounding("8 accounts on the trail, 16 drafts, Section 106 BNSS.", set(), set())
+    assert counts.passed and counts.checked == 0  # short counts are not figures
+
+    rec = _recorder()
+    rec.tool_start("r", "hold_plan", args={"case_id": CASE1}, call_id="c")
+    rec.tool_end("r", "hold_plan", call_id="c", result=PLAN_RESULT)
+    rec.output("r", "Total hold 999999 across the trail.")
+    assert rec.finish_run("r").steps[-1].verifier.passed is False
+
     rec = _recorder()
     rec.tool_start("r", "hold_plan", args={"case_id": CASE1}, call_id="c")
     rec.tool_end("r", "hold_plan", call_id="c", result=PLAN_RESULT)

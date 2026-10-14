@@ -265,10 +265,18 @@ def _start_over_control() -> None:
                    "computed, nothing approved.")
 
 
-def _llm_banner() -> None:
-    """Say so on every page when the demo is not calling a live model (the app's own data source only: editions
-    bring their own models)."""
+def _llm_banner(ds: ShowcaseDataSource | None = None) -> None:
+    """Say so on every page when the demo is not calling a live model. An edition's data source (it brings its own
+    models) may say so itself through ``deployment_notice()`` -> (title, text) or ``None``."""
     if st.session_state.get(_OWN_SOURCE) is None:
+        notice = getattr(ds, "deployment_notice", None)
+        try:
+            note = notice() if callable(notice) else None
+        except Exception:  # noqa: BLE001 - a disclosure helper must never break the page
+            log.exception("could not read the edition's deployment notice")
+            note = None
+        if note:
+            md(h.callout(note[1], tone="warn", strong=note[0] + "."))
         return
     try:
         note = banner(llm_setup())
@@ -367,7 +375,7 @@ def main() -> None:
     ctx = Ctx(ds=ds, viewer=viewer, case_id=case_id, bundle=ds.get_bundle(case_id) if case_id else None,
               now=now_for_ui(), dark=detect_dark(), engine=engine_status())
     _log_view(ds, ctx, page)
-    _llm_banner()
+    _llm_banner(ds)
     show_flash()
     try:
         RENDERERS[page](ctx)

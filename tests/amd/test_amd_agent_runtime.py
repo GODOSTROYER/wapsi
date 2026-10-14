@@ -320,3 +320,48 @@ def test_run_on_a_fallback_model_is_labelled_with_the_model_that_answered(agent_
     bare = agent_runtime(gemma_endpoint(models=("Qwen3.8-27B",)))
     r2 = bare.run("list cases", user_id="asha")
     assert not r2.ok and r2.reply_source == "notice" and "does not serve this model" in r2.reply and r2.tools == []
+
+
+
+class _BusyOnce(FakeOpenAIBackend):
+    """Answers the probe, then one HTTP 429 with Retry-After (the shared endpoint's per-minute limit), then normally."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.refused = 0
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content or b"{}")
+        names = [t.get("function", {}).get("name") for t in body.get("tools") or []]
+        if "wapsi_probe" not in names and request.url.path.endswith("/chat/completions") and not self.refused:
+            self.refused += 1
+            return httpx.Response(429, headers={"Retry-After": "7"}, json={"error": {
+                "message": "rate limit exceeded", "type": "rate_limit_error"}})
+        return super().handler(request)
+
+
+def test_a_retry_after_wait_is_announced_and_kept_out_of_the_model_time(agent_runtime, demo_services, monkeypatch):
+    """The endpoint client retries the 429 itself: the wait is announced (the chat shows it) and recorded as
+    waited_ms on the model step, never as model latency."""
+    from editions.shared import endpoint_model
+    from wapsi.adapters.llm_resilience import RATE_WAITS
+
+    announced: list[tuple[float, str, object]] = []
+
+    async def no_sleep(seconds: float, why: str = "the endpoint's rate limit") -> None:
+        token = RATE_WAITS.begin(seconds, why)
+        announced.append((seconds, why, RATE_WAITS.current()))
+        RATE_WAITS.end(token)
+
+    monkeypatch.setattr(endpoint_model, "_announced_sleep", no_sleep)
+    fake = _BusyOnce(model=GEMMA)
+    rt = agent_runtime(fake, max_retries=1)
+    r = rt.run(f"Open case {sc.N1}", user_id="asha")
+    assert r.ok and r.tools == PIPELINE and fake.refused == 1
+    assert [(s, w) for s, w, _ in announced] == [(7.0, "the endpoint's rate limit")]
+    assert announced[0][2] is not None and announced[0][2][1] == "the endpoint's rate limit"
+    first = next(s for s in r.trace.steps if s.kind == "model")
+    assert first.waited_ms is not None and first.waited_ms >= 7000.0
+    assert first.latency_ms is not None and first.latency_ms < 5000.0  # the fake answers in milliseconds
+    assert r.trace.summary().waited_for_rate_limit_ms >= 7000.0
+    assert RATE_WAITS.current() is None

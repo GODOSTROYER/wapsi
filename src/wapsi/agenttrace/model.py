@@ -5,7 +5,9 @@ One ``AgentTrace`` per agent invocation (one officer message and everything the 
 
 - ``input``  the officer's message and the input guard's verdict (Model Armor or RulesGuard: passed / rewritten);
 - ``model``  one model turn (Gemini, Gemma or the offline scripted model): latency, tokens when the model reports
-  them, and the tool calls it asked for;
+  them, and the tool calls it asked for. Behind an OpenAI-compatible endpoint the latency is the HTTP request
+  itself and ``waited_ms`` the pause before it (client-side pacing, a server's ``Retry-After``); local work such as
+  LiteLLM's first import is in neither;
 - ``tool``   one tool call: redacted arguments, a one-line result summary built from the tool's own result
   (numbers come from data), latency, status, the guard verdicts around it (argument screening, maker-checker
   policy, untrusted text found in its result) and the verifier verdict it carries (plan policy check, draft
@@ -48,6 +50,7 @@ SOURCE_LABELS = {
     "recording": "Recorded offline ADK run (scripted model, no API key)",
     "adk-endpoint": "Live ADK run (open model on an OpenAI-compatible endpoint)",
     "adk-endpoint-offline": "Offline ADK run (fake OpenAI-compatible endpoint, no API key)",
+    "recording-endpoint": "Recorded live ADK run (Gemma 4 on AMD, replayed)",
 }
 LIVE_SOURCES = frozenset({"adk", "adk-endpoint"})
 
@@ -89,6 +92,7 @@ class TraceStep(_M):
     status: str = "ok"
     started_at: datetime
     latency_ms: float | None = None
+    waited_ms: float | None = None  # model steps: pacing / Retry-After pause before the request (not in latency)
     call_id: str = ""
     args: dict[str, Any] = Field(default_factory=dict)
     summary: str = ""
@@ -115,6 +119,7 @@ class TraceSummary(_M):
     model_turns: int = 0
     tool_latency_ms: float = 0.0
     model_latency_ms: float = 0.0
+    waited_for_rate_limit_ms: float = 0.0
     wall_ms: float | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
@@ -163,6 +168,7 @@ class AgentTrace(_M):
             model_turns=len(models),
             tool_latency_ms=round(sum(s.latency_ms or 0.0 for s in tools), 3),
             model_latency_ms=round(sum(s.latency_ms or 0.0 for s in models), 3),
+            waited_for_rate_limit_ms=round(sum(s.waited_ms or 0.0 for s in models), 3),
             wall_ms=round(wall, 3) if wall is not None else None,
             tokens_in=sum(tin) if tin else None,
             tokens_out=sum(tout) if tout else None,
@@ -188,7 +194,7 @@ class AgentTrace(_M):
             for k in ("trace_id", "session_id", "started_at", "finished_at"):
                 data.pop(k, None)
             for s in data["steps"]:
-                for k in ("started_at", "latency_ms", "call_id"):
+                for k in ("started_at", "latency_ms", "waited_ms", "call_id"):
                     s.pop(k, None)
         raw = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()

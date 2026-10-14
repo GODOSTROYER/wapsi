@@ -1,0 +1,173 @@
+{
+  "world": "showcase",
+  "generated_at": "2026-10-14T10:54:38.461776+00:00",
+  "config": {
+    "rule": "PRO_RATA",
+    "llm": "Gemma-4-31B-IT on AMD @ developer.amd.com.cn",
+    "scorer": "heuristic-v2",
+    "scorer_spec": "heuristic",
+    "search": true
+  },
+  "cases": 2,
+  "adversarial_cases": 0,
+  "metrics": {
+    "traced_amount_recall": 1.0,
+    "totals_abs_error_inr": 0.0,
+    "hold_exact_match_rate": 1.0,
+    "over_hold_inr": 0.0,
+    "false_freeze_count": 0,
+    "disposition_accuracy": 1.0,
+    "process_accuracy": 1.0,
+    "str_ground_accuracy": 1.0,
+    "escalation_precision": 1.0,
+    "escalation_recall": 1.0,
+    "role_precision": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "role_recall": {
+      "MULE": 1.0,
+      "INNOCENT_HOLDER": 1.0,
+      "MERCHANT": 1.0,
+      "INTERMEDIARY": 1.0
+    },
+    "draft_verification_pass_rate": 1.0,
+    "draft_numeric_accuracy": 1.0,
+    "citation_validity": 1.0,
+    "llm_only_hallucination_rate": 0.0,
+    "llm_prose_fallback_rate": 0.0,
+    "injection_flag_recall": 1.0,
+    "injection_leaks": 0,
+    "p50_time_to_hold_plan_s": 0.0678,
+    "p95_time_to_hold_plan_s": 0.0741,
+    "p95_total_s": 0.3717
+  },
+  "baseline": {
+    "whole_account_freeze_inr": 50470000.0,
+    "wapsi_hold_inr": 262848.0,
+    "accounts_frozen_baseline": 7,
+    "accounts_held": 6,
+    "by_group": {
+      "nodal_pool_escrow": {
+        "accounts": 1,
+        "whole_account_freeze_inr": 50020000.0,
+        "accounts_held": 1,
+        "wapsi_hold_inr": 19200.0
+      },
+      "merchant": {
+        "accounts": 1,
+        "whole_account_freeze_inr": 51200.0,
+        "accounts_held": 0,
+        "wapsi_hold_inr": 0.0
+      },
+      "innocent_holder": {
+        "accounts": 1,
+        "whole_account_freeze_inr": 155000.0,
+        "accounts_held": 1,
+        "wapsi_hold_inr": 4800.0
+      },
+      "mule": {
+        "accounts": 4,
+        "whole_account_freeze_inr": 243800.0,
+        "accounts_held": 4,
+        "wapsi_hold_inr": 238848.0
+      }
+    }
+  },
+  "per_typology": {
+    "T2_CHAIN_LAYERING": {
+      "cases": 1,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    },
+    "T7_MULTI_VICTIM": {
+      "cases": 1,
+      "hold_exact_match_rate": 1.0,
+      "disposition_accuracy": 1.0
+    }
+  },
+  "classification": {
+    "accounts": 7,
+    "truth": {
+      "INNOCENT_HOLDER": 1,
+      "MULE": 6
+    },
+    "predicted": {
+      "INNOCENT_HOLDER": 1,
+      "MULE": 6
+    },
+    "unknown_rate": 0.0,
+    "mule_auc": 1.0,
+    "best_single_feature_auc": 1.0,
+    "best_single_feature": "age_days",
+    "victim_on_trail_called_mule": 0
+  },
+  "llm": {
+    "model_id": "Gemma-4-31B-IT",
+    "backend": "openai-compatible",
+    "endpoint_host": "developer.amd.com.cn",
+    "requests": 8,
+    "api_calls": 2,
+    "ok": 2,
+    "cache_hits": 6,
+    "cache_hit_rate": 0.75,
+    "retries": 0,
+    "rate_limited_429": 0,
+    "unavailable_5xx": 0,
+    "unusable_answers": 0,
+    "errors": 0,
+    "quota_exhausted": false,
+    "rate_limit_wait_s": 0.0,
+    "backoff_wait_s": 0.0,
+    "limits": {
+      "rpm": 12,
+      "rpd": 0,
+      "used_today": 8,
+      "remaining_today": null,
+      "min_interval_s": 4.0
+    },
+    "reported_cost_usd": 0.000321,
+    "tokens": {
+      "prompt_tokens": 7603,
+      "output_tokens": 794,
+      "thinking_tokens": 0,
+      "total_tokens": 8397
+    },
+    "tokens_served_from_cache": {
+      "prompt_tokens": 31864,
+      "output_tokens": 942,
+      "thinking_tokens": 0,
+      "total_tokens": 32806
+    },
+    "cost_estimate_usd": {
+      "this_run": 0.000321,
+      "paid_tier_equivalent": null,
+      "saved_by_cache_paid_equivalent": 0.001096,
+      "price_per_1m_tokens": null,
+      "basis": "reported by the endpoint itself (usage.cost of each answer; on a free allowance this is usage counted against the daily cap, not a bill)"
+    }
+  },
+  "prose_by_model": {
+    "Gemma-4-31B-IT on AMD @ developer.amd.com.cn": 5
+  },
+  "ab_test": {
+    "question": "Does an unconstrained LLM write wrong rupee amounts, and does Wapsi's slot binding stop it?",
+    "llm_only": {
+      "cases": 2,
+      "summaries_with_wrong_amounts": 0,
+      "hallucination_rate": 0.0,
+      "answered_by": {
+        "Gemma-4-31B-IT": 2
+      }
+    },
+    "wapsi_bound": {
+      "drafts": 21,
+      "drafts_with_numeric_errors": 0,
+      "hallucination_rate": 0.0
+    },
+    "method": "LLM-only: the same model writes a case summary with amounts from the raw fact sheet; any amount that is not a case figure counts. Wapsi-bound: final drafts whose numeric verification failed (amounts come from data slots, the LLM writes words only)."
+  },
+  "failures": []
+}

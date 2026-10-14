@@ -68,7 +68,7 @@ def secret(name: str, prompt: str) -> None:
     print(f"{name}: {'set' if os.environ.get(name) else 'not set'}")
 
 
-secret("HF_TOKEN", "Hugging Face read token (Gemma 4 licence accepted); empty to skip: ")
+secret("HF_TOKEN", "Hugging Face read token (Gemma 4 is Apache-2.0 and not gated; a token avoids rate limits); empty to skip: ")
 # Only for endpoint mode (no GPU in this kernel):
 secret("WAPSI_LLM_API_KEY", "Endpoint API key (AMD Token Factory); empty to skip: ")
 """),

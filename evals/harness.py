@@ -260,6 +260,26 @@ def classification_summary(rows: list[tuple[Role, Role, float, dict]]) -> dict:
     }
 
 
+BASELINE_GROUPS = ("nodal_pool_escrow", "merchant", "innocent_holder", "mule", "other")
+
+
+def baseline_group(state, decision) -> str:
+    """Which group a home-bank account falls in for the freeze-vs-hold split: nodal / pool / escrow by account type
+    (SOP 9.1(iii)), else by the role the plan decided (merchants SOP 9.2, innocent holders SOP 5(xii), mules)."""
+    from wapsi.models import INTERMEDIARY_ACCOUNT_TYPES, AccountType
+
+    if state.account_type in INTERMEDIARY_ACCOUNT_TYPES:
+        return "nodal_pool_escrow"
+    role = legacy_role(decision.role) if decision is not None else None
+    if role == Role.MERCHANT or state.account_type == AccountType.MERCHANT:
+        return "merchant"
+    if role == Role.INNOCENT_HOLDER:
+        return "innocent_holder"
+    if role == Role.MULE:
+        return "mule"
+    return "other"
+
+
 def llm_only_hallucination(bundle, ledger, llm) -> tuple[int, int]:
     """Baseline: ask the LLM for a narrative with raw numbers (no slot discipline) and check them against slots."""
     from wapsi.draft.factsheet import build_factsheet, build_slots
@@ -326,6 +346,8 @@ def evaluate(
     base_freeze = wapsi_hold = 0.0
     base_accts = held_accts = 0
     halluc = halluc_n = 0
+    ab_models: Counter = Counter()  # which model answered each LLM-only summary (failover can change it)
+    by_group: dict[str, Counter] = {g: Counter() for g in BASELINE_GROUPS}
     cls_rows: list[tuple[Role, Role, float, dict]] = []
 
     for g in golden:
@@ -403,6 +425,18 @@ def evaluate(
         base_accts += plan.baseline_freeze_accounts
         wapsi_hold += plan.total_hold
         held_accts += sum(1 for d in plan.decisions if d.disposition in HOLDING_DISPOSITIONS and d.hold_amount > 0)
+        # ... split by account group: the freeze side is the plan's own baseline (every home-bank account that
+        # received victim money, at its balance now); the Wapsi side is each account's holding decision
+        for st in trace.accounts.values():
+            if not (st.is_home_bank and st.layer > 0 and st.tainted_received_total > 0):
+                continue
+            d = decisions.get(st.account_id)
+            grp = by_group[baseline_group(st, d)]
+            grp["accounts"] += 1
+            grp["freeze_paise"] += round(max(st.balance_now, 0.0) * 100)
+            if d is not None and d.disposition in HOLDING_DISPOSITIONS and d.hold_amount > 0:
+                grp["held_accounts"] += 1
+                grp["hold_paise"] += round(d.hold_amount * 100)
 
         # drafts & verification
         for d in bundle.drafts:
@@ -439,6 +473,8 @@ def evaluate(
                 h, n = llm_only_hallucination(bundle, ledger, baseline_llm)
                 halluc += h
                 halluc_n += n
+                ab_models[str(getattr(baseline_llm, "last_model", None) or getattr(baseline_llm, "model_id", None)
+                              or getattr(baseline_llm, "name", llm_kind))] += n
             except Exception as exc:  # baseline is best-effort
                 failures.append({"case_id": g.case_id, "check": "llm_baseline", "detail": str(exc)[:200]})
 
@@ -452,7 +488,8 @@ def evaluate(
         ab_test = {
             "question": "Does an unconstrained LLM write wrong rupee amounts, and does Wapsi's slot binding stop it?",
             "llm_only": {"cases": halluc_n, "summaries_with_wrong_amounts": halluc,
-                         "hallucination_rate": _ratio(halluc, halluc_n)},
+                         "hallucination_rate": _ratio(halluc, halluc_n),
+                         "answered_by": dict(sorted(ab_models.items()))},
             "wapsi_bound": {"drafts": counts["drafts"], "drafts_with_numeric_errors": wapsi_bound_errors,
                             "hallucination_rate": _ratio(wapsi_bound_errors, counts["drafts"])
                             if counts["drafts"] else 0.0},
@@ -493,7 +530,13 @@ def evaluate(
         "adversarial_cases": counts["adv"],
         "metrics": metrics,
         "baseline": {"whole_account_freeze_inr": round(base_freeze, 2), "wapsi_hold_inr": round(wapsi_hold, 2),
-                     "accounts_frozen_baseline": base_accts, "accounts_held": held_accts},
+                     "accounts_frozen_baseline": base_accts, "accounts_held": held_accts,
+                     # the same totals by group (nodal / pool / escrow by account type, else the plan's role)
+                     "by_group": {g: {"accounts": v["accounts"],
+                                      "whole_account_freeze_inr": round(v["freeze_paise"] / 100, 2),
+                                      "accounts_held": v["held_accounts"],
+                                      "wapsi_hold_inr": round(v["hold_paise"] / 100, 2)}
+                                  for g, v in by_group.items() if v["accounts"]}},
         "per_typology": {
             k: {"cases": v["cases"], "hold_exact_match_rate": _ratio(v["hold_ok"], v["hold_n"]),
                 "disposition_accuracy": _ratio(v["disp_ok"], v["disp_n"])}
@@ -535,6 +578,14 @@ def _pct(values: list[float], p: float) -> float:
     return s[k]
 
 
+GROUP_NAMES = {"nodal_pool_escrow": "Nodal / pool / escrow (SOP 9.1(iii))", "merchant": "Merchants (SOP 9.2)",
+               "innocent_holder": "Innocent holders (SOP 5(xii))", "mule": "Mules", "other": "Other"}
+
+
+def _counts(d: dict | None) -> str:
+    return ", ".join(f"{k} ({v})" for k, v in sorted((d or {}).items(), key=lambda kv: (-kv[1], kv[0]))) or "none"
+
+
 def to_markdown(rep: dict) -> str:
     mt = rep["metrics"]
     lines = [f"# Wapsi evaluation — {rep['world']}", "", f"Generated {rep['generated_at']} · {rep['cases']} cases "
@@ -546,8 +597,14 @@ def to_markdown(rep: dict) -> str:
     lines += ["", "## Whole-account freeze baseline vs Wapsi", "",
               f"- Whole-account freeze baseline (comparison only): {fmt_inr(b['whole_account_freeze_inr'])} across "
               f"{b['accounts_frozen_baseline']} accounts",
-              f"- Wapsi holds {fmt_inr(b['wapsi_hold_inr'])} across {b['accounts_held']} accounts", "",
-              "## Per typology", "", "| Typology | Cases | Hold exact | Disposition acc |", "|---|---|---|---|"]
+              f"- Wapsi holds {fmt_inr(b['wapsi_hold_inr'])} across {b['accounts_held']} accounts", ""]
+    if b.get("by_group"):
+        lines += ["| Group | Accounts | Whole-account freeze | Wapsi holds |", "|---|---|---|---|"]
+        for g, v in b["by_group"].items():
+            lines.append(f"| {GROUP_NAMES.get(g, g)} | {v['accounts']} | {fmt_inr(v['whole_account_freeze_inr'])} | "
+                         f"{fmt_inr(v['wapsi_hold_inr'])} in {v['accounts_held']} |")
+        lines.append("")
+    lines += ["## Per typology", "", "| Typology | Cases | Hold exact | Disposition acc |", "|---|---|---|---|"]
     for k, v in rep["per_typology"].items():
         lines.append(f"| {k} | {v['cases']} | {v['hold_exact_match_rate']} | {v['disposition_accuracy']} |")
     if rep.get("llm"):
@@ -570,12 +627,17 @@ def to_markdown(rep: dict) -> str:
                   f"(total {t['total_tokens']}); waited {x['rate_limit_wait_s']} s for the rate limit",
                   cost,
                   f"- Prose fallback rate {rep['metrics']['llm_prose_fallback_rate']}, draft verification pass rate "
-                  f"{rep['metrics']['draft_verification_pass_rate']}"]
+                  f"{rep['metrics']['draft_verification_pass_rate']}",
+                  f"- Prose by model (drafts whose prose a model wrote): {_counts(rep.get('prose_by_model'))}"]
+        if "answers_by_model" in x or x.get("failovers"):
+            lines.append(f"- Answers by model: {_counts(x.get('answers_by_model'))}; failovers {x.get('failovers', 0)}; "
+                         f"answers refused as not language: {_counts(x.get('rejected_by_model'))}")
     if rep.get("ab_test"):
         a = rep["ab_test"]
         lines += ["", "## A/B: raw LLM vs Wapsi-bound drafts", "",
                   "| Arm | Units | With wrong amounts | Hallucination rate |", "|---|---|---|---|",
-                  f"| LLM only (same model, raw fact sheet) | {a['llm_only']['cases']} summaries | "
+                  f"| LLM only (raw fact sheet; answered by {_counts(a['llm_only'].get('answered_by'))}) | "
+                  f"{a['llm_only']['cases']} summaries | "
                   f"{a['llm_only']['summaries_with_wrong_amounts']} | {a['llm_only']['hallucination_rate']} |",
                   f"| Wapsi (slots + verifier) | {a['wapsi_bound']['drafts']} drafts | "
                   f"{a['wapsi_bound']['drafts_with_numeric_errors']} | {a['wapsi_bound']['hallucination_rate']} |"]

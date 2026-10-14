@@ -25,3 +25,5 @@ evals/reports/*-2026*.md
 
 # benchmark answer caches (replays of live LLM calls; regenerate, never commit)
 editions/amd/bench/.cache/
+evals/reports/amd/*-2026????T??????Z.json
+evals/reports/amd/*-2026????T??????Z.md

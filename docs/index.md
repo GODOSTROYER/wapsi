@@ -140,7 +140,7 @@ All results come from synthetic data. [Evaluation](evaluation.md) explains the m
 | Audit log tamper drill | 6 of 6 tampering attempts on a 40-event hash-chained case log detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout (151 texts written without seeing the rules) | precision 0.9661, recall 0.75. The guard is a warning layer: template-bound drafts and the verifier are the real defence | `evals/reports/guard-latest.json` |
 | Speed (demo world, laptop, stub LLM) | p95 0.72 s per case, trace to verified drafts | `evals/reports/demo.json` |
-| Test suite | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | `uv run pytest -q` |
+| Test suite | 2,226 tests, 0 fail (full suite, 14-10-2026): all pass with the docs index and the demo world built; a fresh clone runs 2,215 and skips 11 that need them (10 docs-search tests and 1 BigQuery-ledger test) | `uv run pytest -q` |
 
 ## One core, and what runs on AMD
 
@@ -150,7 +150,7 @@ layer swaps in its own adapters for the ledger, the LLM, the guard and the case 
 
 | Layer | What it is | Status (2026-10-14) |
 |---|---|---|
-| AMD (the hackathon entry) | Gemma 4 on AMD GPUs writes the prose, reads complaints and voice-note transcripts and drives the agent; a GraphSAGE mule scorer runs on ROCm. Three modes: an AMD-hosted endpoint (default), a ROCm notebook, one MI300X with Docker Compose | The core and the prepared AMD layer are tagged `amd-baseline`; event-week work and AMD measurements are listed in [Originality](originality.md). See `editions/amd/` |
+| AMD (the hackathon entry) | Gemma 4 on AMD GPUs writes the prose, reads complaints and voice-note transcripts and drives the agent (run live on 14-10-2026); a GraphSAGE mule scorer is prepared for ROCm (not yet run on AMD). Three modes: an AMD-hosted endpoint (default), a ROCm notebook, one MI300X with Docker Compose | The core and the prepared AMD layer are tagged `amd-baseline`; event-week work and AMD measurements are listed in [Originality](originality.md). See `editions/amd/` |
 | The Google ADK agent | The officer's agent and its tool trace, with Gemma 4 on AMD as its model | Built and tested offline with a scripted model; Gemma 4 on AMD as its model is event-week work |
 | Optional managed-cloud adapters | BigQuery ledger, Firestore case store, Model Armor guard, deploy scripts. Not part of the entry | Built and unit-tested offline with fakes; not deployed. See `editions/gcp/README.md` |
 

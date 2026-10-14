@@ -109,11 +109,19 @@ def test_nothing_is_called_amd_without_a_statement_or_an_amd_host():
 def test_the_amd_app_names_what_really_serves_the_drafting_model(monkeypatch):
     """A draft written through the Token Factory is never labelled as this stack's vLLM-ROCm server."""
     from editions.amd.app.services import llm_name
+    from wapsi.adapters import llm_env
     from wapsi.adapters.llm_env import parse_served
 
     monkeypatch.delenv("WAPSI_LLM_PLATFORM", raising=False)
-    assert llm_name("http://llm:8000/v1", "wapsi-llm") == "vllm-rocm:wapsi-llm"  # the compose stack
+    # a server of one's own: "on AMD" only when confirmed, never guessed from a loopback or bare host name
+    monkeypatch.setattr(llm_env, "rocm_visible", lambda: False)
+    assert llm_name("http://127.0.0.1:8000/v1", "wapsi-llm") == "vllm:wapsi-llm"  # a laptop vLLM / Ollama
+    assert llm_name("http://llm:8000/v1", "wapsi-llm") == "vllm:wapsi-llm"
+    assert parse_served("vllm:wapsi-llm").platform is None and "AMD" not in parse_served("vllm:wapsi-llm").label
+    assert llm_name("http://llm:8000/v1", "wapsi-llm", {"WAPSI_LLM_PLATFORM": "AMD"}) == "vllm-rocm:wapsi-llm"
+    monkeypatch.setattr(llm_env, "rocm_visible", lambda: True)  # an AMD GPU notebook or droplet
     assert llm_name("http://127.0.0.1:8000/v1", "wapsi-llm") == "vllm-rocm:wapsi-llm"
+    monkeypatch.setattr(llm_env, "rocm_visible", lambda: False)
     name = llm_name(TF, "Gemma-4-31B-IT")
     assert name == "Gemma-4-31B-IT on AMD @ developer.amd.com.cn"
     assert parse_served(name).label == "Gemma 4 on AMD via developer.amd.com.cn"

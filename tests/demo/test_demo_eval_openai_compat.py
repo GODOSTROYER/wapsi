@@ -190,3 +190,20 @@ def test_harness_fails_over_along_the_model_list_and_counts_prose_per_model(monk
     assert rep["metrics"]["llm_prose_fallback_rate"] == 0.0 and rep["metrics"]["draft_verification_pass_rate"] == 1.0
     assert rep["llm"]["rejected_by_model"] == {"Gemma-4-31B-IT": 1}  # garbage once, then it rests
     assert "DeepSeek-V4-Flash" in rep["llm"]["answers_by_model"] and SENTINEL not in json.dumps(rep)
+    # the Markdown report says who wrote what, so a run a failover model wrote never reads as Gemma's
+    md = harness.to_markdown(rep)
+    assert f"Prose by model (drafts whose prose a model wrote): DeepSeek-V4-Flash on AMD @ {HOST}" in md
+    assert "Answers by model: DeepSeek-V4-Flash" in md and "failovers" in md
+    assert "answers refused as not language: Gemma-4-31B-IT (1)" in md
+    ab = rep["ab_test"]["llm_only"]["answered_by"] if rep.get("ab_test") else {}
+    assert "Gemma-4-31B-IT" not in ab  # the raw arm names the model that really answered it
+    if rep.get("ab_test"):
+        assert "LLM only (raw fact sheet; answered by DeepSeek-V4-Flash" in md
+    # the freeze baseline, split by account group, adds up to the total
+    groups = rep["baseline"]["by_group"]
+    assert set(groups) <= {"nodal_pool_escrow", "merchant", "innocent_holder", "mule", "other"}
+    assert round(sum(g["whole_account_freeze_inr"] for g in groups.values()), 2) == \
+        rep["baseline"]["whole_account_freeze_inr"]
+    assert round(sum(g["wapsi_hold_inr"] for g in groups.values()), 2) == rep["baseline"]["wapsi_hold_inr"]
+    assert sum(g["accounts"] for g in groups.values()) == rep["baseline"]["accounts_frozen_baseline"]
+    assert "| Nodal / pool / escrow (SOP 9.1(iii)) |" in md
