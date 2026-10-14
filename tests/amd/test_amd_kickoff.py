@@ -26,13 +26,15 @@ for _p in (ROOT, ROOT / "src"):
 from editions.amd.kickoff import collect_evidence, fill_pitch, stagelog  # noqa: E402
 
 KICK = ROOT / "editions" / "amd" / "kickoff"
+STAGES = ["env", "models", "gnn", "lora-data", "lora-train", "merge", "lora-eval", "serve", "eval", "bench", "ab",
+          "evidence"]
 SECRET = "hf_TESTONLY_never_print_this_0123456789"
 API_SECRET = "vllm-TESTONLY-key-abcdef"
 
 
 def _bash_env(**extra: str) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith(("WAPSI_", "VLLM_", "HF_", "AMLWORLD", "ROCM_PYTORCH", "SCRATCH"))}
+           if not k.startswith(("WAPSI_", "VLLM_", "HF_", "AMLWORLD", "ROCM_PYTORCH", "SCRATCH", "RADEON_"))}
     env.update({"HF_TOKEN": SECRET, "VLLM_API_KEY": API_SECRET, "NO_COLOR": "1"})
     env.update(extra)
     return env
@@ -83,27 +85,28 @@ def test_list_and_argument_errors(bash):
     res = _run(bash, "--list")
     assert res.returncode == 0
     names = [line.split()[1] for line in res.stdout.splitlines() if line.strip()]
-    assert names == ["env", "models", "gnn", "lora-data", "lora-train", "merge", "lora-eval", "serve", "bench", "ab",
-                     "evidence"]
+    assert names == STAGES
     assert _run(bash, "--dry-run", "--stage", "nope").returncode == 2
     assert _run(bash, "--dry-run", "--stage", "bench", "--from", "serve").returncode == 2
     assert _run(bash, "--dry-run", "--date", "12-10-2026").returncode == 2
+    assert _run(bash, "--dry-run", "--mode", "cluster").returncode == 2
     # GPU evidence must stay inside the repository (the training containers write it through /work)
-    assert _run(bash, "--dry-run", "--evidence-root", "/tmp/elsewhere").returncode == 2
+    assert _run(bash, "--dry-run", "--mode", "droplet", "--evidence-root", "/tmp/elsewhere").returncode == 2
 
 
 def test_gpu_dry_run_plan_is_deterministic_and_complete(bash):
-    a = _run(bash, "--dry-run", "--force", "--date", "2026-10-12")
-    b = _run(bash, "--dry-run", "--force", "--date", "2026-10-12")
+    a = _run(bash, "--mode", "droplet", "--dry-run", "--force", "--date", "2026-10-12")
+    b = _run(bash, "--mode", "gpu", "--dry-run", "--force", "--date", "2026-10-12")  # gpu: the droplet's old name
     assert a.returncode == 0, a.stderr
     assert a.stdout == b.stdout  # same inputs, same plan
     out = a.stdout
     headers = [line for line in out.splitlines() if line.startswith("== [")]
-    assert [h.split("] ")[1].split(":")[0] for h in headers] == [
-        "env", "models", "gnn", "lora-data", "lora-train", "merge", "lora-eval", "serve", "bench", "ab", "evidence"]
+    assert [h.split("] ")[1].split(":")[0] for h in headers] == STAGES
     for needle in (
         "editions/amd/evidence/2026-10-12",
-        "preflight.sh --json",
+        "preflight.sh --mode droplet --json",
+        "model_plan.py --mode droplet --detect-vram",
+        "editions.amd.kickoff.golden_eval --llm-url http://127.0.0.1:8000/v1",
         "stagelog.py static",
         "pull_and_pin.sh",
         "uv sync --frozen --no-dev --extra docs",
@@ -123,7 +126,7 @@ def test_gpu_dry_run_plan_is_deterministic_and_complete(bash):
         "--concurrency 1 4 16 64",
         "--name e2e_c16",
         "editions.amd.kickoff.ab_hallucination --llm-url",
-        "collect_evidence.py --evidence-dir editions/amd/evidence/2026-10-12 --mode gpu",
+        "collect_evidence.py --evidence-dir editions/amd/evidence/2026-10-12 --mode droplet",
         "fill_pitch.py --evidence",
         "warn 75%, stop 90%",
         "(dry run: nothing was executed)",
@@ -148,36 +151,39 @@ def test_rehearsal_dry_run_is_deterministic_and_gpu_free(bash):
         assert forbidden not in commands, forbidden
     for needle in ("editions.amd.kickoff.rehearsal worlds", "--config tiny-cpu", "editions.amd.lora.mock_endpoint",
                    "editions.amd.gnn.service", "--mode rehearsal", "train_image_check --device cpu",
-                   "fill_pitch.py must refuse rehearsal evidence"):
+                   "editions.amd.kickoff.golden_eval --fake", "fill_pitch.py must refuse rehearsal evidence"):
         assert needle in out, needle
 
 
 def test_only_and_from_select_stages(bash):
-    out = _run(bash, "--dry-run", "--force", "--date", "2026-10-12", "--stage", "bench,ab").stdout
+    out = _run(bash, "--mode", "droplet", "--dry-run", "--force", "--date", "2026-10-12", "--stage", "bench,ab").stdout
     assert [line.split("] ")[1].split(":")[0] for line in out.splitlines() if line.startswith("== [")] == ["bench", "ab"]
-    out = _run(bash, "--dry-run", "--force", "--date", "2026-10-12", "--from", "serve").stdout
+    out = _run(bash, "--mode", "droplet", "--dry-run", "--force", "--date", "2026-10-12", "--from", "serve").stdout
     assert [line.split("] ")[1].split(":")[0] for line in out.splitlines() if line.startswith("== [")] == [
-        "serve", "bench", "ab", "evidence"]
+        "serve", "eval", "bench", "ab", "evidence"]
 
 
 @pytest.mark.parametrize("now,needle", [("2026-10-07T12:00:00Z", "before kickoff"),
                                         ("2026-10-19T09:00:00Z", "event window has closed")])
-def test_gpu_run_refused_outside_the_event_window(bash, now, needle):
-    res = _run(bash, "--date", "2099-01-01", env=_bash_env(WAPSI_NOW=now))
+@pytest.mark.parametrize("mode", ["droplet", "notebook", "endpoint"])
+def test_gpu_run_refused_outside_the_event_window(bash, now, needle, mode):
+    res = _run(bash, "--mode", mode, "--date", "2099-01-01", env=_bash_env(WAPSI_NOW=now))
     assert res.returncode == 2
     assert needle in res.stderr
-    assert not (ROOT / "editions" / "amd" / "evidence" / "2099-01-01").exists()  # refused before writing anything
+    for sub in ("", "notebook", "endpoint"):  # refused before writing anything
+        assert not (ROOT / "editions" / "amd" / "evidence" / sub / "2099-01-01").exists()
 
 
 def test_preflight_table_never_prints_the_token(bash, tmp_path):
     env = _bash_env()
     env["SCRATCH"] = (tmp_path / "no-such-mount").as_posix()  # a missing SCRATCH is FAIL, never the root disk
-    res = _bash(bash, str(KICK / "preflight.sh"), "--offline", "--json", (tmp_path / "pf.json").as_posix(), env=env)
+    res = _bash(bash, str(KICK / "preflight.sh"), "--mode", "droplet", "--offline", "--json",
+                (tmp_path / "pf.json").as_posix(), env=env)
     assert "CHECK" in res.stdout and "HF_TOKEN" in res.stdout
     assert SECRET not in res.stdout and SECRET not in res.stderr
     assert "set in this shell (value not shown)" in res.stdout
     data = json.loads((tmp_path / "pf.json").read_text(encoding="utf-8"))
-    assert data["mode"] == "gpu" and any(c["check"] == "HF_TOKEN" and c["status"] == "PASS" for c in data["checks"])
+    assert data["mode"] == "droplet" and any(c["check"] == "HF_TOKEN" and c["status"] == "PASS" for c in data["checks"])
     disk = next(c for c in data["checks"] if c["check"].startswith("disk (SCRATCH="))
     assert disk["status"] == "FAIL" and "does not exist" in disk["detail"], disk
     assert any(c["check"] == "docs corpus" for c in data["checks"])
@@ -342,7 +348,9 @@ def test_collect_evidence_on_fixture(tmp_path, capsys):
     assert collect_evidence.main(["--evidence-dir", str(evid), "--mode", "gpu", "--quiet"]) == 0
     ev = json.loads((evid / "evidence.json").read_text(encoding="utf-8"))
     h = ev["headline"]
-    assert ev["mode"] == "gpu" and ev["gpu_results_valid"] is True and ev["invalid_reasons"] == []
+    assert ev["mode"] == "droplet" and ev["gpu_results_valid"] is True and ev["invalid_reasons"] == []
+    assert ev["results_valid"] is True and ev["compute"]["short"] == "MI300X"
+    assert ev["compute"]["kind"] == "amd-developer-cloud-droplet"
     assert h["measured_date"] == "2026-10-12" and h["gpu_name"] == "AMD Instinct MI300X"
     assert (h["llm_tok_s_c1"], h["llm_tok_s_c64"], h["llm_peak_tok_s"]) == (50.0, 1500.4, 1500.4)
     assert h["llm_ttft_p95_s_c16"] == 3.2 and h["llm_e2e_p95_s_c16"] == 24.0
@@ -421,9 +429,18 @@ def test_every_slot_anchor_is_in_the_real_pitch_and_still_honest():
         assert sources
         for src in sources:  # every bundle a row re-reads (rows from several later-week runs are merged)
             ev = json.loads((ROOT / src).read_text(encoding="utf-8"))
-            assert ev["mode"] == "gpu" and ev["gpu_results_valid"] is True and not ev.get("synthetic_fixture"), src
+            assert ev["mode"] in ("droplet", "notebook", "endpoint", "gpu"), src
+            assert ev.get("results_valid", ev.get("gpu_results_valid")) is True and not ev.get("synthetic_fixture"), src
     else:
         assert fill_pitch.END not in numbers
+    # endpoint-run slots have no anchor text: the author places a marker, at most once per file
+    pages = {p.relative_to(ROOT / "pitch").as_posix(): p.read_text(encoding="utf-8")
+             for p in (ROOT / "pitch").rglob("*.md") if p.name != "NUMBERS.md"}
+    assert {s.sid for s in fill_pitch.EP_SLOTS}.isdisjoint({s.sid for s in fill_pitch.SLOTS})
+    for slot in fill_pitch.EP_SLOTS:
+        assert slot.marker_only and slot.modes == ("endpoint",), slot.sid
+        for rel, text in pages.items():
+            assert len(fill_pitch._marker(slot.sid).findall(text)) <= 1, (slot.sid, rel)
 
 
 def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
@@ -529,7 +546,9 @@ def test_committed_evidence_never_predates_the_event():
     for f in tracked:
         if f.endswith("/evidence.json"):
             ev = json.loads((ROOT / f).read_text(encoding="utf-8"))
-            assert ev["mode"] == "gpu" and ev["gpu_results_valid"] is True, f
+            assert ev["mode"] in ("droplet", "notebook", "endpoint", "gpu"), f
+            assert ev.get("results_valid", ev.get("gpu_results_valid")) is True, f
+            assert ev["gpu_results_valid"] is (ev["mode"] != "endpoint"), f  # an endpoint run has no GPU of its own
             assert ev["date"] >= "2026-10-12", f
 
 
@@ -603,7 +622,8 @@ def _source(bash: str, snippet: str, *flags: str) -> subprocess.CompletedProcess
 def test_measure_records_failures_in_gpu_mode_and_stays_strict_in_the_rehearsal(bash, tmp_path):
     notes = (tmp_path / "bench.notes").as_posix()
     gpu = _source(bash, f'NOTES="{notes}"; measure llm_bench false; measure llm_bench_verifier true; '
-                        f'measure e2e_c16 sh -c "exit 3"; echo "stage goes on: $?"', "--date", "2026-10-12")
+                        f'measure e2e_c16 sh -c "exit 3"; echo "stage goes on: $?"', "--mode", "droplet", "--date",
+                  "2026-10-12")
     assert gpu.returncode == 0, gpu.stdout + gpu.stderr
     assert "stage goes on: 0" in gpu.stdout and "measurement llm_bench exited 1" in gpu.stdout
     assert stagelog.read_notes(Path(notes)) == {"measure_failures": "2", "measure_failed": "llm_bench,e2e_c16"}
@@ -612,22 +632,22 @@ def test_measure_records_failures_in_gpu_mode_and_stays_strict_in_the_rehearsal(
 
 
 def test_bench_and_ab_measure_every_request_and_free_the_eval_port(bash):
-    plan = _run(bash, "--dry-run", "--force", "--date", "2026-10-12", "--from", "lora-eval").stdout
+    plan = _run(bash, "--mode", "droplet", "--dry-run", "--force", "--date", "2026-10-12", "--from", "lora-eval").stdout
     serve = plan.split("] serve:")[1].split("== [")[0]
     assert [line for line in serve.splitlines() if line.startswith("  $")][0].endswith(
         "docker rm -f wapsi-eval-base wapsi-eval-tuned")  # a failed lora-eval may still hold port 8000
     assert "amd_smi_metric_raw.json' || true" in plan
     text = (KICK / "run_all.sh").read_text(encoding="utf-8")
     for name in ("llm_bench_base", "llm_bench", "llm_bench_wapsi_prompts", "llm_bench_verifier", '"e2e_c${c}"',
-                 "ab_hallucination"):
+                 "ab_hallucination", "golden_eval"):
         assert f"measure {name} py -m" in text, name
-    cleanup = _source(bash, "DRY_RUN=1; gpu_lora_eval_on_failure", "--date", "2026-10-12")
+    cleanup = _source(bash, "DRY_RUN=1; gpu_lora_eval_on_failure", "--mode", "droplet", "--date", "2026-10-12")
     assert "docker rm -f wapsi-eval-base wapsi-eval-tuned" in cleanup.stdout
     assert '"${fn}_on_failure"' in text  # the runner calls a stage's cleanup after it fails
 
 
 def test_later_week_run_captures_gpu_identity_and_commit(bash):
-    out = _run(bash, "--dry-run", "--date", "2026-10-14", "--stage", "bench,ab,evidence").stdout
+    out = _run(bash, "--mode", "droplet", "--dry-run", "--date", "2026-10-14", "--stage", "bench,ab,evidence").stdout
     evidence = out.split("] evidence:")[1]
     assert "stagelog.py static editions/amd/evidence/2026-10-14/amd_smi_static.json" in evidence
     assert "# note git_commit=" in evidence and "# note amd_baseline=" in evidence
@@ -856,24 +876,26 @@ def test_cpu_rehearsal_smoke(bash, tmp_path):
     """run_all.sh --rehearsal end to end on the fast stages: records, markers, labels, the fill_pitch refusal."""
     evid_root, work = (tmp_path / "evidence").as_posix(), (tmp_path / "work").as_posix()
     full = os.environ.get("WAPSI_FULL_REHEARSAL") == "1"  # opt in: every stage (GNN + LoRA on CPU, minutes)
-    stages = [] if full else ["--stage", "models,ab,evidence"]
+    stages = [] if full else ["--stage", "models,eval,ab,evidence"]
     res = _run(bash, "--rehearsal", "--skip-preflight", "--date", "2026-10-07", "--evidence-root", evid_root,
                "--work", work, *stages, timeout=3600 if full else 900)
     assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-2000:]
     evid = tmp_path / "evidence" / "cpu-rehearsal" / "2026-10-07"
     recs = {json.loads(p.read_text(encoding="utf-8"))["stage"]: json.loads(p.read_text(encoding="utf-8"))
             for p in (evid / "stages").glob("*.json")}
-    assert {"models", "ab", "evidence"} <= set(recs)
+    assert {"models", "eval", "ab", "evidence"} <= set(recs)
     for rec in recs.values():
         assert rec["status"] == "ok" and rec["mode"] == "rehearsal" and "not a GPU result" in rec["label"]
         assert rec["budget"]["billed"] is False
-    assert (evid / "stages" / "10-ab.ok").exists() and (evid / "logs" / "10-ab.log").exists()
-    snap = json.loads((evid / "amd_smi" / "10-ab-before.json").read_text(encoding="utf-8"))
+    assert (evid / "stages" / "11-ab.ok").exists() and (evid / "logs" / "11-ab.log").exists()
+    snap = json.loads((evid / "amd_smi" / "11-ab-before.json").read_text(encoding="utf-8"))
     if not shutil.which("amd-smi"):
         assert snap["available"] is False
     ev = json.loads((evid / "evidence.json").read_text(encoding="utf-8"))
     assert ev["mode"] == "cpu-rehearsal" and ev["gpu_results_valid"] is False and "CPU REHEARSAL" in ev["label"]
     assert ev["headline"]["ab_bound_docs_with_wrong_amount"] == 0 and ev["headline"]["ab_raw_docs_with_wrong_amount"] > 0
+    assert ev["headline"]["golden_cases"] == 2 and ev["results"]["golden"]["stub"] is True  # the eval stage ran
+    assert ev["results_valid"] is False and ev["compute"]["kind"] == "cpu-rehearsal"
     assert "ok: fill_pitch.py refused the rehearsal evidence" in res.stdout
     assert (evid / "evidence.md").read_text(encoding="utf-8").startswith("# Wapsi AMD evidence: CPU rehearsal")
     assert not (tmp_path / "evidence" / "cpu-rehearsal" / ".active").exists()  # finished run clears the pointer
@@ -881,5 +903,5 @@ def test_cpu_rehearsal_smoke(bash, tmp_path):
     again = _run(bash, "--rehearsal", "--dry-run", "--date", "2026-10-07", "--evidence-root", evid_root,
                  "--work", work)
     assert again.returncode == 0
-    for name in ("models", "ab", "evidence"):
+    for name in ("models", "eval", "ab", "evidence"):
         assert f"{name}: done earlier" in again.stdout

@@ -1,42 +1,91 @@
 #!/usr/bin/env bash
-# Wapsi AMD ACT III preflight: is this droplet ready for run_all.sh? Prints a green/amber/red table.
+# Wapsi AMD ACT III preflight: which way can this machine run the pipeline, and is it ready for run_all.sh?
+# Prints a green/amber/red table.
 #
-#   editions/amd/kickoff/preflight.sh                       # on the MI300X droplet (exit 1 if any check FAILs)
+#   editions/amd/kickoff/preflight.sh                       # detect the mode, then check it (exit 1 if any check FAILs)
+#   editions/amd/kickoff/preflight.sh --detect              # only print the mode: droplet | notebook | endpoint
+#   editions/amd/kickoff/preflight.sh --mode endpoint       # no GPU box: WAPSI_LLM_BASE_URL / _API_KEY / _MODEL (Token Factory, any vLLM)
+#   editions/amd/kickoff/preflight.sh --mode notebook       # an AMD ROCm JupyterLab without Docker (plain python, ROCm torch)
+#   editions/amd/kickoff/preflight.sh --mode droplet        # the MI300X droplet with docker compose
 #   editions/amd/kickoff/preflight.sh --rehearsal           # laptop: checks the CPU rehearsal prerequisites
-#   editions/amd/kickoff/preflight.sh --offline             # skip the network checks (Hugging Face reachability, model access)
-#   editions/amd/kickoff/preflight.sh --json OUT.json       # also write the results as JSON (run_all.sh: evidence/<date>/preflight.json)
+#   editions/amd/kickoff/preflight.sh --offline             # skip the network checks (endpoint, Hugging Face, model access)
+#   editions/amd/kickoff/preflight.sh --json OUT.json       # also write the results as JSON (run_all.sh: evidence/.../preflight.json)
 #
-# Checks: amd-smi / rocm-smi and the GPU name, ROCm version, GPU memory (total, already in use), docker daemon and
-# compose >= 2.20.2, SCRATCH exists (a missing path is FAIL, never the root disk's free space) with free disk there
-# and on the docker volume, HF_TOKEN present (the value is never printed or put on a command line), network to
-# huggingface.co, access to each gated model, uv + python3 >= 3.11, the amd-baseline tag, the event window, pinned
-# image digests, optional inputs (docs corpus, AMLworld CSV, the day's INR rate, droplet start).
+# Detection (stagelog.py detect-mode; WAPSI_MODE overrides): an AMD GPU (amd-smi / rocm-smi answers, or a ROCm build
+# of torch sees a device) with a reachable Docker daemon is the droplet; a GPU without Docker is a notebook; no GPU
+# with WAPSI_LLM_BASE_URL set is endpoint mode. Nothing of the three: exit 1 (use --rehearsal on a laptop).
+# Checks, droplet: amd-smi / rocm-smi and the GPU name, ROCm version, GPU memory (total, already in use), docker
+#   daemon and compose >= 2.20.2, SCRATCH exists (a missing path is FAIL, never the root disk's free space) with free
+#   disk there and on the docker volume, HF_TOKEN present (the value is never printed or put on a command line),
+#   network to huggingface.co, access to each gated model, pinned image digests.
+# Checks, notebook: the notebook's python (WAPSI_PYTHON, default python3) and its torch: ROCm (HIP) build, GPU name
+#   and memory; amd-smi / rocm-smi (optional: the GPU name then comes from torch); vLLM importable (else the
+#   transformers server is used); the training libraries; SCRATCH (created if missing); HF_TOKEN and model access.
+# Checks, endpoint: WAPSI_LLM_BASE_URL and the key (value never shown), GET /models answers and serves the model,
+#   JSON mode, GET /usage limits and today's remaining cost (endpoint.py check: two GETs, no completion).
+# Every mode: uv / python3 >= 3.11, the amd-baseline tag, the event window, optional inputs.
 # Every check below tolerates its own failure (|| true, if), so a red row never aborts the table.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AMD_DIR="$(dirname "${HERE}")"
 ROOT="$(cd "${AMD_DIR}/../.." && pwd)"
-MODE="gpu"
+MODE="${WAPSI_MODE:-auto}"
+DETECT_ONLY=0
 OFFLINE=0
 JSON_OUT=""
 ALLOW_NO_BASELINE=0  # run_all.sh --no-baseline-check: a missing amd-baseline tag is WARN, not FAIL
 ALLOW_AFTER=0        # run_all.sh --allow-after-window: after the event window is WARN, not FAIL
+NEXT=""
 
 for arg in "$@"; do
+  if [[ -n "${NEXT}" ]]; then
+    case "${NEXT}" in json) JSON_OUT="${arg}" ;; mode) MODE="${arg}" ;; esac
+    NEXT=""; continue
+  fi
   case "${arg}" in
     --rehearsal) MODE="rehearsal" ;;
+    --detect) DETECT_ONLY=1 ;;
     --offline) OFFLINE=1 ;;
     --allow-no-baseline) ALLOW_NO_BASELINE=1 ;;
     --allow-after-window) ALLOW_AFTER=1 ;;
     --json=*) JSON_OUT="${arg#--json=}" ;;
-    --json) JSON_OUT="__next__" ;;
-    -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *)
-      if [[ "${JSON_OUT}" == "__next__" ]]; then JSON_OUT="${arg}"; else echo "unexpected argument: ${arg}" >&2; exit 64; fi ;;
+    --json) NEXT="json" ;;
+    --mode=*) MODE="${arg#--mode=}" ;;
+    --mode) NEXT="mode" ;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unexpected argument: ${arg}" >&2; exit 64 ;;
   esac
 done
-[[ "${JSON_OUT}" == "__next__" ]] && { echo "--json needs a path" >&2; exit 64; }
+[[ -z "${NEXT}" ]] || { echo "--${NEXT} needs a value" >&2; exit 64; }
+[[ "${MODE}" == "gpu" ]] && MODE="droplet"  # the droplet's old name
+case "${MODE}" in auto|droplet|notebook|endpoint|rehearsal) ;; *) echo "unknown mode '${MODE}' (droplet | notebook | endpoint | rehearsal)" >&2; exit 64 ;; esac
+
+have() { command -v "$1" >/dev/null 2>&1; }
+pick_python() {  # an interpreter >= 3.11 for the standard-library helpers; the notebook's own python first there
+  local c
+  for c in ${WAPSI_PYTHON:+"${WAPSI_PYTHON}"} "${ROOT}/.venv/bin/python" "${ROOT}/.venv/Scripts/python.exe" python3 python; do
+    if { [[ -x "${c}" ]] || have "${c}"; } && "${c}" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
+      printf '%s' "${c}"; return 0
+    fi
+  done
+  return 1
+}
+PY="$(pick_python || true)"
+
+DETECT_WHY=""
+if [[ "${MODE}" == "auto" ]]; then
+  if [[ -z "${PY}" ]]; then echo "no python3 >= 3.11 on PATH: cannot detect the mode" >&2; exit 1; fi
+  DETECTED="$("${PY}" "${HERE}/stagelog.py" detect-mode --why 2>/dev/null || true)"; DETECTED="${DETECTED%%$'\r'}"
+  MODE="${DETECTED%%$'\t'*}"; DETECT_WHY="${DETECTED#*$'\t'}"
+  if [[ "${MODE}" == "none" || -z "${MODE}" ]]; then
+    echo "preflight: nothing to run on (${DETECT_WHY})." >&2
+    echo "  endpoint mode: export WAPSI_LLM_BASE_URL=https://developer.amd.com.cn/radeon/api/v1 and the key, then re-run" >&2
+    echo "  laptop plumbing check: $0 --rehearsal" >&2
+    exit 1
+  fi
+fi
+if [[ "${DETECT_ONLY}" == "1" ]]; then echo "${MODE}"; exit 0; fi
 
 # defaults the run uses (editions/amd/.env and the shell may override; the shell wins, as in docker compose)
 ENV_FILE="${AMD_DIR}/.env"
@@ -48,7 +97,7 @@ env_get() {  # env_get NAME: value from the shell, else from editions/amd/.env (
   line="${line#*=}"; line="${line%\"}"; line="${line#\"}"; line="${line%\'}"; line="${line#\'}"
   printf '%s' "${line}"
 }
-SCRATCH="${SCRATCH:-/mnt/scratch}"
+if [[ "${MODE}" == "notebook" ]]; then SCRATCH="${SCRATCH:-${HOME}/wapsi-scratch}"; else SCRATCH="${SCRATCH:-/mnt/scratch}"; fi
 BASE_MODEL="$(env_get WAPSI_BASE_MODEL)"; BASE_MODEL="${BASE_MODEL:-google/gemma-4-31B-it}"
 VERIFIER_MODEL="$(env_get WAPSI_VERIFIER_MODEL_ID)"; VERIFIER_MODEL="${VERIFIER_MODEL:-google/gemma-4-E4B-it}"
 AMLWORLD_CSV="${AMLWORLD_CSV:-${SCRATCH}/amlworld/HI-Small_Trans.csv}"
@@ -68,18 +117,6 @@ add() {  # add CHECK STATUS DETAIL
   [[ "${status}" == "WARN" ]] && WARNS=$((WARNS + 1))
   return 0
 }
-have() { command -v "$1" >/dev/null 2>&1; }
-
-pick_python() {  # an interpreter >= 3.11 for the standard-library helpers
-  local c
-  for c in "${ROOT}/.venv/bin/python" "${ROOT}/.venv/Scripts/python.exe" python3 python; do
-    if { [[ -x "${c}" ]] || have "${c}"; } && "${c}" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
-      printf '%s' "${c}"; return 0
-    fi
-  done
-  return 1
-}
-PY="$(pick_python || true)"
 
 version_ge() {  # version_ge A B: A >= B (dotted numbers)
   [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" == "$2" ]]
@@ -89,57 +126,89 @@ check_python() {
   if [[ -n "${PY}" ]]; then add "python >= 3.11" PASS "$("${PY}" -c 'import sys; print(sys.version.split()[0])') (${PY})"
   else add "python >= 3.11" FAIL "no python3 >= 3.11 on PATH"; fi
   if have uv; then add "uv" PASS "$(uv --version 2>/dev/null)"
+  elif [[ "${MODE}" == "notebook" ]]; then add "uv" WARN "missing: the env stage installs it with pip (python3 -m pip install uv)"
   else add "uv" FAIL "missing: curl -LsSf https://astral.sh/uv/install.sh | sh"; fi
 }
 
 check_repo() {
   if git -C "${ROOT}" rev-parse -q --verify refs/tags/amd-baseline >/dev/null 2>&1; then
     add "amd-baseline tag" PASS "$(git -C "${ROOT}" rev-parse --short amd-baseline^{commit})"
-  elif [[ "${MODE}" == "gpu" && "${ALLOW_NO_BASELINE}" == "1" ]]; then
+  elif [[ "${MODE}" != "rehearsal" && "${ALLOW_NO_BASELINE}" == "1" ]]; then
     add "amd-baseline tag" WARN "missing (--no-baseline-check): results are not event-eligible"
-  elif [[ "${MODE}" == "gpu" ]]; then
-    add "amd-baseline tag" FAIL "create it at kickoff before any GPU run (RUNBOOK.md step 1)"
+  elif [[ "${MODE}" != "rehearsal" ]]; then
+    add "amd-baseline tag" FAIL "missing in this clone: git fetch --tags (it marks the repository at kickoff)"
   else
-    add "amd-baseline tag" SKIP "created at kickoff (2026-10-12 15:00 UTC), not before"
+    add "amd-baseline tag" SKIP "marks the repository at kickoff (2026-10-12 15:00 UTC)"
   fi
   if [[ -n "${PY}" ]]; then
     local w rc=0; w="$("${PY}" "${HERE}/stagelog.py" window 2>/dev/null)" || rc=$?
+    w="${w%%$'\r'}"
     if [[ "${MODE}" == "rehearsal" ]]; then add "event window" SKIP "CPU rehearsal: no GPU numbers (${w##*: })"
     elif [[ ${rc} -eq 0 ]]; then add "event window" PASS "${w##*: }"
     elif [[ ${rc} -eq 4 && "${ALLOW_AFTER}" == "1" ]]; then add "event window" WARN "${w##*: } (--allow-after-window: not event results)"
-    else add "event window" FAIL "${w##*: } (GPU runs and GPU numbers only 2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC)"; fi
+    else add "event window" FAIL "${w##*: } (runs and reported numbers only 2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC)"; fi
   fi
 }
 
-check_gpu() {
-  if [[ "${MODE}" == "rehearsal" ]]; then
-    add "amd-smi / rocm-smi" SKIP "CPU rehearsal"; add "ROCm version" SKIP "CPU rehearsal"
-    add "GPU memory" SKIP "CPU rehearsal"; return
-  fi
-  if have amd-smi; then add "amd-smi" PASS "$(command -v amd-smi)"
-  elif have rocm-smi; then add "amd-smi" WARN "missing; rocm-smi present (telemetry falls back to it)"
-  else add "amd-smi / rocm-smi" FAIL "neither found: is this the MI300X droplet with a ROCm image?"; fi
-  local rocm=""
-  [[ -r /opt/rocm/.info/version ]] && rocm="$(head -n 1 /opt/rocm/.info/version)"
-  if [[ -n "${rocm}" ]]; then add "ROCm version" PASS "${rocm}"
-  else add "ROCm version" WARN "/opt/rocm/.info/version not found (containers bring their own ROCm user space)"; fi
-  local mem=""; [[ -n "${PY}" ]] && mem="$("${PY}" "${HERE}/stagelog.py" gpu-mem 2>/dev/null || true)"
-  if [[ -z "${mem}" ]]; then add "GPU memory" FAIL "no GPU visible to amd-smi / rocm-smi"; return; fi
-  local gpu name total used
+gpu_rows() {  # one row set per GPU from `stagelog.py gpu-mem`; expect: MI300X on the droplet, any AMD GPU in a notebook
+  local mem="$1" gpu name total used
   while read -r gpu name total used; do
-    if [[ "${name}" != *MI300* ]]; then add "GPU ${gpu}" WARN "${name//_/ } (expected an AMD Instinct MI300X)"
-    else add "GPU ${gpu}" PASS "${name//_/ }"; fi
+    if [[ "${name}" == *MI300* ]]; then add "GPU ${gpu}" PASS "${name//_/ }"
+    elif [[ "${MODE}" == "notebook" ]]; then add "GPU ${gpu}" PASS "${name//_/ } (results are reported under this name, never as an MI300X)"
+    else add "GPU ${gpu}" WARN "${name//_/ } (expected an AMD Instinct MI300X)"; fi
     if [[ "${total}" =~ ^[0-9]+$ ]] && (( total >= 180000 )); then add "GPU ${gpu} VRAM" PASS "$(( total / 1024 )) GB total"
+    elif [[ "${MODE}" == "notebook" && "${total}" =~ ^[0-9]+$ ]]; then add "GPU ${gpu} VRAM" PASS "$(( total / 1024 )) GB total (the model plan picks the Gemma 4 size that fits)"
     else add "GPU ${gpu} VRAM" WARN "${total} MB total (MI300X has 192 GB)"; fi
     if [[ "${used}" =~ ^[0-9]+$ && "${total}" =~ ^[0-9]+$ ]] && (( used * 100 < total * 5 )); then
       add "GPU ${gpu} free" PASS "$(( used / 1024 )) GB in use"
-    else add "GPU ${gpu} free" WARN "${used} MB already in use: stop pre-installed containers (docker ps; docker stop <name>)"; fi
+    else add "GPU ${gpu} free" WARN "${used} MB already in use: stop what holds it (other kernels, pre-installed containers)"; fi
   done <<< "${mem}"
 }
 
+check_gpu() {
+  case "${MODE}" in
+    rehearsal)
+      add "amd-smi / rocm-smi" SKIP "CPU rehearsal"; add "ROCm version" SKIP "CPU rehearsal"
+      add "GPU memory" SKIP "CPU rehearsal"; return ;;
+    endpoint)
+      add "GPU" SKIP "endpoint mode: the GPU is the provider's (the evidence records the endpoint host and model id)"
+      return ;;
+  esac
+  local tool=1
+  if have amd-smi; then add "amd-smi" PASS "$(command -v amd-smi)"
+  elif have rocm-smi; then add "amd-smi" WARN "missing; rocm-smi present (telemetry falls back to it)"
+  elif [[ "${MODE}" == "notebook" ]]; then tool=0; add "amd-smi / rocm-smi" WARN "neither found: the GPU name comes from torch, and there is no VRAM telemetry"
+  else tool=0; add "amd-smi / rocm-smi" FAIL "neither found: is this the MI300X droplet with a ROCm image?"; fi
+  local rocm=""
+  [[ -r /opt/rocm/.info/version ]] && rocm="$(head -n 1 /opt/rocm/.info/version)"
+  if [[ -n "${rocm}" ]]; then add "ROCm version" PASS "${rocm}"
+  else add "ROCm version" WARN "/opt/rocm/.info/version not found (containers and wheels bring their own ROCm user space)"; fi
+  local mem=""; [[ -n "${PY}" && "${tool}" == "1" ]] && mem="$("${PY}" "${HERE}/stagelog.py" gpu-mem 2>/dev/null || true)"
+  if [[ -n "${mem}" ]]; then gpu_rows "${mem}"
+  elif [[ "${MODE}" != "notebook" ]]; then add "GPU memory" FAIL "no GPU visible to amd-smi / rocm-smi"; fi
+  [[ "${MODE}" == "notebook" ]] || return 0
+  # the notebook's own interpreter: a ROCm (HIP) build of torch that sees the GPU is what training and serving use
+  local info=""; [[ -n "${PY}" ]] && info="$("${PY}" "${HERE}/stagelog.py" torch-info 2>/dev/null || true)"; info="${info%%$'\r'}"
+  if [[ "${info}" == *"GPU none"* || -z "${info}" ]]; then
+    add "torch (ROCm) sees the GPU" FAIL "${info:-torch-info did not run}: use the notebook's ROCm python (export WAPSI_PYTHON=<its python>)"
+  elif [[ "${info}" == *"ROCm (HIP) n/a"* ]]; then
+    add "torch (ROCm) sees the GPU" FAIL "${info}: this torch is not a ROCm build"
+  else add "torch (ROCm) sees the GPU" PASS "${info}"; fi
+  if [[ -n "${PY}" ]] && "${PY}" -c 'import vllm' >/dev/null 2>&1; then
+    add "vLLM" PASS "importable: serving uses python -m vllm.entrypoints.openai.api_server"
+  else add "vLLM" WARN "not importable: serving falls back to the transformers server (one request at a time)"; fi
+  if [[ -n "${PY}" ]] && "${PY}" -c 'import transformers, peft, trl' >/dev/null 2>&1; then
+    add "training libraries" PASS "transformers, peft, trl import"
+  else add "training libraries" WARN "transformers / peft / trl missing: the env stage installs the uv.lock pins with pip --no-deps (the ROCm torch is kept)"; fi
+}
+
 check_docker() {
-  if [[ "${MODE}" == "rehearsal" ]]; then add "docker" SKIP "CPU rehearsal runs without Docker"; add "docker compose" SKIP "CPU rehearsal"; return; fi
-  if ! have docker; then add "docker" FAIL "missing: apt-get install -y docker.io docker-compose-v2"; add "docker compose" FAIL "missing"; return; fi
+  case "${MODE}" in
+    rehearsal) add "docker" SKIP "CPU rehearsal runs without Docker"; add "docker compose" SKIP "CPU rehearsal"; return ;;
+    notebook) add "docker" SKIP "notebook mode runs as plain python (no Docker needed)"; return ;;
+    endpoint) add "docker" SKIP "endpoint mode needs no Docker"; return ;;
+  esac
+  if ! have docker; then add "docker" FAIL "missing: apt-get install -y docker.io docker-compose-v2 (or --mode notebook)"; add "docker compose" FAIL "missing"; return; fi
   local server; server="$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
   if [[ -n "${server}" ]]; then add "docker" PASS "server ${server}"; else add "docker" FAIL "daemon not reachable"; fi
   local compose; compose="$(docker compose version --short 2>/dev/null || true)"; compose="${compose#v}"
@@ -160,10 +229,19 @@ free_gb() {  # free_gb PATH: free GB on the filesystem holding PATH (or its near
 
 check_disk() {
   local scratch_free root_free docker_root
-  if [[ "${MODE}" == "rehearsal" ]]; then
+  if [[ "${MODE}" == "rehearsal" || "${MODE}" == "endpoint" ]]; then
     root_free="$(free_gb "${ROOT}")"
     if [[ -n "${root_free}" ]] && (( root_free >= 5 )); then add "disk (repo)" PASS "${root_free} GB free"
-    else add "disk (repo)" WARN "${root_free:-?} GB free (rehearsal needs ~2 GB)"; fi
+    else add "disk (repo)" WARN "${root_free:-?} GB free (${MODE} needs ~2 GB)"; fi
+    return
+  fi
+  if [[ "${MODE}" == "notebook" ]]; then
+    # the notebook's storage is where it is: SCRATCH defaults to ~/wapsi-scratch and is created by the env stage
+    scratch_free="$(free_gb "${SCRATCH}")"
+    if [[ -z "${scratch_free}" ]]; then add "disk (SCRATCH=${SCRATCH})" FAIL "cannot stat; export SCRATCH=<a writable folder with space for the model>"
+    elif (( scratch_free >= 150 )); then add "disk (SCRATCH=${SCRATCH})" PASS "${scratch_free} GB free"
+    elif (( scratch_free >= 40 )); then add "disk (SCRATCH=${SCRATCH})" WARN "${scratch_free} GB free: enough for Gemma 4 E4B; base + merged Gemma 4 31B need ~150 GB"
+    else add "disk (SCRATCH=${SCRATCH})" FAIL "${scratch_free} GB free: no room for a model (export SCRATCH=<bigger volume>, or use --mode endpoint)"; fi
     return
   fi
   # SCRATCH must exist: free_gb would walk up to / and report the root disk (a false PASS; the models would then
@@ -199,9 +277,10 @@ hf_status() {  # hf_status URL: HTTP status of a HEAD request, the token sent fr
 }
 
 check_hf() {
-  if [[ "${MODE}" == "rehearsal" ]]; then
-    add "HF_TOKEN" SKIP "CPU rehearsal uses a tiny random model (no download)"; return
-  fi
+  case "${MODE}" in
+    rehearsal) add "HF_TOKEN" SKIP "CPU rehearsal uses a tiny random model (no download)"; return ;;
+    endpoint) add "HF_TOKEN" SKIP "endpoint mode downloads no weights"; return ;;
+  esac
   if [[ -n "${HF_TOKEN:-}" ]]; then add "HF_TOKEN" PASS "set in this shell (value not shown)"
   else add "HF_TOKEN" FAIL "not set: read -rs HF_TOKEN && export HF_TOKEN"; fi
   if [[ "${OFFLINE}" == "1" ]]; then add "network to huggingface.co" SKIP "--offline"; add "model access" SKIP "--offline"; return; fi
@@ -221,6 +300,19 @@ check_hf() {
   done
 }
 
+check_endpoint() {  # endpoint mode: the rows come from endpoint.py (the key stays in the environment, never on argv)
+  [[ "${MODE}" == "endpoint" ]] || return 0
+  if [[ -z "${PY}" ]]; then add "endpoint" FAIL "no python to run endpoint.py"; return; fi
+  if ! "${PY}" -c 'import httpx' >/dev/null 2>&1; then add "endpoint" FAIL "httpx missing in ${PY}: uv sync"; return; fi
+  local out check status detail flag=()
+  [[ "${OFFLINE}" == "1" ]] && flag=(--offline)
+  out="$("${PY}" "${HERE}/endpoint.py" check "${flag[@]}" 2>/dev/null || true)"
+  if [[ -z "${out}" ]]; then add "endpoint" FAIL "endpoint.py check printed nothing"; return; fi
+  while IFS=$'\t' read -r check status detail; do
+    [[ -n "${check}" ]] && add "${check}" "${status}" "${detail%%$'\r'}"
+  done <<< "${out}"
+}
+
 check_inputs() {
   if [[ "${MODE}" == "rehearsal" ]]; then
     if [[ -n "${PY}" ]] && "${PY}" -c 'import torch, transformers, peft, trl' >/dev/null 2>&1; then
@@ -233,13 +325,25 @@ check_inputs() {
     else add "golden cases" FAIL "data/golden/showcase/cases.jsonl missing"; fi
     return
   fi
+  if [[ "${MODE}" == "endpoint" ]]; then
+    if [[ -f "${ROOT}/data/golden/demo/cases.jsonl" ]]; then add "golden cases" PASS "data/golden/demo"
+    else add "golden cases" FAIL "data/golden/demo/cases.jsonl missing"; fi
+    if [[ -f "${ROOT}/data/generated/demo/transactions.parquet" ]]; then add "demo world" PASS "data/generated/demo"
+    else add "demo world" WARN "data/generated/demo missing (gitignored): the env stage generates it (seed 7)"; fi
+  fi
   if [[ -f "${ROOT}/data/docs/index/chunks.jsonl" ]]; then add "docs corpus" PASS "data/docs/index built"
   elif [[ -f "${ROOT}/data/docs/raw/_fetch.json" ]]; then add "docs corpus" PASS "data/docs/raw present (env stage builds the index)"
-  else add "docs corpus" WARN "data/docs/raw missing (not in git): the env stage fetches it from the public sites; if that fails, e2e_bench runs without docs search. Faster: scp -r data/docs/raw from a laptop"; fi
-  if [[ -f "${AMLWORLD_CSV}" ]]; then add "AMLworld HI-Small" PASS "${AMLWORLD_CSV}"
-  else add "AMLworld HI-Small" WARN "${AMLWORLD_CSV} missing: GNN trains without AMLworld pre-training (Kaggle ealtman2019, CDLA-Sharing-1.0)"; fi
+  else add "docs corpus" WARN "data/docs/raw missing (not in git): the env stage fetches it from the public sites; if that fails, the cases run without docs search"; fi
   if [[ -n "${WAPSI_INR_PER_USD:-}" ]]; then add "INR rate" PASS "WAPSI_INR_PER_USD=${WAPSI_INR_PER_USD}"
   else add "INR rate" WARN "WAPSI_INR_PER_USD unset: no rupee cost per case (pass the day's rate)"; fi
+  [[ "${MODE}" == "endpoint" ]] && return 0
+  if [[ -f "${AMLWORLD_CSV}" ]]; then add "AMLworld HI-Small" PASS "${AMLWORLD_CSV}"
+  else add "AMLworld HI-Small" WARN "${AMLWORLD_CSV} missing: GNN trains without AMLworld pre-training (Kaggle ealtman2019, CDLA-Sharing-1.0)"; fi
+  if [[ "${MODE}" == "notebook" ]]; then
+    if [[ -n "${WAPSI_GPU_HOUR_USD:-}" ]]; then add "GPU-hour price" PASS "WAPSI_GPU_HOUR_USD=${WAPSI_GPU_HOUR_USD}"
+    else add "GPU-hour price" WARN "WAPSI_GPU_HOUR_USD unset: no cost per case and no budget guard (set what an hour of this notebook costs)"; fi
+    return 0
+  fi
   if [[ -n "${WAPSI_DROPLET_STARTED_AT:-}" ]]; then add "droplet start" PASS "${WAPSI_DROPLET_STARTED_AT}"
   else add "droplet start" WARN "WAPSI_DROPLET_STARTED_AT unset: the budget guard uses the boot time"; fi
 }
@@ -250,9 +354,16 @@ check_gpu
 check_docker
 check_disk
 check_hf
+check_endpoint
 check_inputs
 
-printf '\nWapsi AMD preflight (%s)\n' "$([[ "${MODE}" == "gpu" ]] && echo "MI300X droplet" || echo "CPU rehearsal")"
+case "${MODE}" in
+  droplet) TITLE="MI300X droplet" ;;
+  notebook) TITLE="AMD ROCm notebook, no Docker" ;;
+  endpoint) TITLE="endpoint mode, no GPU box" ;;
+  *) TITLE="CPU rehearsal" ;;
+esac
+printf '\nWapsi AMD preflight (%s)%s\n' "${TITLE}" "${DETECT_WHY:+ [detected: ${DETECT_WHY}]}"
 printf '%-34s %-6s %s\n' "CHECK" "STATUS" "DETAIL"
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r check status detail <<< "${row}"

@@ -5,6 +5,8 @@
 #   start_llm.sh serve  [PROFILE]   run `vllm serve` in the foreground (inside a vLLM-ROCm container;
 #                                   docker-compose.yml uses this as the llm / verifier-llm entrypoint)
 #   start_llm.sh docker [PROFILE]   `docker run` the vLLM-ROCm image on the host with the ROCm device flags
+#   start_llm.sh python [PROFILE]   no Docker (an AMD ROCm notebook): the same flags through
+#                                   `python -m vllm.entrypoints.openai.api_server`, bound to VLLM_HOST (127.0.0.1)
 #   start_llm.sh print  [PROFILE]   print both command lines and exit (dry run; safe anywhere)
 #
 # Profiles (WAPSI_LLM_PROFILE, default gemma4-merged):
@@ -28,6 +30,8 @@
 #   VLLM_EXTRA_ARGS          extra flags appended verbatim (word-split)
 #   VLLM_API_KEY             require a bearer token on the OpenAI endpoints
 #   VLLM_PORT                port inside the container (8000)
+#   VLLM_HOST                listen address (0.0.0.0 in a container; `python` mode defaults to 127.0.0.1)
+#   WAPSI_PYTHON             interpreter for `python` mode (python3: the notebook's ROCm python with vLLM installed)
 #   VLLM_IMAGE               image for `docker` mode (pin by digest: serving/pull_and_pin.sh)
 #   HF_CACHE_DIR / WAPSI_MODELS_DIR   host paths mounted in `docker` mode
 set -euo pipefail
@@ -67,7 +71,7 @@ esac
 PORT="${VLLM_PORT:-8000}"
 
 ARGS=(serve "${MODEL}"
-  --host 0.0.0.0 --port "${PORT}"
+  --host "${VLLM_HOST:-0.0.0.0}" --port "${PORT}"
   --served-model-name "${NAME}"
   --gpu-memory-utilization "${UTIL}"
   --max-model-len "${MAXLEN}"
@@ -115,6 +119,13 @@ if [[ -n "${VLLM_EXTRA_ARGS:-}" ]]; then
   ARGS+=("${EXTRA[@]}")
 fi
 
+# `python` mode (no container around the server): the same flags, on loopback unless VLLM_HOST says otherwise
+PY_ARGS=(); PREV=""
+for a in "${ARGS[@]:2}"; do
+  if [[ "${PREV}" == "--host" ]]; then a="${VLLM_HOST:-127.0.0.1}"; fi
+  PY_ARGS+=("${a}"); PREV="${a}"
+done
+
 IMAGE="${VLLM_IMAGE:-rocm/vllm@sha256:FILL_ME_WITH_pull_and_pin.sh}"
 CONTAINER="${VLLM_CONTAINER_NAME:-wapsi-${NAME#wapsi-}}"
 DEF_HOST_PORT="8000"
@@ -156,12 +167,22 @@ case "${MODE}" in
     fi
     "${DOCKER[@]}" "${ARGS[@]}"
     echo "started ${CONTAINER}; follow with: docker logs -f ${CONTAINER}" >&2 ;;
+  python)
+    # `vllm serve MODEL <flags>` and `python -m vllm.entrypoints.openai.api_server --model MODEL <flags>` take the
+    # same flags; the module form needs no `vllm` launcher on PATH (a notebook kernel's environment)
+    if [[ "${FAMILY}" != "gemma4" || "${VLLM_ATTENTION_FLAG:-1}" == "1" ]]; then
+      unset VLLM_ATTENTION_BACKEND
+    fi
+    echo "[start_llm] python profile=${PROFILE} model=${MODEL} served-as=${NAME} util=${UTIL} max-len=${MAXLEN}" >&2
+    exec "${WAPSI_PYTHON:-python3}" -m vllm.entrypoints.openai.api_server --model "${MODEL}" "${PY_ARGS[@]}" ;;
   print)
     echo "# inside a vLLM-ROCm container (profile ${PROFILE}):"
     redact vllm "${ARGS[@]}"
     echo "# on the host:"
-    redact "${DOCKER[@]}" "${ARGS[@]}" ;;
+    redact "${DOCKER[@]}" "${ARGS[@]}"
+    echo "# without Docker (start_llm.sh python; binds 127.0.0.1 unless VLLM_HOST is set):"
+    redact "${WAPSI_PYTHON:-python3}" -m vllm.entrypoints.openai.api_server --model "${MODEL}" "${PY_ARGS[@]}" ;;
   *)
-    echo "usage: $0 serve|docker|print [gemma4-merged|gemma4-base|qwen-fallback|verifier]" >&2
+    echo "usage: $0 serve|docker|python|print [gemma4-merged|gemma4-base|qwen-fallback|verifier]" >&2
     exit 64 ;;
 esac

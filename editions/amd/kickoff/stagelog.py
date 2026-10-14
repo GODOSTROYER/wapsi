@@ -7,6 +7,14 @@
     python3 editions/amd/kickoff/stagelog.py record --evid DIR --index 3 --stage gnn --status ok ...
     python3 editions/amd/kickoff/stagelog.py wait-http URL --timeout 1800
     python3 editions/amd/kickoff/stagelog.py free-port
+    python3 editions/amd/kickoff/stagelog.py detect-mode               # droplet | notebook | endpoint (exit 1: none)
+    python3 editions/amd/kickoff/stagelog.py torch-info OUT.json       # torch / ROCm (HIP) / GPU name and memory
+
+Modes. ``droplet`` (``gpu`` is the old name): an AMD GPU and Docker (the AMD Developer Cloud MI300X droplet).
+``notebook``: an AMD GPU without Docker (an AMD ROCm JupyterLab). ``endpoint``: no GPU box; the LLM side runs against
+``WAPSI_LLM_BASE_URL`` (AMD Token Factory or anyone's vLLM). ``rehearsal``: a laptop CPU, stub models, never a result.
+``detect-mode`` looks at this machine (``amd-smi`` / ``rocm-smi`` / a ROCm torch, ``docker``, the endpoint
+variables); ``WAPSI_MODE`` overrides it.
 
 Budget (the time/cost guard). The droplet bills from creation until it is destroyed, powered off or not, so spend is
 ``hours since the droplet started x $/GPU-hour`` plus what earlier droplets cost. The start time comes from
@@ -14,7 +22,10 @@ Budget (the time/cost guard). The droplet bills from creation until it is destro
 (``/proc/stat`` btime, close to droplet creation), else the first time ``run_all.sh`` ran (``budget_start.json``).
 ``WAPSI_SPENT_USD`` adds earlier droplets. ``budget`` exits 0 (ok), 10 (at or above ``WAPSI_BUDGET_WARN_PCT``,
 default 75) or 20 (at or above ``WAPSI_BUDGET_STOP_PCT``, default 90: run_all.sh refuses to start a stage).
-In the CPU rehearsal the same arithmetic runs on the rehearsal's own clock and is labelled hypothetical.
+In the CPU rehearsal the same arithmetic runs on the rehearsal's own clock and is labelled hypothetical. Endpoint
+mode has no GPU-hour bill (the API's own daily cost cap applies; ``endpoint.py`` reads it), and a notebook is
+metered only when ``WAPSI_GPU_HOUR_USD`` says what its credits cost per hour: both then report "not metered" and
+never stop a stage.
 
 ``WAPSI_NOW`` (ISO UTC) overrides the clock for tests; nothing else reads it.
 """
@@ -24,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import sys
 import time
@@ -49,6 +61,19 @@ DEFAULT_WARN_PCT = 75.0
 DEFAULT_STOP_PCT = 90.0
 EXIT_WARN, EXIT_STOP = 10, 20
 EXIT_BEFORE, EXIT_AFTER = 3, 4
+MODES = ("droplet", "notebook", "endpoint", "rehearsal")
+MODE_CHOICES = (*MODES, "gpu")  # "gpu": the droplet's old name
+RUN_LABELS = {
+    "droplet": "MI300X run",
+    "notebook": "AMD ROCm notebook run",
+    "endpoint": "endpoint run (LLM calls served by the provider's GPUs; no GPU on this machine)",
+    "rehearsal": "CPU rehearsal (tiny configs, stub LLMs): not a GPU result",
+}
+
+
+def canon_mode(mode: str) -> str:
+    """``gpu`` (the droplet's old name) -> ``droplet``; the other names unchanged."""
+    return "droplet" if mode == "gpu" else mode
 
 
 def parse_ts(text: str) -> datetime:
@@ -117,20 +142,33 @@ def budget_start(evid: Path, mode: str, *, proc_stat: Path = Path("/proc/stat"))
 
 
 def budget(evid: Path, mode: str, *, proc_stat: Path = Path("/proc/stat")) -> dict[str, Any]:
-    rate = _env_float("WAPSI_GPU_HOUR_USD", DEFAULT_GPU_HOUR_USD)
+    mode = canon_mode(mode)
+    priced = bool(os.environ.get("WAPSI_GPU_HOUR_USD", "").strip())
+    # endpoint: no GPU-hour bill at all; notebook: metered only when the operator says what an hour costs
+    metered = mode in ("droplet", "rehearsal") or (mode == "notebook" and priced)
+    rate = _env_float("WAPSI_GPU_HOUR_USD", DEFAULT_GPU_HOUR_USD) if metered else 0.0
     cap = _env_float("WAPSI_BUDGET_USD", DEFAULT_BUDGET_USD)
     before = _env_float("WAPSI_SPENT_USD", 0.0)
     warn_pct = _env_float("WAPSI_BUDGET_WARN_PCT", DEFAULT_WARN_PCT)
     stop_pct = _env_float("WAPSI_BUDGET_STOP_PCT", DEFAULT_STOP_PCT)
-    started, source = budget_start(evid, mode, proc_stat=proc_stat)
+    started, source = budget_start(evid, "gpu" if mode in ("droplet", "notebook") else mode, proc_stat=proc_stat)
     hours = max(0.0, (now() - started).total_seconds() / 3600.0)
     droplet = hours * rate
     total = before + droplet
     pct = 100.0 * total / cap if cap > 0 else 0.0
-    state = "stop" if pct >= stop_pct else "warn" if pct >= warn_pct else "ok"
+    state = ("stop" if pct >= stop_pct else "warn" if pct >= warn_pct else "ok") if metered else "ok"
+    label = {
+        "droplet": "AMD Developer Cloud droplet",
+        "notebook": "AMD ROCm notebook, credits at WAPSI_GPU_HOUR_USD per hour" if priced else
+                    "AMD ROCm notebook: not metered (set WAPSI_GPU_HOUR_USD to what an hour of its credits costs)",
+        "endpoint": "endpoint mode: no GPU-hour bill (the API's daily cost cap applies; see endpoint.json)",
+        "rehearsal": "hypothetical: the CPU rehearsal is not billed",
+    }[mode]
     return {
-        "billed": mode == "gpu",
-        "label": "AMD Developer Cloud droplet" if mode == "gpu" else "hypothetical: the CPU rehearsal is not billed",
+        "billed": mode == "droplet" or (mode == "notebook" and priced),
+        "metered": metered,
+        "mode": mode,
+        "label": label,
         "gpu_hour_usd": rate,
         "budget_usd": cap,
         "spent_before_usd": round(before, 2),
@@ -147,13 +185,18 @@ def budget(evid: Path, mode: str, *, proc_stat: Path = Path("/proc/stat")) -> di
 
 
 def budget_line(b: dict[str, Any], stage: str | None = None) -> str:
+    if not b.get("metered", True):
+        return f"[budget] {b['label']}"
     head = "[budget]" if b["billed"] else "[budget, hypothetical]"
     line = (f"{head} up {b['hours']:.2f} h x ${b['gpu_hour_usd']:.2f} = ${b['droplet_usd']:.2f}"
             f" (+ ${b['spent_before_usd']:.2f} earlier) = ${b['total_usd']:.2f} of ${b['budget_usd']:.2f}"
             f" ({b['pct']:.1f}%) - {b['state']}")
     if b["state"] == "warn":
         line += (f"\n[budget] WARNING: {b['pct']:.1f}% of the GPU budget is used. Finish the current work, push the "
-                 "evidence, then DESTROY the droplet (powered off still bills).")
+                 "evidence, then DESTROY the droplet (powered off still bills)."
+                 if b.get("mode", "droplet") != "notebook" else
+                 f"\n[budget] WARNING: {b['pct']:.1f}% of the GPU budget is used. Finish the current work, push the "
+                 "evidence, then stop and DELETE the notebook instance.")
     elif b["state"] == "stop":
         line += (f"\n[budget] STOP: {b['pct']:.1f}% >= {b['stop_pct']:.0f}%."
                  + (f" Not starting stage '{stage}'." if stage else "")
@@ -207,6 +250,65 @@ def static_info(runner: tel.Runner = tel.run_cmd) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- torch / mode detection
+
+
+def torch_info() -> dict[str, Any]:
+    """What the interpreter's torch sees: version, ROCm (HIP) build, the GPU's name and memory. Never raises."""
+    out: dict[str, Any] = {"available": False, "captured_at": iso(now()), "python": sys.version.split()[0]}
+    try:
+        import torch  # noqa: PLC0415 - optional: the droplet's system python3 has none
+    except Exception as exc:  # noqa: BLE001
+        out["reason"] = f"torch not importable: {type(exc).__name__}"
+        return out
+    out.update(torch=str(torch.__version__), hip=getattr(torch.version, "hip", None), cuda=torch.version.cuda)
+    try:
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            out.update(available=True, device_count=int(torch.cuda.device_count()),
+                       device_name=str(torch.cuda.get_device_name(0)),
+                       vram_total_mb=round(props.total_memory / (1024 * 1024)))
+        else:
+            out["reason"] = "torch sees no GPU (torch.cuda.is_available() is False)"
+    except Exception as exc:  # noqa: BLE001
+        out["reason"] = f"{type(exc).__name__}: {exc}"[:200]
+    out["rocm_build"] = bool(out.get("hip"))
+    return out
+
+
+def detect_mode(env: dict[str, str] | None = None, *, runner: tel.Runner = tel.run_cmd,
+                which: Any = shutil.which, torch_probe: Any = None) -> tuple[str, list[str]]:
+    """(``droplet`` | ``notebook`` | ``endpoint`` | ``none``, why) for this machine.
+
+    An AMD GPU (``amd-smi`` / ``rocm-smi`` answers, or a ROCm torch sees a device) with a reachable Docker daemon is
+    the droplet; without Docker it is a notebook; no GPU but ``WAPSI_LLM_BASE_URL`` set is endpoint mode.
+    ``WAPSI_MODE`` (or ``run_all.sh --mode``) overrides the detection."""
+    env = dict(os.environ) if env is None else env
+    forced = canon_mode((env.get("WAPSI_MODE") or "").strip().lower())
+    if forced in MODES:
+        return forced, [f"WAPSI_MODE={forced}"]
+    why: list[str] = []
+    snap = tel.sample_once(runner, map_docker=False)
+    gpu = snap.source != "none" and bool(snap.gpus)
+    if gpu:
+        why.append(f"{snap.source} reports {len(snap.gpus)} GPU(s)")
+    else:
+        info = (torch_probe or torch_info)()
+        gpu = bool(info.get("available") and info.get("rocm_build"))
+        why.append(f"torch (ROCm {info.get('hip')}) sees {info.get('device_name')}" if gpu
+                   else "no AMD GPU on this machine (amd-smi, rocm-smi and a ROCm torch all silent)")
+    docker = bool(which("docker")) and bool((runner(["docker", "version", "--format", "{{.Server.Version}}"]) or "").strip())
+    why.append("docker daemon reachable" if docker else "no docker daemon")
+    url = (env.get("WAPSI_LLM_BASE_URL") or "").strip()
+    if gpu:
+        return ("droplet" if docker else "notebook"), why
+    if url:
+        why.append("WAPSI_LLM_BASE_URL is set")
+        return "endpoint", why
+    why.append("WAPSI_LLM_BASE_URL is not set")
+    return "none", why
+
+
 # --------------------------------------------------------------------------- stage records
 
 
@@ -226,12 +328,13 @@ def record(evid: Path, *, index: int, stage: str, mode: str, status: str, exit_c
            log: str | None = None, before: str | None = None, after: str | None = None,
            notes: Path | None = None, budget_info: dict[str, Any] | None = None) -> Path:
     t0, t1 = parse_ts(started), parse_ts(ended)
+    mode = canon_mode(mode)
     rec = {
         "schema": SCHEMA,
         "stage": stage,
         "index": index,
         "mode": mode,
-        "label": "MI300X run" if mode == "gpu" else "CPU rehearsal (tiny configs, stub LLMs): not a GPU result",
+        "label": RUN_LABELS[mode],
         "status": status,
         "exit_code": exit_code,
         "started_at": iso(t0),
@@ -284,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("window", help="exit 0 inside the event window, 3 before, 4 after")
     b = sub.add_parser("budget")
     b.add_argument("--evid", required=True)
-    b.add_argument("--mode", default="gpu", choices=["gpu", "rehearsal"])
+    b.add_argument("--mode", default="gpu", choices=MODE_CHOICES)
     b.add_argument("--stage", default=None)
     b.add_argument("--json", default=None, help="also write the budget object here")
     b.add_argument("--quiet", action="store_true", help="no output when the state is ok")
@@ -296,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--evid", required=True)
     r.add_argument("--index", type=int, required=True)
     r.add_argument("--stage", required=True)
-    r.add_argument("--mode", default="gpu", choices=["gpu", "rehearsal"])
+    r.add_argument("--mode", default="gpu", choices=MODE_CHOICES)
     r.add_argument("--status", required=True, choices=["ok", "failed", "skipped"])
     r.add_argument("--exit-code", type=int, default=0)
     r.add_argument("--started", required=True)
@@ -311,6 +414,10 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--interval", type=float, default=10.0)
     sub.add_parser("free-port")
     sub.add_parser("now")
+    dm = sub.add_parser("detect-mode", help="print droplet | notebook | endpoint for this machine (exit 1: none)")
+    dm.add_argument("--why", action="store_true", help="one line: the mode, a tab, the reasons")
+    ti = sub.add_parser("torch-info", help="torch / ROCm build / GPU name and memory as JSON")
+    ti.add_argument("out", nargs="?", default=None)
     sub.add_parser("gpu-mem", help="print '<gpu> <name> <total_mb> <used_mb>' per GPU (nothing without a GPU)")
     t = sub.add_parser("tsv-json", help="preflight helper: TSV (check, status, detail) on stdin -> JSON file")
     t.add_argument("out")
@@ -357,6 +464,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "free-port":
         print(free_port())
         return 0
+    if args.cmd == "detect-mode":
+        mode, why = detect_mode()
+        if args.why:
+            print(f"{mode}	{'; '.join(why)}")
+        else:
+            print(mode)
+            print("; ".join(why), file=sys.stderr)
+        return 0 if mode != "none" else 1
+    if args.cmd == "torch-info":
+        info = torch_info()
+        if args.out:
+            _write(args.out, info)
+        print(f"torch {info.get('torch') or 'n/a'} | ROCm (HIP) {info.get('hip') or 'n/a'} | GPU "
+              f"{info.get('device_name') or 'none'} | {info.get('vram_total_mb') or 'n/a'} MB"
+              + (f" | {info['reason']}" if info.get("reason") else ""))
+        return 0
     if args.cmd == "gpu-mem":
         snap = tel.sample_once(map_docker=False)
         names = tel.parse_amd_smi_static(tel._json(tel.run_cmd(["amd-smi", "static", "--json"]))) \
@@ -373,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
             parts = line.split("\t")
             if len(parts) >= 2:
                 checks.append({"check": parts[0], "status": parts[1], "detail": "\t".join(parts[2:])})
-        _write(args.out, {"schema": "wapsi-amd-preflight/1", "mode": args.mode, "checked_at": iso(now()),
+        _write(args.out, {"schema": "wapsi-amd-preflight/1", "mode": canon_mode(args.mode), "checked_at": iso(now()),
                           "fails": sum(c["status"] == "FAIL" for c in checks),
                           "warns": sum(c["status"] == "WARN" for c in checks), "checks": checks})
         return 0

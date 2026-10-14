@@ -3,6 +3,9 @@
     # on the MI300X, against the served model (vLLM on 127.0.0.1:8000)
     uv run python -m editions.amd.kickoff.ab_hallucination --llm-url http://127.0.0.1:8000/v1 --llm-model wapsi-llm \
         --world demo --limit 20 --workers 8 --out editions/amd/evidence/<date>/ab_hallucination.json
+    # endpoint mode: a shared, rate-limited OpenAI-compatible endpoint (AMD Token Factory), no GPU box
+    uv run python -m editions.amd.kickoff.ab_hallucination --endpoint --world demo --limit 20 --workers 2 \
+        --out editions/amd/evidence/endpoint/<date>/ab_hallucination.json
     # anywhere, offline: stub LLMs that always add a wrong amount (plumbing check, NOT a model result)
     uv run python -m editions.amd.kickoff.ab_hallucination --fake --world showcase-memory
 
@@ -32,6 +35,10 @@ Numbers in the report come from counting; nothing is estimated. Untrusted compla
 inside the untrusted-text markers. The endpoint's bearer token is ``WAPSI_LLM_API_KEY`` or, as in the RUNBOOK,
 ``VLLM_API_KEY`` (never printed). Exit 0 when at least one case was compared, 1 when none was (a case error alone
 does not fail the run: it is recorded).
+
+``--endpoint`` uses the metered client (``endpoint.py``: ``WAPSI_LLM_BASE_URL`` / ``_API_KEY`` / ``_MODEL``, rate
+limit, HTTP 429 retries, ``json_object``, disk cache) and adds an ``endpoint`` block to the report (host, model,
+calls, tokens, API-reported cost). The label then names the endpoint and the model, never a GPU.
 """
 
 from __future__ import annotations
@@ -321,6 +328,11 @@ def to_markdown(rep: dict[str, Any]) -> str:
              f"- Label: **{rep['label']}**", f"- LLM: `{rep['llm']}` · generated {rep['generated_at']}",
              f"- Compared: {rep.get('cases_compared', rep['cases'])} of {rep['cases']} cases (both arms completed "
              f"them); case errors: raw {r.get('case_errors', 0)}, bound {b.get('case_errors', 0)}", ""]
+    ep = rep.get("endpoint")
+    if ep:
+        lines[-1:] = [f"- Endpoint: `{ep['endpoint_host']}`, model `{ep['model']}` ({ep['provider']['name']}; GPU "
+                      f"{ep['provider']['gpu_side']}-side): {ep['calls']} calls + {ep['cache_hits']} from the disk "
+                      f"cache, API-reported cost ${ep['cost_usd']}, HTTP 429s {ep['rate_limited_429']}", ""]
     lines += ["Like with like, one STR per case in each arm:", "",
               "| | Raw LLM, free-form STR | Wapsi-bound STR (slots + verifier) |", "|---|---:|---:|"]
     lines += [f"| {k} | {cell(x)} | {cell(y)} |" for k, x, y in like]
@@ -343,8 +355,13 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--world", default="demo", help="data/generated/<world> with data/golden/<world> (or showcase-memory)")
     ap.add_argument("--limit", type=int, default=20, help="first N golden cases")
-    ap.add_argument("--llm-url", default=os.environ.get("WAPSI_LLM_BASE_URL", "http://127.0.0.1:8000/v1"))
-    ap.add_argument("--llm-model", default=os.environ.get("WAPSI_LLM_SERVED_NAME", "wapsi-llm"))
+    ap.add_argument("--llm-url", default=None, help="default $WAPSI_LLM_BASE_URL, else http://127.0.0.1:8000/v1")
+    ap.add_argument("--llm-model", default=None,
+                    help="default $WAPSI_LLM_SERVED_NAME or wapsi-llm; with --endpoint: $WAPSI_LLM_MODEL")
+    ap.add_argument("--endpoint", action="store_true",
+                    help="shared, rate-limited endpoint: the metered client (rate limit, 429 retry, json_object, "
+                         "disk cache, usage.cost) from WAPSI_LLM_BASE_URL / _API_KEY / _MODEL")
+    ap.add_argument("--no-cache", action="store_true", help="--endpoint: do not read or write the disk cache")
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--fake", action="store_true", help=f"offline {STUB_LABEL}")
@@ -361,8 +378,18 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         bound_llm: Any = FakeLLM(name="fake-hallucinate", hallucinate=True)
         llm_name = f"raw={raw_llm.name}, bound={bound_llm.name}"
         label = args.label or STUB_LABEL
+    elif args.endpoint:
+        from editions.amd.kickoff.endpoint import MeteredLLM, measured_label
+
+        raw_llm = bound_llm = MeteredLLM.from_env(base_url=args.llm_url, model=args.llm_model,
+                                                  cache=not args.no_cache, transport=transport)
+        llm_name = bound_llm.name
+        label = args.label or measured_label(bound_llm.base_url, bound_llm.model)
     else:
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
+
+        args.llm_url = args.llm_url or os.environ.get("WAPSI_LLM_BASE_URL", "http://127.0.0.1:8000/v1")
+        args.llm_model = args.llm_model or os.environ.get("WAPSI_LLM_SERVED_NAME", "wapsi-llm")
 
         raw_llm = bound_llm = OpenAICompatLLM(base_url=args.llm_url, model=args.llm_model, api_key=endpoint_api_key(),
                                               timeout=args.timeout, name=f"vllm-rocm:{args.llm_model}",
@@ -382,6 +409,7 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         raw_rows = list(pool.map(raw_one, golden))
         bound_rows = list(pool.map(lambda g: run_bound(ledger, g, bound_llm), golden))
     paired = compared_cases(raw_rows, bound_rows)
+    raw_lat = sorted(r["latency_s"] for r in raw_rows if "error" not in r)
     rep = {
         "kind": "ab_hallucination",
         "schema": SCHEMA,
@@ -393,6 +421,8 @@ def main(argv: list[str] | None = None, *, transport: Any = None) -> int:
         "cases": len(golden),
         "cases_compared": len(paired),
         "wall_s": round(time.perf_counter() - t0, 2),
+        "endpoint": bound_llm.report() if hasattr(bound_llm, "report") else None,
+        "raw_latency_s_p50": raw_lat[len(raw_lat) // 2] if raw_lat else None,
         "arms": {"raw": summarize(raw_rows, "raw", paired), "bound": summarize(bound_rows, "bound", paired)},
         "definitions": {
             "wrong_amount": "money mention not equal to any amount of the case or of a verifier-recomputed slot",

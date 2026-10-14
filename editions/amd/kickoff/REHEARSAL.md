@@ -20,5 +20,10 @@ GPU, so no number from it is reported anywhere.
 | 10 | ab | ok | 13 s |
 | 11 | evidence | ok: `evidence.json` labelled `cpu-rehearsal`, `gpu_results_valid: false`; `fill_pitch.py` refused it (exit 3) | 4 s |
 
+The pipeline has twelve stages since 14 Oct: `eval` (the golden-set evaluation with the model under test) sits
+between `serve` and `bench`, and `bench`, `ab` and `evidence` moved to 10, 11 and 12. In the rehearsal `eval` runs the
+harness with the offline FakeLLM on two showcase cases; it is covered by the `rehearsal`-marked tests
+(`uv run pytest tests/amd -m rehearsal`), which also run endpoint mode end to end against a local stub server.
+
 The bundle itself stays local (`editions/amd/evidence/cpu-rehearsal/`, gitignored). On the MI300X the same stages run
 with the real models; their timings are measured on the day.

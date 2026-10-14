@@ -1,72 +1,99 @@
-# Wapsi, AMD edition: the whole copilot on one AMD Instinct MI300X, on-prem
+# Wapsi, AMD edition: open models on AMD GPUs keep honest commerce running after a fraud
 
-Wapsi helps a bank's cyber-fraud nodal officer act on NCRP / 1930 complaints: it traces stolen money through mule
-layers, holds **only the disputed amount** in each account, drafts the STR and restoration packet, and verifies every
-number and citation before a supervisor approves (see the [repository README](../../README.md)).
+**lablab.ai AMD Developer Hackathon ACT III, Track 3 "Reinvent Commerce".** When a digital payment turns out to be
+fraud, banks today freeze whole accounts: the kirana shop that received one tainted payment loses its working
+capital, and the bank loses a customer. Wapsi turns the bank's own transaction data into a better action: it traces
+the stolen money through mule layers, holds **only the disputed amount** in each account, separates mules from
+innocent holders and merchants, drafts the STR and the restoration packet, and verifies every number and citation
+before a supervisor approves (see the [repository README](../../README.md)).
 
-This edition runs all of it inside the bank, on a single AMD Instinct MI300X (192 GB HBM3):
+What runs on AMD in this edition:
 
-- **Customer data stays inside the bank.** Ledger, case store, models and inference share one machine.
-  No request leaves it; there is no external LLM API.
-- **Two language models and a GNN share one GPU.**
-  - The drafting model is Gemma 4 31B with an STR-drafting LoRA merged into its weights. vLLM-ROCm serves it
-    at about 55 % of the GPU's memory.
-  - A second, smaller model (Gemma 4 E4B) acts as an independent judge. It uses about 15 % of the memory and
-    screens untrusted complaint text alongside the deterministic rules.
-  - A GraphSAGE mule scorer trained on ROCm scores the accounts on each case's money trail.
-- **Measured, not claimed.** `bench/` records serving throughput, time to first token, cases per hour, cost per
-  case at $1.99 per GPU-hour, and GPU memory per container, all from `amd-smi` on the droplet. The numbers are
-  published in `AMD_RESULTS.md` once the event-week runs are done. This file contains no numbers.
+- **The language model: Gemma 4, Google's open model, served on AMD GPUs.** It writes prose only, through
+  placeholders; every amount, account number and date is filled from data and re-checked by the verifier. During the
+  event it is served by **AMD Token Factory** (an OpenAI-compatible API on AMD GPUs); the same three variables
+  (`WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`) point the app at a bank's own vLLM-ROCm endpoint
+  instead, where customer data never leaves the bank.
+- **A second, smaller model as judge.** It screens untrusted complaint text next to the deterministic rules; it can
+  add a flag, never clear one.
+- **A GraphSAGE mule scorer** (PyTorch on ROCm) and an optional **LoRA fine-tune** of the drafting model, when a GPU
+  box is available (a ROCm notebook or an MI300X droplet).
+- **Predictions are never the language model's.** Mule, innocent-holder and merchant decisions come from a
+  transparent scorer with per-feature contributions and from the GNN; the rules decide dispositions; the LLM is not
+  a forecasting method anywhere in the pipeline.
+- **Measured, not claimed.** `kickoff/` writes dated evidence bundles: latency and throughput, cases and drafts per
+  hour, the cost the API reports, a golden-set evaluation with the real model, and a raw-LLM versus Wapsi-bound A/B.
+  The numbers live in `evidence/` and are copied into the pitch by a script that re-reads them. This file contains
+  no numbers.
 
-The core rule is the same as in every edition: **numbers come from data, words come from the LLM.** The models
-write prose through placeholders. The verifier recomputes every amount. If the model's prose fails a check, the
-case keeps a fixed paragraph in its place and is never blocked.
+The core rule is the same as in every edition: **numbers come from data, words come from the LLM.** If the model's
+prose fails a check, the case keeps a fixed paragraph in its place and is never blocked.
+
+## Three ways to run it
+
+| Mode | What you need | What runs on AMD | Start here |
+|---|---|---|---|
+| **Endpoint** (the primary path) | a Token Factory key, or anyone's OpenAI-compatible vLLM URL | every LLM call: drafting, the judge, the evaluations and benchmarks. The GPU is the provider's | [RUNBOOK.md](RUNBOOK.md), "Fastest path: endpoint mode in 15 minutes" |
+| **Notebook** | an AMD ROCm JupyterLab, no Docker | the above served locally (vLLM's python entrypoint, or transformers), plus GNN training and the LoRA fine-tune as plain python | [`kickoff/wapsi_amd_kickoff.ipynb`](kickoff/wapsi_amd_kickoff.ipynb) |
+| **Droplet** | an AMD Developer Cloud MI300X droplet with Docker | the whole stack in containers: two vLLM-ROCm servers, the GNN service and the app on one GPU | [RUNBOOK.md](RUNBOOK.md), "Droplet mode" |
+
+```bash
+set -a; source /path/outside/git/amd_tokenfactory.env; set +a     # WAPSI_LLM_BASE_URL, WAPSI_LLM_API_KEY, WAPSI_LLM_MODEL
+bash editions/amd/kickoff/preflight.sh                             # detects the mode; a green / amber / red table
+bash editions/amd/kickoff/run_all.sh --dry-run                     # every command, nothing executed
+bash editions/amd/kickoff/run_all.sh                               # the run: one evidence bundle at the end
+```
+
+All three write the same bundle and feed the same pitch filler. What a bundle may claim follows where it ran: an
+endpoint run names the endpoint host and the model id and makes no GPU claim; a notebook names the GPU as it names
+itself; only an MI300X run says MI300X.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph bank["Bank premises: one AMD Developer Cloud droplet (1x MI300X, 192 GB)"]
-    subgraph gpu["MI300X (ROCm)"]
-      LLM["llm: vLLM-ROCm<br/>Gemma 4 31B + STR LoRA (merged)<br/>--gpu-memory-utilization 0.55"]
-      VER["verifier-llm: vLLM-ROCm<br/>Gemma 4 E4B judge<br/>0.15"]
-      GNN["gnn: GraphSAGE scorer<br/>PyTorch ROCm, POST /score :8081"]
-    end
-    subgraph app["app container (CPU, non-root)"]
-      UI["Streamlit officer UI :8501"]
-      API["FastAPI :8080<br/>/cases /process /metrics"]
-      PIPE["wapsi.pipeline.process_case<br/>trace -> classify -> hold plan -> draft -> verify"]
-    end
-    LEDGER[("Synthetic ledger<br/>Parquet world")]
-    STORE[("FileCaseStore<br/>JSON per case")]
+  Officer(("Nodal officer")) --> UI
+  subgraph app["Wapsi app (CPU, non-root container)"]
+    UI["Streamlit officer UI :8501"]
+    API["FastAPI :8080<br/>/cases /process /metrics"]
+    PIPE["wapsi.pipeline.process_case<br/>trace -> classify -> hold plan -> draft -> verify"]
   end
-  Officer(("Nodal officer<br/>SSH tunnel / firewall-limited")) --> UI
   UI --> PIPE
   API --> PIPE
-  PIPE -->|"prose fields only (OpenAI API)"| LLM
-  PIPE -->|"injection judge"| VER
-  PIPE -->|"mule scores (heuristic fallback)"| GNN
+  LEDGER[("Synthetic ledger<br/>Parquet world")]
+  STORE[("FileCaseStore<br/>hash-chained audit log")]
   PIPE --> LEDGER
   PIPE --> STORE
-  TEL["bench/gpu_telemetry.py<br/>amd-smi on the host"] -.-> gpu
+  subgraph amd["AMD GPUs (ROCm)"]
+    LLM["Drafting model: Gemma 4<br/>OpenAI-compatible endpoint"]
+    VER["Judge: a second, smaller model"]
+    GNN["GraphSAGE mule scorer<br/>POST /score :8081"]
+  end
+  PIPE -->|"prose fields only"| LLM
+  PIPE -->|"injection judge"| VER
+  PIPE -->|"mule scores (heuristic fallback)"| GNN
 ```
+
+Where the AMD box is: **endpoint mode**, AMD Token Factory behind `WAPSI_LLM_BASE_URL` (drafting model and judge;
+the scorer is the transparent heuristic). **Notebook and droplet modes**, one machine: vLLM-ROCm serves the drafting
+model (the merged LoRA checkpoint when there is one) and the judge, the GNN service scores accounts, and on the
+droplet `bench/gpu_telemetry.py` reads `amd-smi` on the host.
 
 ## What is in this folder
 
 | Path | What |
 |---|---|
-| `docker-compose.yml`, `.env.example` | The stack. Profiles: `gpu` (llm + app), `verifier`, `gnn`, `demo` (no GPU). ROCm device flags, healthchecks and a fixed start order. Everything binds to 127.0.0.1. Images are pinned by digest. |
-| `serving/start_llm.sh` | Starts vLLM with one of four profiles: `gemma4-merged`, `gemma4-base`, `qwen-fallback` or `verifier`. It adds the ROCm flags and `--attention-backend TRITON_ATTN` for Gemma 4. `print` shows the command without running it. |
-| `serving/pull_and_pin.sh` | Pulls each image and writes `VAR=repo@sha256:…` into `.env`. Refuses `:latest`. |
-| `serving/smoke_test.py` | Checks `/v1/models` and one completion, then runs one showcase case through the pipeline against the endpoint and prints the verification summary. |
-| `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at vLLM, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
-| `bench/` | `llm_bench.py` (streaming TTFT, ITL, tokens/s, concurrency sweep), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case), `report.py` (writes `AMD_RESULTS.md`). |
-| `RUNBOOK.md` | Event-week steps: credits, droplet, firewall, serving, training, benchmarks, video capture, teardown, budget. |
-| `kickoff/` | Kickoff day as one command: `preflight.sh` (green/red readiness table), `run_all.sh` (11 resumable stages from environment to evidence bundle, with event-window and budget guards, `--dry-run`, `--stage`, and a CPU `--rehearsal`), `collect_evidence.py`, `fill_pitch.py`, `ab_hallucination.py`, `train_image_check.py` (the training image on the ROCm torch). See [kickoff/README.md](kickoff/README.md). |
-| `evidence/` | Dated evidence bundles written by `run_all.sh` during the event (`<UTC date>/evidence.json`, `evidence.md`, stage records, logs, amd-smi snapshots). Empty before 12 Oct. CPU rehearsals go to the gitignored `evidence/cpu-rehearsal/`. |
-| `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. These are separate work streams with their own READMEs. |
+| `kickoff/` | The event-week pipeline as one resumable command, in three modes. `preflight.sh` (detects the mode, readiness table), `run_all.sh` (twelve stages from environment to evidence bundle, event-window and budget guards, `--dry-run`, `--stage`, a CPU `--rehearsal`), `endpoint.py` (the metered client for a shared endpoint: rate limit, 429 retries, `json_object`, disk cache, `usage.cost`; the probe; `wait-model`), `model_plan.py` (drafting model and judge by environment, Gemma 4 first, documented fallbacks), `golden_eval.py`, `ab_hallucination.py`, `collect_evidence.py`, `fill_pitch.py`, `wapsi_amd_kickoff.ipynb` (generated by `make_notebook.py`), `train_image_check.py`. See [kickoff/README.md](kickoff/README.md). |
+| `evidence/` | Dated evidence bundles written by `run_all.sh` during the event: `endpoint/<UTC date>/`, `notebook/<UTC date>/`, `<UTC date>/` (droplet). CPU rehearsals go to the gitignored `evidence/cpu-rehearsal/`. |
+| `RUNBOOK.md` | 14 to 18 Oct, day by day, fastest path first; notebook and droplet modes; the model plan; troubleshooting; budget. |
+| `docker-compose.yml`, `.env.example` | The droplet stack. Profiles: `gpu` (llm + app), `verifier`, `gnn`, `demo` (no GPU). ROCm device flags, healthchecks and a fixed start order. Everything binds to 127.0.0.1. Images are pinned by digest. |
+| `serving/start_llm.sh` | Starts vLLM with one of four profiles (`gemma4-merged`, `gemma4-base`, `qwen-fallback`, `verifier`): in a container, with `docker run`, or without Docker through `python -m vllm.entrypoints.openai.api_server` (`python` mode, bound to 127.0.0.1). It adds the ROCm flags and `--attention-backend TRITON_ATTN` for Gemma 4. `print` shows the commands without running them. |
+| `serving/pull_and_pin.sh`, `serving/smoke_test.py` | Pins each image by digest (refuses `:latest`); checks `/v1/models`, one completion, then one showcase case through the pipeline. |
+| `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at the endpoint, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
+| `bench/` | `llm_bench.py` (streaming TTFT, tokens/s, concurrency sweep; `--rpm` for a rate-limited endpoint), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case; `--endpoint` for the metered client), `report.py`. |
+| `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. Their own READMEs. |
 
-## Run the demo locally (no GPU, no model downloads)
+## Run the demo locally (no GPU, no key, no model downloads)
 
 Demo mode (`WAPSI_DEMO_MODE=1`) uses the offline `FakeLLM`, the in-memory showcase ledger, the rules guard and the
 heuristic scorer. It runs on any laptop and the demo URL can use it too.
@@ -88,23 +115,27 @@ Without Docker (uv):
 WAPSI_DEMO_MODE=1 WAPSI_STATE_DIR=.wapsi-state uv run streamlit run editions/amd/app/ui_app.py
 WAPSI_DEMO_MODE=1 WAPSI_STATE_DIR=.wapsi-state uv run uvicorn editions.amd.app.api:app --port 8080
 uv run python -m editions.amd.bench.e2e_bench --world showcase-memory --fake-llm --out /tmp/wapsi-bench  # harness check
-uv run pytest tests/amd -q -k "serving or bench"
+bash editions/amd/kickoff/run_all.sh --rehearsal      # the whole pipeline on CPU with stub models (never a result)
+uv run pytest tests/amd -q
 ```
 
 (PowerShell: `$env:WAPSI_DEMO_MODE=1; $env:WAPSI_STATE_DIR=".wapsi-state"; uv run streamlit run editions/amd/app/ui_app.py`.
-The API also needs `fastapi` and `uvicorn`. Both are in the uv environment when the `gcp` extra is installed; the app
-image installs them at the versions pinned in `uv.lock`.)
-
-On the MI300X, follow [RUNBOOK.md](RUNBOOK.md).
+The API also needs `fastapi` and `uvicorn`: `uv sync --extra amd-app`.)
 
 ## Configuration
 
-Everything is set through environment variables; see `.env.example` and `app/settings.py`. The main ones:
-`WAPSI_LLM_PROFILE` and `WAPSI_LLM_MODEL` choose the model and checkpoint. `VLLM_GPU_UTIL` and `VERIFIER_GPU_UTIL`
-set the memory split. `WAPSI_VERIFIER_BASE_URL` switches on the judge. `WAPSI_GNN_URL` switches on the GNN.
-`WAPSI_WORLD_DIR` picks the synthetic world. `*_BIND` controls network exposure. Secrets (`HF_TOKEN`,
-`VLLM_API_KEY`, `WAPSI_API_TOKEN`) come only from the shell environment on the droplet. They are never in `.env`
-or git.
+Everything is set through environment variables.
+
+- **The model endpoint** (the app, the benchmarks and the kickoff pipeline alike): `WAPSI_LLM_BASE_URL`,
+  `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`, `WAPSI_LLM_JSON_MODE` (`json_object` for an endpoint without a strict
+  JSON schema, `json_schema` for your own vLLM). Endpoint mode adds `WAPSI_JUDGE_MODEL`, `WAPSI_LLM_RPM`,
+  `WAPSI_LLM_MAX_CONCURRENCY`, `WAPSI_LLM_CACHE_DIR`, `WAPSI_ALLOW_MODEL_FALLBACK`; the names are in
+  [`kickoff/endpoint.env.example`](kickoff/endpoint.env.example).
+- **A GPU box**: `WAPSI_BASE_MODEL`, `WAPSI_VERIFIER_MODEL_ID`, `WAPSI_LORA_CONFIG`, `VLLM_GPU_UTIL`,
+  `VERIFIER_GPU_UTIL`, `WAPSI_VERIFIER_BASE_URL` (switches on the judge), `WAPSI_GNN_URL` (switches on the GNN); see
+  `.env.example` and `app/settings.py`.
+- **Secrets** (`WAPSI_LLM_API_KEY`, `HF_TOKEN`, `VLLM_API_KEY`, `WAPSI_API_TOKEN`) come only from the shell or a
+  private file outside the repository. They are never in `.env`, in git, in a log, in a cache file or in a report.
 
 ### GNN scoring contract (`app/gnn_client.py`)
 
@@ -116,39 +147,28 @@ It accepts either of these replies:
 - `{"scores": [{"account_id", "score", "contributions"}]}`
 
 Extra contribution columns such as `graph_neighbourhood` and `ig_residual` are kept, so each row still adds up to
-the logit.
+the logit. The client falls back to the heuristic scorer when the service is down or times out, the reply is
+malformed or has non-finite scores, or an account has no score (only that row falls back). After a failure it skips
+the service for 30 s. The case always completes, and the `model` field of each classification records which scorer
+produced it.
 
-The client falls back to the heuristic scorer when:
+## Originality boundary (12 to 18 Oct 2026)
 
-- the service is down or times out
-- the reply is malformed or has non-finite scores
-- an account has no score (only that row falls back)
-
-After a failure it skips the service for 30 s. The case always completes, and the `model` field of each
-classification records which scorer produced it.
-
-## Originality boundary (lablab.ai AMD Developer Hackathon ACT III, 12–18 Oct 2026)
-
-This is disclosed in full; see also `docs/originality.md`.
+Disclosed in full; see also `docs/originality.md`. Commit dates are never rewritten.
 
 - **Before the event.** The portable Wapsi core already existed: tracing, taint apportionment, hold plans,
-  classifier, drafter, verifier, synthetic data, UI and evals (`src/wapsi/`, `ui/`, `evals/`). So did the Google
-  Cloud edition. All of it is under the git tag **`amd-baseline`**, created at kickoff. An edition for a separate,
-  earlier event was also built on this core before the event; it was removed from the tree on 2026-10-07 and stays
-  in the git history before the tag (see `docs/originality.md`).
-- **Prepared before the event, run only during it.** The code in this folder (`docker-compose.yml`, `serving/`,
-  `app/`, `bench/`, `kickoff/`, `RUNBOOK.md`) was written before the event so that event week goes to GPU work. Its
-  tests run offline on a laptop with fakes, and `kickoff/run_all.sh --rehearsal` runs the whole pipeline on a CPU with
-  tiny inputs and stub models (labelled "CPU rehearsal", never reported). None of it had touched an AMD GPU before
-  the event.
-- **Done during 12–18 Oct 2026 on the MI300X, and nowhere else:**
-  - GNN training on ROCm (`gnn/`)
-  - Gemma 4 LoRA fine-tuning and the merged checkpoint (`lora/`)
-  - vLLM-ROCm serving of the merged model next to the verifier model and the GNN
-  - every benchmark and every reported number (`bench/results/`, `AMD_RESULTS.md`)
-  The git history and the timestamps in each result file show when each run happened.
-- **Nothing in this folder is a measured result.** `bench/fixtures/` holds hand-written samples of the amd-smi
-  JSON shape with synthetic values, used only to test the parsers. They are not measurements.
+  classifier, drafter, verifier, synthetic data, UI and evals (`src/wapsi/`, `ui/`, `evals/`), and the Google Cloud
+  edition. All of it is under the git tag **`amd-baseline`** (the repository at kickoff).
+- **Prepared before the event, run only during it.** `docker-compose.yml`, `serving/`, `app/`, `bench/`, `gnn/`,
+  `lora/` and the first version of `kickoff/` (the droplet pipeline and the CPU rehearsal; commits dated 7 Oct on its
+  branch, merged after the tag) were written before 12 Oct so that event week goes to running. Their tests run
+  offline on a laptop with fakes. None of it had touched an AMD GPU before the event.
+- **Built during the event (after 12 Oct 15:00 UTC).** The three execution modes: the metered endpoint client and
+  endpoint mode, notebook mode and the notebook, the model plan, the golden-set evaluation stage, the mode-aware
+  evidence bundle and pitch filler; and every run on AMD compute, with every number those runs produced
+  (`evidence/`). The git history and the timestamps in each result file show when each run happened.
+- **Nothing in this folder is a measured result** except what is under `evidence/`. `bench/fixtures/` holds
+  hand-written samples of the amd-smi JSON shape with synthetic values, used only to test the parsers.
 
 All banking data is synthetic. Model licences: Gemma 4 (Apache-2.0) and Qwen3.6 (Apache-2.0, fallback only).
 Code is MIT.
