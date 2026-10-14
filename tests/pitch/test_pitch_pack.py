@@ -44,9 +44,62 @@ def test_form_limits_hold_and_are_stated():
     errors, found = check.check_limits()
     assert errors == []
     limits = {(Path(path).as_posix(), limit) for path, _, limit in found}
-    assert ("pitch/aibc/SUBMISSION_FIELDS.md", 1000) in limits
     assert ("pitch/amd/LABLAB_FIELDS.md", 50) in limits
     assert ("pitch/amd/LABLAB_FIELDS.md", 255) in limits
+    assert ("pitch/amd/LABLAB_FIELDS.md", 1500) in limits
+
+
+def test_open_slots_are_listed_and_never_bare():
+    """An unmeasured AMD figure is TBD(slot_id) for a slot in NUMBERS.md; a slot is never also a number row."""
+    errors, used = check.check_slots()
+    assert errors == []
+    slots = check.parse_slots()
+    assert set(used) == set(slots)
+    rows = {row.rid for row in check.parse_rows()}
+    assert not rows & set(slots)
+    for slot, pitched in slots.items():
+        assert pitched, slot
+        assert not check.TOKEN_RE.search(pitched), f"{slot}: a slot carries no value"
+
+
+def _tiny_pitch(tmp_path, monkeypatch, numbers: str, slide: str) -> None:
+    page = tmp_path / "pitch"
+    page.mkdir()
+    (page / "NUMBERS.md").write_text(numbers, encoding="utf-8")
+    (page / "slide.md").write_text(slide, encoding="utf-8")
+    monkeypatch.setattr(check, "PITCH", page)
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    monkeypatch.setattr(check, "NUMBERS_MD", page / "NUMBERS.md")
+
+
+NUMBERS_WITH_ONE_SLOT = ("| ID | Pitched as | Value | Source | Locator |\n|---|---|---|---|---|\n"
+                         "| a | ₹1,42,848 held | 142848 | derived | `calc:142848` |\n\n"
+                         "| Slot | Will be pitched as | Where it runs | Planned source |\n|---|---|---|---|\n"
+                         "| amd_pass | drafts passing the verifier | AMD Token Factory | a report |\n")
+
+
+def test_checker_accepts_a_listed_slot(tmp_path, monkeypatch):
+    _tiny_pitch(tmp_path, monkeypatch, NUMBERS_WITH_ONE_SLOT,
+                "We hold ₹1,42,848. With Gemma 4 on AMD: TBD(amd_pass). Notation: TBD(slot_id).")
+    errors, used = check.check_slots()
+    assert errors == [] and used == {"amd_pass": 1}
+    assert check.check_tokens() == []
+
+
+def test_checker_catches_a_bare_tbd_and_an_unknown_slot(tmp_path, monkeypatch):
+    _tiny_pitch(tmp_path, monkeypatch, NUMBERS_WITH_ONE_SLOT,
+                "Tokens per second: **TBD**.\nCases per hour: TBD(cases_hour).\n")
+    errors, _ = check.check_slots()
+    assert len(errors) == 2
+    assert "slide.md:1" in errors[0] and "bare TBD" in errors[0]
+    assert "slide.md:2" in errors[1] and "TBD(cases_hour)" in errors[1]
+
+
+def test_checker_catches_a_slot_that_is_also_a_number(tmp_path, monkeypatch):
+    numbers = NUMBERS_WITH_ONE_SLOT.replace("| amd_pass |", "| a |")
+    _tiny_pitch(tmp_path, monkeypatch, numbers, "Nothing open here.")
+    errors, _ = check.check_slots()
+    assert len(errors) == 1 and "both a number row and an open slot" in errors[0]
 
 
 def test_checker_catches_a_wrong_value():

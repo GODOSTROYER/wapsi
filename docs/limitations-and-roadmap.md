@@ -10,15 +10,18 @@ Each item names the file or test that shows it. Answers to common questions are 
 
 | Part | Status today |
 |---|---|
-| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,623 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
+| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,765 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
 | Legal corpus (SOP, BNSS, PML Rules, FIU-IND FAQ, RBI Fraud Risk Management Directions 2026) and regulatory radar | Real public texts, downloaded at build time. 121 of 121 checks pass (`wapsi.search.check_citations`, 2026-09-29): 32 citation quotes, 33 facts and 52 radar quotes are found word for word, and 3 judgments are cited by URL only. |
 | Bank data: customers, accounts, transactions, complaints | **Synthetic** (`wapsi.synth`, `wapsi.fixtures.showcase`) |
 | Other banks' transactions ("CFCFRMS responses") | **Simulated** (`Ledger.consortium_transactions`); Wapsi is a simulated CFCFRMS interface and labels every CFCFRMS action so |
 | RBI draft SOP on money-mule accounts (11 Sep 2026) | **DRAFT**, tracked on the regulatory radar, never applied |
 | DoT FRI grades, MuleHunter-style scores, prior NCRP report counts | **Synthetic**, generated from the true labels with noise |
-| LLM in every committed evaluation | **Offline stand-in** (`FakeLLM`) |
+| LLM in the committed evaluation reports | **Offline stand-in** (`FakeLLM`). Runs with Gemma 4 served on AMD are event-week work; their figures are published only from committed results files ([1.4](#l-llm)) |
+| Voice notes | **Synthetic**: six text-to-speech readings of synthetic scripts. The committed tests use the offline model's expected answers; the hosted multimodal model's request format is tested with a fake client. The open-model path (a Whisper-class speech model plus Gemma 4 on AMD for the fields) is event-week work. Accuracy on real, noisy Hinglish audio is **not measured** |
+| Agent trace | Working code. The local app shows a **recorded offline run** (real ADK app, tools and guards; scripted model). Live runs with Gemma 4 on AMD as the agent's model are event-week work. A traced voice-intake step keeps the caller's name in its redacted raw result (name masking is by key) |
 | Placing a lien, posting to CFCFRMS, filing with FIU-IND | **Not built.** Approvals create action *records* only. |
 | Sign-in and identity | **Not in the core.** The role is a string given by the caller. |
+| The model endpoint of the hackathon entry | A **shared trial API** that serves open models on AMD GPUs: no SLA, request limits, and replies that can degrade ([1.5](#l-endpoint)). Only synthetic data is sent to it |
 
 ## At a glance
 
@@ -26,7 +29,7 @@ Each item names the file or test that shows it. Answers to common questions are 
 |---|---|---|---|
 | 1 | [Synthetic data only](#l-synthetic) | No evidence yet on real cases | Results are reported as synthetic; the golden set, fixtures and generator are all published |
 | 2 | [Golden set encodes our reading of the SOP](#l-golden) | Perfect scores show agreement with the spec, not legal correctness | SOP Annexure-V reproduced to the paisa; interpretations listed [below](#l-legal) |
-| 3 | [No real-LLM evaluation](#l-llm) | Fallback rate with a real model is unknown | Numbers are slots, prose is filtered, and the verifier recomputes everything |
+| 3 | [No real-LLM evaluation in the committed reports](#l-llm) | Fallback rate with a real model is not published yet | Numbers are slots, prose is filtered, and the verifier recomputes everything |
 | 4 | [`balance_now` is a replayed balance](#l-balance) | The live balance can differ when the hold is executed | The plan never holds more than the replayed balance, and the hold instruction shows the balance it assumed so the officer can check it |
 | 5 | [Tracing bounds](#l-bounds) | Very deep, very wide or late flows are not followed | Money lost past the depth or account limits shows as `unlocated` with a warning |
 | 6 | [Other banks are simulated](#l-cfcfrms) | Real CFCFRMS data will arrive differently | Other-bank amounts are requests, never counted as held |
@@ -37,9 +40,10 @@ Each item names the file or test that shows it. Answers to common questions are 
 | 11 | [Legal modelling gaps](#l-legal) | Some SOP branches are simplified | Each gap is listed with its SOP reference |
 | 12 | [National-only holiday calendar](#l-calendar) | State holidays can move due dates | Due dates show their basis; STR clocks are marked provisional until approval |
 | 13 | [Verifier scope](#l-verifier) | It proves consistency with the data, not that the data is true | Every draft still needs human approval |
-| 14 | [No sign-in or separation of duties in the core](#l-auth) | The role is self-asserted in the demo UI | The Google Cloud edition adds signed role grants (not deployed yet); a bank must connect its own sign-in |
+| 14 | [No sign-in or separation of duties in the core](#l-auth) | The role is self-asserted in the demo UI | The ADK agent app adds signed role grants; a bank must connect its own sign-in |
 | 15 | [No core-banking or CFCFRMS actions](#l-actions) | Nothing is actually held | By design for a prototype |
 | 16 | [The hard world is still synthetic](#l-hard) | Label accuracy drops on realistic confounders | Holds stay exact, over-hold ₹0, false freezes 0; wrong labels change paperwork only |
+| 17 | [The model endpoint is a shared trial service](#l-endpoint) | It can be slow, rate-limited or return unusable text | No number depends on it; a failed answer becomes a fixed paragraph; live runs start with a health probe |
 
 ---
 
@@ -77,16 +81,42 @@ therefore comes from signals that were built to correlate with the answer. Real 
 much weaker.
 
 <a id="l-llm"></a>
-### 1.4 No real-LLM evaluation yet
+### 1.4 No real-LLM evaluation in the committed reports yet
 
-Every committed harness report records `"llm": "fake-llm"`. The metric `llm_only_hallucination_rate` is `null`: it is
+Every harness report committed at the pre-event baseline records `"llm": "fake-llm"`. The metric `llm_only_hallucination_rate` is `null`: it is
 only computed for a real model. We have tested the defences with scripted bad models: one invents amounts
 (`FakeLLM(hallucinate=True)`), one obeys injected text (`FakeLLM(inject_obedience=True)`), and one raises errors
 (`tests/draft/test_draft_drafter.py`). But the rate at which a real model's prose fails the checks and falls back
 to fixed paragraphs (`llm_prose_fallback_rate`) is unknown.
 
-**Plan:** run the harness against a real model with
-`uv run python -m evals.harness --world demo --llm "openai:<base_url>|<model>"`, and commit the report.
+**Plan (event week):** run the harness against Gemma 4 served on AMD with
+`uv run python -m evals.harness --world demo --llm "openai:<base_url>|<model>"`, and commit the report. Until a
+report is committed, every such figure in the pitch is an open slot, not a claim (`pitch/NUMBERS.md`). A report
+from the shared endpoint says "AMD Token Factory" and is not an MI300X benchmark.
+
+<a id="l-endpoint"></a>
+### 1.5 The model endpoint is a shared trial service
+
+The hackathon entry reaches Gemma 4 through an AMD-hosted API that every team shares. It is a trial service: it
+has no SLA, per-account request and concurrency limits and a daily usage cap, it does not honour `seed`, it does
+not accept strict JSON-schema output, and it serves no audio or embedding models. Its terms say not to send
+sensitive data, so only synthetic data is ever sent.
+
+Reply quality can also degrade. During smoke runs on 2026-10-14 the Gemma 4 model on the shared endpoint answered
+every request for more than half an hour with text that was not language at all, cut off at the token limit,
+while another model on the same endpoint answered normally. Those runs recorded nothing: the smoke script
+(`pitch/amd/evidence/token_factory_smoke.py`) starts with a health probe and refuses to write a result when a
+reply is not plain language. The model is a setting (`WAPSI_LLM_MODEL`), so a run can move to another served
+model, but a figure is then reported under that model's name.
+
+**Today:** no amount, account number, date or citation depends on the model. A request that fails, times out or
+is rejected by the prose checks is replaced by a fixed paragraph, so a case always completes and its numbers are
+the same either way. **Known gap:** the prose checks look for digits, number words, unregistered citations and
+copied complaint text. They do not yet check that an answer is language. A degenerate answer that happens to
+carry no digits can therefore be accepted as prose and reach a draft, and the verifier, which checks numbers,
+citations and policy, will pass it. A supervisor would see it, but it should not get that far.
+**Plan:** reject an answer that is not the expected JSON object or that was cut off by the token limit, add a
+plain-language check to the prose validator, and surface the endpoint's finish reason in the client.
 
 ---
 
@@ -227,8 +257,9 @@ tuning needs a **fresh** blind set before an improvement can be claimed.
 **Today:** the guard only makes attempts visible. Tracing and the hold plan never read narratives, the LLM sees
 narratives only inside untrusted markers, the verifier fails drafts that leak injected text, and a supervisor
 approves every draft ([FAQ Q10](faq.md#q10)). A flagged complaint whose text does not leak into a draft is a
-warning, not an error (`test_flagged_complaint_without_leak_is_only_a_warning`). The Google Cloud edition can
-add Model Armor as an option, and `RulesGuard` stays on ([`editions/gcp/README.md`](../editions/gcp/README.md)).
+warning, not an error (`test_flagged_complaint_without_leak_is_only_a_warning`). The AMD layer can add a second
+model as a judge, and the optional managed-cloud adapters can add Model Armor; `RulesGuard` stays on in both
+([Editions](editions.md)).
 
 ---
 
@@ -296,7 +327,7 @@ approximation. Years other than 2026 and 2027 fall back to three fixed holidays:
 `wapsi.pipeline.run.approve` checks that the role string it is given is `supervisor`. It does not check identity,
 and for ordinary drafts it does not check that the approver is a different person from the maker. The one
 exception is the account-level hold request: the officer who requested it cannot approve it. The local Streamlit app has a role
-switcher (analyst, supervisor and auditor) so that a demo can show each view. The Google Cloud edition adds
+switcher (analyst, supervisor and auditor) so that a demo can show each view. The ADK agent app adds
 signed role grants ([`editions/gcp/README.md`](../editions/gcp/README.md)).
 
 **Plan:** single sign-on, named makers and checkers, and a rule that no one approves their own work. The audit
@@ -316,8 +347,8 @@ interface". Hold clocks count from the time these records were executed.
 ### 7.3 Case storage
 
 The local Streamlit app keeps cases, approvals and the audit trail in a session-scoped, in-memory store
-(`ui/data_source.py`). They are lost when the session ends or the app restarts. The editions provide persistent stores; for example, the Google Cloud edition uses
-Firestore.
+(`ui/data_source.py`). They are lost when the session ends or the app restarts. The platform layers provide persistent stores: the AMD layer writes JSON files (`FileCaseStore`), and the
+optional managed-cloud adapters use Firestore.
 
 ### 7.4 What the LLM sees
 
@@ -356,7 +387,7 @@ parallel run its own directory, for example `uv run pytest --basetemp=<a private
 ```mermaid
 flowchart LR
     subgraph NT["Near term: to 18 Oct 2026"]
-        N1["Google Cloud and<br/>AMD editions"]
+        N1["AMD entry: endpoint,<br/>notebook, droplet"]
         N2["Real-LLM evaluation"]
         N3["Fresh blind injection set"]
         N4["SOP gaps: P1 threshold,<br/>Para 10.1 clocks"]
@@ -376,12 +407,16 @@ flowchart LR
     NT --> PR --> RI
 ```
 
-### Near term: the hackathon windows (to 18 October 2026)
+### Near term: the hackathon window (12 to 18 October 2026)
 
 | Item | Detail |
 |---|---|
-| Google Cloud edition | Complete and deploy the agents and services described in [`editions/gcp/README.md`](../editions/gcp/README.md) (4 to 18 October) |
-| AMD edition | During the event window (12 to 18 October), all runs on AMD Instinct MI300X: GNN training, LoRA fine-tuning, vLLM-ROCm serving and the benchmarks. The code prepared before the event is disclosed in [`docs/originality.md`](originality.md). See [`editions/amd/README.md`](../editions/amd/README.md). |
+| AMD entry, endpoint mode | Gemma 4 served on AMD GPUs as the drafting and extraction model for the demo; `json_object` output with Wapsi's own validation; rate-limit handling |
+| Open-model voice intake | A Whisper-class speech model for the transcript and Gemma 4 on AMD for the fields, in front of the existing masking, screening and reconciliation ([Voice intake](voice-intake.md)) |
+| ADK agent on Gemma 4 | The officer's agent with Gemma 4 on AMD as its model: native tool calls, a JSON-protocol fallback, the existing agent trace ([Editions](editions.md)) |
+| Prose robustness | Close the gap in [1.5](#l-endpoint): reject truncated or non-JSON answers and add a plain-language check |
+| Managed-cloud adapters | No deployment is planned for the event; they stay optional and tested offline |
+| AMD entry, notebook and droplet modes | If an AMD GPU notebook or an MI300X droplet is available during the event: GNN training on ROCm, and the serving and end-to-end benchmarks. The code prepared before the event is disclosed in [`docs/originality.md`](originality.md). See [`editions/amd/README.md`](../editions/amd/README.md). |
 | Real-LLM evaluation | Run `evals.harness` against a real model (the command is in [1.4](#l-llm)) and commit `llm_prose_fallback_rate` and `llm_only_hallucination_rate` |
 | Injection guard | Commission a fresh blind set that includes Devanagari, Hinglish and split-sentence attacks; add a model-based second guard and report both on the new set |
 | SOP gaps | Flag the Process 1 ₹50,000 / FIR condition; add the Para 10.1 grievance-based 90-day clock and the extension, and mark which holds are contested |

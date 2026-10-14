@@ -7,12 +7,18 @@
 
 ## Context
 
-Wapsi is entered in two hackathons, and each one wants a solution native to its platform:
+When this decision was taken, Wapsi was planned for more than one platform, and each one wanted a solution
+native to it:
 
-| Event | Platform expectation (from the edition folders and `docs/originality.md`) |
+| Platform | Expectation (from the edition folders and `docs/originality.md`) |
 |---|---|
-| AI Builder Cup | Google Cloud services: ADK agents on Cloud Run, Gemini, BigQuery, Firestore (`editions/gcp/README.md`) |
-| lablab.ai AMD ACT III | AI work on an AMD Instinct MI300X with ROCm, built during 12–18 Oct 2026 (`docs/originality.md`) |
+| A managed cloud | Google Cloud services: ADK agents on Cloud Run, a hosted model, BigQuery, Firestore (`editions/gcp/README.md`) |
+| AMD | AI work on AMD GPUs with ROCm for the lablab.ai AMD Developer Hackathon ACT III, 12–18 Oct 2026 (`docs/originality.md`) |
+
+**Update, 2026-10-14.** Wapsi is entered in one hackathon, the AMD one. The AMD edition is the entry; the Google
+ADK agent is part of it, with Gemma 4 on AMD as its model; the Google Cloud layer stays in the repository as
+optional managed-cloud adapters ([editions.md](../editions.md)). The decision below is unchanged, and it is what
+made the re-aim cheap: no rule, number or test had to move.
 
 The legal logic (tracing, pro-rata taint, dispositions, drafts, verification) is the hard part, and it must behave
 identically everywhere: a hold amount cannot depend on which platform computed it. The team is small. Some
@@ -51,15 +57,16 @@ Positive:
 
 - **Same numbers everywhere.** The showcase case gives ₹1,42,848.00 held and ₹3,34,848.00 recoverable whichever
   edition runs it, because the same function computes it.
-- **One fix reaches both submissions.** The SOP Para 9.1(iii) correction ([ADR 0004](0004-intermediary-accounts-sop-9-1-iii.md))
+- **One fix reaches every platform layer.** The SOP Para 9.1(iii) correction ([ADR 0004](0004-intermediary-accounts-sop-9-1-iii.md))
   was made in the core, and every edition picked it up. Only the check that lives outside the core (the
   `lien-calculator` skill) had to repeat the rule.
 - **Adapters are testable offline.** `tests/test_contracts.py` checks that the showcase ledger satisfies the
   `Ledger` protocol. The Google Cloud edition runs its BigQuery SQL on SQLite and compares it with
   `InMemoryLedger` (`editions/gcp/README.md`). The AMD edition swaps in `ParquetLedger`, a file case store and an
   OpenAI-compatible client without touching the core.
-- **Each event still sees a native build.** The platform layer (ADK and Cloud Run, vLLM on ROCm with a GNN) is
-  real platform work, and `docs/originality.md` records which work belongs to which event window.
+- **A platform still gets a native build.** The platform layer (an AMD-served open model with a GNN on ROCm; ADK
+  agents; managed-cloud services) is real platform work, and `docs/originality.md` records what was built before
+  and during the event window.
 
 Negative:
 

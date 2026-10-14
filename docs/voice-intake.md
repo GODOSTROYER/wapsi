@@ -5,9 +5,36 @@ A frightened victim rarely types a clean NCRP complaint. They send a WhatsApp vo
 that recording into a structured complaint in seconds and then **checks every number against the ledger**. The
 recording is never trusted for money.
 
-It runs **entirely on open models**: Whisper transcribes, and an open text model served on AMD (Gemma 4 on the
-AMD Token Factory, or on your own vLLM-ROCm endpoint) translates and fills the fields. Gemini's one-call
-multimodal path is still there as an alternative, and an offline model reads the bundled samples with no network.
+## Two ways to read the audio, one pipeline after it
+
+| | Open-model path (the AMD entry) | Hosted multimodal path (optional adapter) |
+|---|---|---|
+| Speech to text | Whisper (open weights), local by default; or an OpenAI-compatible transcription endpoint | the hosted model reads the audio itself |
+| Fields and translation | Gemma 4 served on AMD GPUs, from the transcript, in `json_object` mode | the same call, with a response schema |
+| Status | built during the hackathon (12 to 18 October 2026); `WAPSI_VOICE_BACKEND=open` | in the repository at the pre-event baseline; request format tested with a fake client |
+| Offline | both paths fall back to the offline model, which answers for the six bundled samples only | |
+
+Why the open path is split in two: the AMD-hosted endpoint that the hackathon provides serves chat models and no
+audio transcription, and it rejects audio parts in chat messages. So the speech model runs locally (a CPU is
+enough for a short clip; any GPU is faster), and only the transcript goes to Gemma 4 on AMD. An OpenAI-compatible
+transcription endpoint can be configured instead, and a chat-audio adapter is probed at run time, so the split
+closes by itself if the endpoint starts accepting audio.
+
+Whichever path produced it, the answer must fit the same schema, and everything from step 4 on is the same code.
+
+The shortest way to run the open path with nothing but an AMD Token Factory key:
+
+```bash
+uv sync --extra ui --extra asr                 # the officer app + local Whisper (transformers on torch)
+export WAPSI_LLM_BASE_URL="https://developer.amd.com.cn/radeon/api/v1"
+export WAPSI_LLM_API_KEY="<your key>"          # in the shell only, never in a file under git
+export WAPSI_LLM_MODEL="Gemma-4-31B-IT"
+export WAPSI_VOICE_BACKEND=open WAPSI_ASR_BACKEND=local
+uv run streamlit run ui/app.py                 # Voice Intake page: pick a sample, upload or record
+```
+
+Without those variables the page reads the six bundled samples with the offline model
+(`WAPSI_VOICE_BACKEND=fake`, or simply nothing configured).
 
 ## What happens
 
@@ -50,6 +77,9 @@ multimodal path is still there as an alternative, and an offline model reads the
 Steps 4 to 8 are the same code for every backend (`wapsi.intake.voice.intake_voice_note`), so reconciliation
 does not depend on which models read the recording.
 
+A speech model can mishear a digit, and a language model can misread a transcript. Neither matters for money:
+step 7 compares every claimed value with the ledger, and step 8 uses the ledger's figure.
+
 ## Getting valid, grounded JSON out of an open model
 
 Open models on shared endpoints do not offer strict response schemas everywhere, and they slip. The extractor
@@ -75,7 +105,7 @@ only make sure the claim is what was actually said.
 | --- | --- |
 | `open` | A speech recogniser plus an open text model. Fails with a message saying what to set if either is missing. |
 | `gemini` | One Gemini multimodal call (`GEMINI_API_KEY`, or `WAPSI_GEMINI_BACKEND=vertex` with a project). |
-| `fake` | The offline model. It knows the bundled samples by SHA-256; any other recording gets an empty result, never an invented one. |
+| `fake` | The offline model. It knows the bundled samples by SHA-256; any other recording gets an empty result, never an invented one. `WAPSI_VOICE_OFFLINE=1` (the older switch) still forces it while the backend is `auto`. |
 | `auto` (default) | `open` when a text model endpoint is configured **and** a recogniser is available: an ASR endpoint, a local Whisper whose weights are already on disk, or a chat endpoint that a one-off probe shows accepts audio. Otherwise `gemini` when it is configured, else `fake`. `auto` never starts a multi-gigabyte download. |
 
 The text model (translation and fields):
@@ -143,6 +173,9 @@ a laptop CPU is labelled `(local CPU)`.
 | ADK agent | The `wapsi_intake` sub-agent has the `intake_voice_note` tool. Audio uploaded in the chat is saved as a session artifact by `VoiceUploadPlugin` and replaced with `[Uploaded voice note: "name"]`. The agent calls the tool with that name, a `gs://` URI or `demo://voice/<sample_id>`. The tool honours `WAPSI_VOICE_BACKEND` and reports the models in its result. |
 | Python | `wapsi.intake.intake_voice_note(audio_bytes, llm=wapsi.intake.backends.build_voice_model(), ledger=..., guard=...)` |
 
+Step-by-step screens: [User guide, Voice Intake](user-guide.md#voice-intake). Function signatures and examples:
+[API reference](api-reference.md#voice-intake).
+
 ## Benchmark
 
 ```bash
@@ -194,7 +227,32 @@ Each sample has a `*.script.txt` (what is said) and a `*.expected.json` (the ans
 against the schema). `manifest.json` records the hashes. Regenerate the audio with
 `uv run python scripts/make_voice_samples.py` (Windows).
 
-The samples are English text-to-speech voices reading romanised Hinglish, which is not how a person sounds. They
-test the plumbing and the offline demo. Judge a speech recogniser on real recordings (record one on the page).
+The counts above are the samples' expected reconciliation with the offline model, checked by `tests/intake`. With
+a live speech model and Gemma 4 on AMD, the counts are whatever the screen shows; the first live results are in
+the benchmark folder named above, and a figure enters the pitch only from a committed results file
+(`pitch/NUMBERS.md`).
 
-Gemini outputs are never used as training data (see [Originality](originality.md)).
+## What is recorded
+
+- **Audit.** Each **Transcribe and check** writes a `voice_intake_run` event to the session's own audit chain: the
+  model, the matched NCRP ids, the claim counts and whether instruction-like text was found. The transcript is
+  never written to the audit log. **Open case** writes `voice_intake_linked` (an existing case) or
+  `voice_intake_opened` (a new case) to that case's chain, with the audio's SHA-256.
+- **Agent trace.** An `intake_voice_note` call made by the ADK agent is a tool step in the agent run's trace like
+  any other ([Trust and safety, agent traces](trust-and-safety.md#agent-traces)). The transcript and translation
+  reach the trace only as placeholders, because the tool returns them inside untrusted-text markers. The step's
+  summary is a generic "returned …" line for now, and its redacted raw result still carries the caller's name
+  from the fields list (name masking works by key; a known gap).
+
+## Limits
+
+- The bundled samples are text-to-speech readings of synthetic scripts; accuracy on real, noisy Hinglish audio is
+  not measured here, for any speech model. The reconciliation, not the transcript, protects the money.
+- The offline model answers only for the six bundled samples, and on the wrong ledger a sample matches nothing.
+- A caller who knows another victim's UTR can get that complaint matched; opening the case then only runs the
+  normal pipeline on ledger data, and every mismatch is shown to the officer.
+- The AMD endpoint used for the hackathon is a shared trial service: only the synthetic samples' transcripts are
+  sent to it. For real victims' audio, a bank would run both models on infrastructure it controls
+  ([Editions](editions.md)).
+
+Outputs of hosted proprietary models are never used as training data (see [Originality](originality.md)).

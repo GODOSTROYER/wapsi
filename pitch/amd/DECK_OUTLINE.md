@@ -1,141 +1,206 @@
 # AMD Developer Hackathon ACT III deck: 12 slides
 
-lablab scores application of technology, presentation, business value and originality, 1 to 5 each. This deck
-leads with **why this needs one big AMD GPU inside a bank**, shows dated MI300X evidence, and is honest about what was
-prepared before 12 Oct. Every number is a row in [`../NUMBERS.md`](../NUMBERS.md). **TBD** cells are filled only
-from `editions/amd/bench/results/<stamp>/` and `editions/amd/AMD_RESULTS.md` produced on the MI300X between 12 and
-18 Oct 2026; never from memory, never from a CPU run.
+**Challenge: Track 3, Reinvent Commerce** ("Help a business understand its customers and take better action").
+lablab scores Application of Technology, Presentation, Business Value and Originality. The deck follows the
+track's own list of what a good project shows: a real customer or merchant problem (slides 2 and 3), a useful
+commercial action (4 and 5), how the prediction is calculated (6), a measurable effect (7), and the AMD workload
+that is part of the working product (8 and 9).
+
+Every number is a row in [`../NUMBERS.md`](../NUMBERS.md). A figure not yet measured on AMD is written
+`TBD(slot_id)` and listed there as an open slot; it is filled only from a results file in this repository, with
+where it ran stated next to it (AMD Token Factory, an AMD GPU notebook or an MI300X droplet). All case data is
+synthetic.
 
 ---
 
 ## 1. Title
 
-- **Wapsi: the whole cyber-fraud restoration copilot on one AMD Instinct MI300X, inside the bank.**
+- **Wapsi: hold the fraud, not the shop.**
+- A copilot for a bank's cyber-fraud desk. It turns transaction data into an amount-specific hold and a plan to
+  return the money, so honest merchants and customers keep trading.
 - Hero line: a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false
-  freezes (39-case synthetic test world). No byte of customer data leaves the machine.
+  freezes (39-case synthetic test world).
+- Footer: Track 3, Reinvent Commerce · Gemma 4 on AMD GPUs · Google ADK · solo entry.
 
-## 2. The problem
+## 2. The merchant's problem, and the customer's
 
-- ₹7,647 Cr held for cyber-fraud victims through CFCFRMS, ₹167 Cr restored: 2.18% (MHA/I4C SOP, 02.01.2026).
-- Banks freeze whole accounts; innocent holders, merchants and pool accounts get locked; restoration stalls.
-- The nodal officer traces mule layers by hand and must file an STR within 7 working days.
-- And the data is the most sensitive a bank has: victim identities, account trails, and STRs that must stay
-  confidential from the account holder. Sending it to an external LLM API is a non-starter for most banks.
+- A kirana shop sold ₹1,200 of groceries. The buyer was a mule spending stolen money. The next morning the shop's
+  whole account is frozen: kirana shop balance ₹51,200, the money it pays suppliers with.
+- The same morning: a landlord who received ₹5,000 of rent finds landlord balance ₹1,55,000 frozen. A
+  payment-aggregator pool that settles other merchants: ₹5,00,20,000 frozen.
+- In this one case, 99.75% of what the freeze locks belongs to people who did nothing wrong: ₹5,02,26,200 of the
+  frozen money sits in three honest accounts. The three mule accounts hold ₹1,23,800 between them.
+- The government's own SOP says so: "Unwarranted orders for freezing accounts shall be discouraged, and
+  accountability measures shall be established." (`SOP-5-IX`)
+- Who pays: the merchant loses working capital, the customer loses the account, the bank loses both of them and
+  answers the grievance.
 
-## 3. What Wapsi does
+## 3. The size of it
 
-Showcase case (hand-computed, synthetic): ₹4,80,000 stolen through four layers of accounts.
-- Hold only the victim's money: A ₹43,200 · B ₹27,648 · D ₹48,000 · L ₹4,800 · P ₹19,200 = **₹1,42,848** in 5
-  accounts, plus ₹1,92,000 requested from the other bank: **₹3,34,848 recoverable**.
-- The whole-account freeze baseline would lock ₹5,03,50,000, 352× more.
-- Drafts the STR, hold instructions and the restoration packet; the LLM writes prose only; a verifier recomputes every
-  number and citation; a supervisor approves.
+- ₹52,969 Cr reported, ₹7,647 Cr held, ₹167 Cr restored: 2.18% of the money held (April 2021 to November 2025,
+  MHA/I4C SOP of 02.01.2026).
+- To 30.06.2026: more than ₹11,158 Cr saved in 32.80 lakh complaints, across 1,586 entities on CFCFRMS.
+- Money goes back only when someone proves whose money is in which account after it has been split and layered.
+  Today a nodal officer does that by hand, with an STR due within 7 working days.
 
-## 4. Why AMD, part 1: it has to run on-prem
+## 4. The commercial action: hold the amount, keep the account
 
-- **One machine holds everything:** ledger, case store, two language models, a graph neural network, the app.
-  No request leaves the box; there is no external LLM API.
-- **Open weights, bank-controlled:** Gemma 4 31B with an STR-drafting LoRA merged in, served by vLLM on ROCm; a second,
-  smaller Gemma 4 (E4B) as an independent judge; a GraphSAGE mule scorer in pure PyTorch on ROCm.
-- **Why one GPU matters:** a bank's fraud cell will not run a GPU cluster. One MI300X in the bank's own rack is a
-  procurement conversation it can have.
+Showcase case (hand-computed, synthetic): ₹4,80,000 stolen, moved through four layers of accounts.
 
-## 5. Why AMD, part 2: the memory arithmetic
+| Account | Whole-account freeze | Wapsi | For the business |
+|---|---|---|---|
+| Kirana shop, goods delivered | ₹51,200 frozen | no hold, a CFCFRMS update only (SOP 9.2) | the shop keeps trading |
+| Landlord, rent received | ₹1,55,000 frozen | L ₹4,800 held, no escalation (SOP 5(xii)) | the customer keeps the account |
+| Payment-aggregator pool | ₹5,00,20,000 frozen | P ₹19,200 held (SOP 9.1(iii)) | ₹5,00,00,800 stays free; other merchants are settled |
+| Three mule accounts | ₹1,23,800 frozen | A ₹43,200 · B ₹27,648 · D ₹48,000 | only the victim's money is held |
+| The victim | nothing worked out | ₹3,34,848 recoverable, 69.76% of the stolen money | a restoration packet, drafted |
 
-| On one MI300X, 192 GB HBM3 | Share | Memory |
-|---|---:|---:|
-| Gemma 4 31B drafting model, BF16 weights (31B parameters × 2 bytes) | | 62 GB |
-| its KV cache, 16384-token context | | 43.6 GB |
-| **drafting model total** (`--gpu-memory-utilization 0.55`) | 0.55 | 105.6 GB |
-| Gemma 4 E4B verifier / injection judge (`0.15`) | 0.15 | 28.8 GB |
-| GraphSAGE mule scorer (78k parameters), app, headroom | rest | 57.6 GB |
+- Total: ₹5,03,50,000 in 6 accounts against ₹1,42,848 held in 5 accounts. The freeze locks 352× what Wapsi holds.
+- ₹1,92,000 of the recoverable money is requested from the other bank; ₹96,000 is a forward hold on the first
+  mule and is not counted as recoverable.
 
-- The 31B model fits unquantised in BF16, with a long KV cache, next to a second model and the GNN, **on one GPU**, with
-  no tensor parallelism and no second card.
-- Measured VRAM per container from `amd-smi` replaces the "Memory" column: **[TBD Oct 12 to 18]**.
-
-## 6. Architecture on the droplet
+## 5. Data in, action out
 
 ```
-AMD Developer Cloud droplet: 1× MI300X (192 GB), ROCm, docker compose, everything bound to 127.0.0.1
-  llm           vLLM-ROCm · Gemma 4 31B + STR LoRA (merged) · 0.55 of VRAM · prose fields only
-  verifier-llm  vLLM-ROCm · Gemma 4 E4B · 0.15 · judge for untrusted complaint text
-  gnn           PyTorch ROCm · GraphSAGE mule scorer · POST /score (heuristic fallback if down)
-  app           FastAPI + Streamlit · wapsi.pipeline: trace → classify → hold plan → draft → verify
-  data          synthetic Parquet ledger · file case store with a hash-chained audit log
-  telemetry     bench/gpu_telemetry.py on the host (amd-smi), SR-IOV aware
+transactions (UPI / IMPS, balances)  ─┐
+complaints (NCRP text, voice notes)  ─┼─> screen ─> trace ─> split per victim ─> classify ─> HOLD PLAN
+merchant records (invoice, GST,      ─┘     untrusted    the trail    (pro-rata,       accounts     per account
+delivery status), device links              text                      SOP 5(xiii))
+                                                                              │
+        supervisor approves  <─  verifier recomputes every number  <─  drafts ┘
+        (maker-checker, SHA-256)    and citation                     (Gemma 4 on AMD writes the words only)
 ```
 
-## 7. Benchmarks on MI300X (all TBD, 12 to 18 Oct)
+- The action is concrete and per account: hold instruction, customer notice, EDD memo, request to the other bank,
+  STR, CFCFRMS update, restoration pack.
+- Speed: p95 0.35 s from complaint to hold plan; p95 0.72 s per case to verified drafts (laptop, stub LLM).
+- A Hinglish voice note is data too: every amount and UTR a victim says is a claim, checked against the ledger.
 
-| Metric | Value | Run |
-|---|---:|---|
-| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | **TBD** | `llm_bench` |
-| Time to first token p50 / p95 at concurrency 16 | **TBD** | `llm_bench` |
-| Verifier throughput, tokens/s at concurrency 1 / 4 / 16 | **TBD** | `llm_bench` |
-| End-to-end cases per hour, demo world, concurrency 1 / 8 / 16 | **TBD** | `e2e_bench` |
-| Cost per case at $1.99 per GPU-hour (and ₹ at the day's rate) | **TBD** | `e2e_bench` |
-| VRAM per container (llm, verifier, gnn) | **TBD** | `gpu_telemetry` |
-| GNN training on MI300X: time per epoch, validation AUC | **TBD** | `gnn/train.py` |
-| LoRA: base vs tuned, verifier pass rate and prose fallback rate | **TBD** | `lora/` evaluate |
+## 6. How the prediction is calculated (no language model)
 
-Every row carries its UTC stamp and results folder. On an SR-IOV virtual function, sensors that read nothing are
-shown as "n/a (SR-IOV VF)", never as 0.
+The track says: do not use a language model as the only forecasting method. Wapsi uses none for prediction.
 
-## 8. A/B: what the guardrails buy
+- **What is predicted:** the role of each account on the trail: mule, innocent holder, merchant, pool account.
+- **What is never predicted:** the amount. A hold is arithmetic, `min(victim money in the account, balance)`.
+- **Scorer 1, the default:** a transparent logistic scorer with 27 hand-set terms over 33 behavioural features
+  (account age, how fast money was passed on, distinct payers, cash-outs, shared devices, earlier reports). Hard
+  rules run first: a merchant needs its own delivered invoice for every disputed credit.
+- **Thresholds on screen:** score at or above 0.6 is a mule, at or below 0.35 an innocent holder, anything
+  between goes to the officer as UNKNOWN. Every score breaks into per-feature contributions with plain-English
+  reasons.
+- **Scorer 2, the graph model:** a GraphSAGE GNN of 78k parameters in pure PyTorch, behind the same interface,
+  with the heuristic as its fallback. Trained on an AMD GPU: mule ROC-AUC TBD(gnn_amd_auc), TBD(gnn_amd_epoch)
+  per epoch.
 
-**Slot 1, drafting (TBD on MI300X):** the same golden cases drafted two ways by Gemma 4 31B.
-
-| | Raw Gemma, free-form STR | Wapsi-bound Gemma (slots + verifier) |
+| Hard world, 64 cases, built to fool the classifier | Heuristic | GNN (CPU development checkpoint) |
 |---|---:|---:|
-| Drafts with a wrong amount | **TBD** | **TBD** (target 0) |
-| Invented account numbers | **TBD** | **TBD** |
-| Unknown or repealed citations | **TBD** | **TBD** |
-| Drafts passing the verifier | **TBD** | **TBD** |
+| Mule ROC-AUC | 0.9411 | 0.9786 |
+| Dispositions right | 0.9198 | 0.9151 |
+| Innocent-holder recall | 0.6875 | 0.875 |
+| Merchant precision / recall | 1.0 / 1.0 | same hard rules |
 
-What we already know from the stub-LLM stress test: a model that writes a wrong rupee amount into every prose field
-gets 27.57% of drafts' prose replaced, and drafts passing the verifier stay 1.0 (100%).
+Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false freezes.
 
-**Slot 2, classification on the hard world (baseline to beat):** heuristic dispositions 0.9198, mule ROC-AUC 0.9411,
-innocent-holder recall 0.6875. A **CPU development** GNN checkpoint, prepared before the event: dispositions 0.9151,
-mule ROC-AUC 0.9786, innocent-holder recall 0.875. The MI300X-trained GNN replaces that column: **TBD**.
+## 7. Measurable effect
 
-## 9. Honest accuracy
+| The track asks for an effect on | Wapsi's measure | Demo world: 39 cases, 10 fraud typologies |
+|---|---|---|
+| Revenue and working capital | money a freeze would lock that stays free | ₹34.97 Cr of non-victim money left free: ₹35.26 Cr frozen becomes ₹29.19 L held, 0.83% of the freeze |
+| Retention | honest accounts that are never touched | 0 false freezes; 17 accounts a freeze would lock get no hold at all |
+| Service quality | time from complaint to a hold plan | p95 0.35 s to the plan, p95 0.72 s to verified drafts (laptop, stub LLM); with Gemma 4 on AMD: TBD(tf_demo_p95) |
+| Accuracy of the action | holds against an independent reference | holds exact to the paisa 1.0 (100%), over-hold ₹0 |
+| Restoration | victim money identified for return | showcase: ₹3,34,848 recoverable of ₹4,80,000 stolen |
 
-- Holds exact to the paisa in every world, including the hard world (64 cases, 15 typologies): over-hold ₹0,
-  0 false freezes. Dispositions there: 0.9198; every miss is a label, never money.
-- Ground truth comes from an independent reference implementation; the SOP's own worked example (₹2,06,543 over
-  five victims) is reproduced to the paisa.
-- Injection guard on a blind holdout by a separate author: precision 0.9661, recall 0.75.
-- Measured vs designed: everything on slides 5 to 8 marked TBD is designed and tested offline, and measured only on
-  the MI300X during the event.
+- The harder test: 64 cases and 15 typologies. ₹39.55 Cr frozen becomes ₹70.73 L held, 1.79% of the freeze, with
+  0 false freezes.
+- Honest framing: these are plans on synthetic data, measured against an independent reference implementation.
+  The national 2.18% is money actually restored; ours is money identified and held correctly, which is the step
+  that is missing today.
 
-## 10. Market and revenue
+## 8. What runs on AMD
 
-- **Who:** every regulated entity on CFCFRMS: 1,586 entities, including 40 foreign banks, to 30.06.2026.
-- **Volume:** more than ₹11,158 Cr saved in 32.80 lakh complaints to 30.06.2026; the Suspect Registry has shared
-  32.08 lakh Layer 1 mule accounts. Each complaint that lands at a bank is a trace, a hold plan, an STR decision and a
-  restoration packet.
-- **Model:** an on-prem appliance licence per regulated entity (software plus the model weights and LoRA), with
-  support; the bank supplies the GPU or buys the box. Unit cost per case = $1.99 per GPU-hour ÷ cases per hour
-  (**TBD** from slide 7).
-- **Price:** **[set after 2 to 3 bank validation calls; no number before then]**.
+The AMD component is in the working product: every word in every draft, every field read from a complaint and
+every agent tool call comes from an open model served on AMD GPUs.
 
-## 11. Competitors and partners
+| Workload | Model | Where it runs |
+|---|---|---|
+| Draft prose (three placeholder-only fields per case) | Gemma 4 31B | AMD Token Factory endpoint (AMD GPUs) |
+| Complaint and voice-note field extraction, translation | Gemma 4 31B | AMD Token Factory endpoint |
+| The officer's agent and its tool calls | Gemma 4 31B through Google ADK | AMD Token Factory endpoint |
+| Second opinion on untrusted text | a small open model | AMD Token Factory endpoint |
+| Speech to text for voice notes | Whisper, open weights | local by default; any GPU is faster |
+| Mule scoring | GraphSAGE GNN, PyTorch on ROCm | AMD GPU notebook or MI300X droplet |
+
+- **Three modes, one codebase.** Endpoint mode is the default: three settings (`WAPSI_LLM_BASE_URL`,
+  `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`). Notebook mode runs the GNN and the benchmarks in a ROCm JupyterLab.
+  Droplet mode serves everything on one MI300X with vLLM and docker compose.
+- **Why this matters to a bank:** the model is open and the endpoint is the bank's choice. The same code moves
+  from AMD's shared API to one AMD GPU in the bank's own rack by changing those three settings.
+- **Measured with Gemma 4 on AMD (Token Factory):** on the demo world, drafts passing the verifier
+  TBD(tf_demo_pass), prose replaced by fixed text TBD(tf_demo_fallback), holds exact TBD(tf_demo_hold_exact); on
+  the showcase world TBD(tf_showcase_pass). One request takes TBD(tf_call_latency), and a case uses
+  TBD(tf_tokens_case) tokens. A voice note is transcribed in TBD(voice_asr_seconds), and TBD(voice_asr_samples) of
+  the six bundled notes reconcile as expected.
+- **Droplet mode, designed and tested offline:** one MI300X, 192 GB HBM3. Gemma 4 31B in BF16 ≈ 62 GB of weights
+  plus 43.6 GB left for its KV cache is 105.6 GB for the drafting model; 28.8 GB for the verifier; 57.6 GB left
+  for the GNN and headroom. Measured on the droplet: memory per container TBD(droplet_vram), throughput
+  TBD(droplet_tokens_s), complete cases per hour TBD(droplet_cases_hour).
+
+## 9. Google technology: Gemma 4 and the Agent Development Kit
+
+- **Gemma 4** is the only language model on the product path. It never types a number: it writes sentences around
+  placeholders, and the verifier recomputes every amount, account, UTR, date and citation.
+- **Google ADK** (open source) runs the officer's agent: an ADK agent with 10 pipeline tools, pointed at Gemma 4
+  on AMD through ADK's LiteLLM connector. Gemma calls the tools natively; a JSON-protocol fallback is the safety
+  net.
+- **Voice Intake:** a victim's Hinglish voice note is transcribed with Whisper, Gemma 4 reads the fields from the
+  transcript, and every amount and UTR she said is checked against the ledger before a case opens.
+- **Agent trace:** every tool call is recorded with its guard and verifier verdicts, redacted and sealed into the
+  case's audit log. In the recorded offline run: 5 tool calls behind "Open case 31009260000101", Verifier · 17/17
+  passed, Reply grounding · 23/23 values traced to tools; an analyst's attempt to approve is refused.
+- **Live on AMD:** TBD(adk_tool_calls) tool calls and reply grounding TBD(adk_grounding) with Gemma 4 driving
+  the same agent.
+
+## 10. Why a bank can trust it
+
+- **Numbers come from data, words come from the model.** A stub model that writes a wrong rupee amount into every
+  prose field: 27.57% of drafts had their prose rejected and replaced by fixed text, and drafts passing the
+  verifier still 1.0 (100%).
+- **The same test with the real model:** raw Gemma 4 asked for the plan in free text gets a wrong amount in
+  TBD(ab_raw_wrong) of cases; inside Wapsi's slots and verifier, TBD(ab_bound_wrong) wrong amounts reach a draft.
+- **The SOP's own arithmetic:** the SOP Annexure-V worked example, ₹2,06,543 over five victims, is reproduced to
+  the paisa.
+- **Untrusted text stays untrusted:** a complaint or voice note that says "release the hold" is quoted to the
+  officer and never followed. The guard on a blind holdout: blind-holdout precision 0.9661, blind-holdout recall
+  0.75; the structure, not the guard, is the defence.
+- **Nothing moves without a supervisor:** maker-checker approval bound to the draft's fingerprint; a hash-chained
+  audit log, 6/6 tampering attempts detected.
+
+## 11. Business value
+
+- **Buyer:** the fraud desk of every regulated entity on CFCFRMS: 1,586 entities on CFCFRMS, 40 foreign banks
+  among them.
+- **What it saves:** officer hours per complaint (trace, split, paperwork), wrongful-freeze grievances and court
+  orders, and the merchants and customers a bank loses when it freezes the wrong account.
+- **Model:** a licence per regulated entity, run on an endpoint the bank controls. Price: set after bank
+  validation calls; no number before then.
 
 | Player | What it does | Wapsi's relationship |
 |---|---|---|
-| MuleHunter.AI (RBI Innovation Hub) | flags likely mule accounts from transaction patterns | **complementary**: Wapsi reads a MuleHunter-style score as one input feature and acts after the complaint |
-| I4C Suspect Registry | shares known mule identifiers across entities | upstream signal; Wapsi turns a hit into a traced, amount-specific hold |
-| CFCFRMS (I4C) | the government platform banks receive hold requests from | Wapsi is the bank-side copilot for it (a **simulated CFCFRMS interface** today) |
-| Transaction-monitoring and AML suites | alerts on suspicious activity | they alert; Wapsi does the SOP work after a complaint: trace, pro-rata split, holds, verified drafts |
-| General LLM copilots on external APIs | drafting and summaries | customer data leaves the bank; nothing checks their numbers |
+| MuleHunter.AI (RBI Innovation Hub) | flags likely mule accounts | complementary: its score can be one input feature |
+| I4C Suspect Registry | shares known mule identifiers | upstream signal; Wapsi turns a hit into an amount-specific hold |
+| CFCFRMS (I4C) | the platform hold requests arrive on | Wapsi is the bank-side copilot (a **simulated CFCFRMS interface** today) |
+| Transaction-monitoring suites | alert on suspicious activity | they alert; Wapsi does the work after a complaint |
+| General LLM copilots | drafting and summaries | nothing checks their numbers |
 
-## 12. The ask, and what we built here
+## 12. What was built this week, limits, and the ask
 
-- **Ask:** AMD Developer Cloud time for a pilot with one bank's nodal cell; introductions to BFSI partners running
-  Instinct GPUs; feedback on packaging it as an on-prem appliance.
-- **Built during 12 to 18 Oct, on the MI300X:** GNN training, the Gemma 4 LoRA fine-tune and merge, vLLM-ROCm
-  serving of both models next to the GNN, and every benchmark on slides 5, 7 and 8.
-- **Prepared before the event and disclosed:** the portable core, the compose stack, benchmark harness and runbook,
-  tested offline with fakes. Tag `amd-baseline` at kickoff; details in `docs/originality.md`.
+- **Built during 12 to 18 October:** the Track 3 product story, Gemma 4 on AMD as the drafting and extraction
+  model, the ADK agent on Gemma 4, open-model voice intake, and every measurement in this deck that names AMD.
+  The list with commits is in `docs/originality.md`.
+- **Existing before the event and disclosed:** the portable core (tracing, hold plan, verifier, synthetic data,
+  officer app), tagged `amd-baseline`.
+- **Limits we state:** all banking data is synthetic; CFCFRMS is a simulated interface; open slots in this deck
+  are not claims.
+- **Ask:** a pilot with one bank's fraud desk on an AMD endpoint it controls, and introductions to payment
+  aggregators whose pool accounts get frozen.

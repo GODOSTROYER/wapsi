@@ -17,10 +17,17 @@ action. All data in this repository is synthetic.
     hook, every headline number with its source file, and a 2-minute tour you can run from a checkout.
     `uv run python pitch/check_numbers.py` re-checks every pitched number against the repository.
 
+    **Entry:** lablab.ai AMD Developer Hackathon ACT III, Track 3 "Reinvent Commerce". The words in every draft,
+    the fields read from a complaint and the officer's agent come from Gemma 4 served on AMD GPUs; every number
+    comes from data. What runs on AMD and in which mode: [Editions](editions.md).
+
 **At a glance** (the sources are given further down):
 
 - **Showcase fraud.** The victim loses ₹4,80,000.00. A whole-account freeze would lock up ₹5,03,50,000.00 in 6
   accounts. Wapsi holds ₹1,42,848.00 in 5 accounts, all of it the victim's money, and finds ₹3,34,848.00 recoverable.
+- **Honest merchants keep trading.** Of what that freeze would lock, ₹5,02,26,200.00 sits in three honest
+  accounts: a kirana shop, a landlord and a payment-aggregator pool. Wapsi holds ₹24,000.00 across them, and
+  nothing at all from the shop that delivered its goods.
 - **The SOP's own worked example** (Annexure-V, Illustration 2) is reproduced to the paisa.
 - **Synthetic test world of 39 cases.** Every hold amount matches an independent reference implementation. Nothing
   is held beyond that reference (₹0.00), and no account is held that should not be.
@@ -85,6 +92,13 @@ flowchart TB
 9. **Watches the rules.** A read-only regulatory change radar sets new and pending rules (among them the RBI draft
    SOP on money-mule accounts of 11 Sep 2026, a **DRAFT**) against the SOP and shows what each would change for a
    case, for a human to review.
+10. **Takes a victim's voice note.** A Hinglish, Hindi or English voice note becomes a transcript, an English
+    translation and complaint fields (in the AMD entry: a Whisper-class speech model, then Gemma 4 on AMD). Every
+    number in it is a claim reconciled with the ledger; spoken instructions are quoted, never followed; only a
+    ledger match opens a case ([Voice intake](voice-intake.md)).
+11. **Shows what the AI agent did.** Every tool call the Google ADK agent made on a case, with the guard and
+    verifier verdicts around it, is recorded, redacted and sealed into the case's audit log, and shown in the Case
+    Room's Agent trace tab ([User guide](user-guide.md#agent-trace-tab)).
 
 ## Showcase case: whole-account freeze vs Wapsi
 
@@ -126,18 +140,19 @@ All results come from synthetic data. [Evaluation](evaluation.md) explains the m
 | Audit log tamper drill | 6 of 6 tampering attempts on a 40-event hash-chained case log detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout (151 texts written without seeing the rules) | precision 0.9661, recall 0.75. The guard is a warning layer: template-bound drafts and the verifier are the real defence | `evals/reports/guard-latest.json` |
 | Speed (demo world, laptop, stub LLM) | p95 0.72 s per case, trace to verified drafts | `evals/reports/demo.json` |
-| Test suite | 1,623 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Test suite | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
 
-## One core, two editions
+## One core, and what runs on AMD
 
-The portable Python core (`src/wapsi`) and the Streamlit officer app (`ui/`) are shared. Each edition swaps in
-its own adapters for the ledger, the LLM, the guard and the case store. Details and honest status:
+The portable Python core (`src/wapsi`) and the Streamlit officer app (`ui/`) decide every number. A platform
+layer swaps in its own adapters for the ledger, the LLM, the guard and the case store. Details and honest status:
 [Editions](editions.md).
 
-| Edition | Built for | Platform | Status (29-09-2026) |
-|---|---|---|---|
-| Google Cloud | AI Builder Cup | ADK agents on Cloud Run, Gemini, an optional Gemma tier on Cloud Run GPU, BigQuery, Firestore, Model Armor | Built and unit-tested offline with fakes; deployment follows in October. See `editions/gcp/README.md` |
-| AMD | lablab.ai AMD ACT III | AMD Instinct MI300X with ROCm: vLLM serving, fine-tuning, a graph neural network mule scorer | Code prepared and CPU-tested; GPU training, serving and benchmarks run only during the event (12 to 18 Oct 2026). See `editions/amd/` and [Originality](originality.md) |
+| Layer | What it is | Status (2026-10-14) |
+|---|---|---|
+| AMD (the hackathon entry) | Gemma 4 on AMD GPUs writes the prose, reads complaints and voice-note transcripts and drives the agent; a GraphSAGE mule scorer runs on ROCm. Three modes: an AMD-hosted endpoint (default), a ROCm notebook, one MI300X with Docker Compose | The core and the prepared AMD layer are tagged `amd-baseline`; event-week work and AMD measurements are listed in [Originality](originality.md). See `editions/amd/` |
+| The Google ADK agent | The officer's agent and its tool trace, with Gemma 4 on AMD as its model | Built and tested offline with a scripted model; Gemma 4 on AMD as its model is event-week work |
+| Optional managed-cloud adapters | BigQuery ledger, Firestore case store, Model Armor guard, deploy scripts. Not part of the entry | Built and unit-tested offline with fakes; not deployed. See `editions/gcp/README.md` |
 
 ## Run it
 
@@ -160,8 +175,8 @@ uv run python -m evals.harness --world hard                                   # 
 uv run python -m wapsi.audit drill                                            # audit-chain tamper drill
 ```
 
-`uv sync --all-extras` also installs the Google Cloud and AMD dependencies (PyTorch among them), which is a much
-larger download. The [Developer guide](developer-guide.md) covers the rest, including the legal corpus
+`uv sync --all-extras` also installs the agent, cloud-adapter and AMD training dependencies (PyTorch among
+them), which is a much larger download. The [Developer guide](developer-guide.md) covers the rest, including the legal corpus
 (`uv run python -m wapsi.search.fetch`, then `uv run python -m wapsi.search.build`).
 
 ## Documentation map

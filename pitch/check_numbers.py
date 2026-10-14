@@ -4,7 +4,7 @@
     uv run python pitch/check_numbers.py --list         # also print every resolved number
     uv run python pitch/check_numbers.py --fix-lengths  # after editing a limited block: restate its length
 
-Three checks, all offline and read-only:
+Four checks, all offline and read-only:
 
 1. **Numbers.** Each row of the table in ``pitch/NUMBERS.md`` (``| ID | Pitched as | Value | Source | Locator |``)
    is resolved from its source and compared with ``Value``, rounded to the decimals ``Value`` is written with.
@@ -17,6 +17,9 @@ Three checks, all offline and read-only:
    ``pitch/**/*.md`` must appear in the ``Pitched as`` column of ``NUMBERS.md``.
 3. **Character limits.** Text between ``<!-- limit:N -->`` and ``<!-- /limit -->`` is at most N characters, and the
    file states its length as ``Length: X / N characters``.
+4. **Open slots.** A figure that has not been measured yet is written ``TBD(slot_id)``, and ``slot_id`` is a row of
+   the ``| Slot | ...`` table in ``NUMBERS.md``. A bare ``TBD`` fails, so does an unknown slot, and so does a slot
+   id that is also a number row (a figure is either measured or open, never both). Slots carry no value.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ TOKEN_RE = re.compile(
     rf"|(?<![\w.]){_NUM}\s?GB\b"  # memory
 )
 LIMIT_RE = re.compile(r"<!--\s*limit:(\d+)\s*-->\n?(.*?)\n?<!--\s*/limit\s*-->", re.S)
+TBD_RE = re.compile(r"\bTBD\b(?:\(([a-z0-9_]+)\))?")  # TBD(slot_id); group 1 is None for a bare TBD
 
 
 @dataclass
@@ -63,10 +67,10 @@ def _cell(text: str) -> str:
     return text.strip()
 
 
-def parse_rows(path: Path = NUMBERS_MD) -> list[Row]:
+def parse_rows(path: Path | None = None) -> list[Row]:
     rows: list[Row] = []
     in_table = False
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in (path or NUMBERS_MD).read_text(encoding="utf-8").splitlines():
         if line.startswith("| ID |"):
             in_table = True
             continue
@@ -211,6 +215,45 @@ def check_tokens(rows: list[Row] | None = None) -> list[str]:
     return errors
 
 
+def parse_slots(path: Path | None = None) -> dict[str, str]:
+    """Open measurement slots: ``{slot_id: what it will be pitched as}`` from every ``| Slot | ...`` table."""
+    slots: dict[str, str] = {}
+    in_table = False
+    for line in (path or NUMBERS_MD).read_text(encoding="utf-8").splitlines():
+        if line.startswith("| Slot |"):
+            in_table = True
+            continue
+        if not in_table or not line.startswith("|"):
+            in_table = in_table and line.startswith("|")
+            continue
+        cells = [_cell(c) for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 2 and not set(cells[0]) <= {"-", " ", ":"}:
+            slots[cells[0]] = cells[1]
+    return slots
+
+
+def check_slots(rows: list[Row] | None = None) -> tuple[list[str], dict[str, int]]:
+    """Every unmeasured figure in the pitch is ``TBD(slot_id)`` for a slot listed in NUMBERS.md."""
+    rows = parse_rows() if rows is None else rows
+    slots = parse_slots()
+    errors = [f"NUMBERS.md: {sid} is both a number row and an open slot" for sid in slots if sid in {r.rid for r in rows}]
+    used: dict[str, int] = dict.fromkeys(slots, 0)
+    for path in pitch_files():
+        text = path.read_text(encoding="utf-8")
+        for match in TBD_RE.finditer(text):
+            where = f"{path.relative_to(ROOT)}:{text.count(chr(10), 0, match.start()) + 1}"
+            slot = match.group(1)
+            if slot == "slot_id":  # the notation itself, explained in prose
+                continue
+            if slot is None:
+                errors.append(f"{where}: bare TBD; write TBD(slot_id) with a slot from NUMBERS.md")
+            elif slot not in slots:
+                errors.append(f"{where}: TBD({slot}) is not a slot in NUMBERS.md")
+            else:
+                used[slot] += 1
+    return errors, used
+
+
 def fix_lengths() -> None:
     """Rewrite each block's ``Length: X / N characters`` line (the first one after the block) with the real count."""
     for path in pitch_files():
@@ -259,10 +302,13 @@ def main(argv: list[str] | None = None) -> int:
     num_errors, resolved = check_numbers(rows)
     tok_errors = check_tokens(rows)
     lim_errors, limits = check_limits()
+    slot_errors, slots = check_slots(rows)
     if args.list:
         for row in rows:
             got = resolved.get(row.rid)
             print(f"{row.rid:28} {row.value:>16}  {'(by hand)' if got is None else 'ok'}  {row.source}")
+        for slot, uses in slots.items():
+            print(f"{slot:28} {'open slot':>16}  used {uses}x in the pitch")
     manual = sum(1 for r in rows if r.locator.startswith("cmd:"))
     bad = {e.split(":", 1)[0] for e in num_errors}
     auto = [r for r in rows if not r.locator.startswith("cmd:")]
@@ -270,7 +316,9 @@ def main(argv: list[str] | None = None) -> int:
           f"{manual} command outputs checked by hand")
     for path, n, limit in limits:
         print(f"limit: {path}: {n:,} / {limit:,} characters")
-    errors = num_errors + tok_errors + lim_errors
+    print(f"slots: {len(slots)} open AMD measurement slots (no value, not claims); "
+          f"{sum(1 for n in slots.values() if n)} referenced in the pitch")
+    errors = num_errors + tok_errors + lim_errors + slot_errors
     for e in errors:
         print("FAIL", e)
     print("PASS" if not errors else f"{len(errors)} problem(s)")

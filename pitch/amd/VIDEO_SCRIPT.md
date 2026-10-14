@@ -1,87 +1,111 @@
-# AMD ACT III video: 4:15 (allowed 3:30 to 4:45)
+# AMD ACT III video: 4:15 (limit 5:00)
 
-Separate cut from the AI Builder Cup video. **Screen:** the MI300X droplet (two terminals: `amd-smi` and
-`docker compose`), the Wapsi UI served from the droplet through an SSH tunnel, `AMD_RESULTS.md`, and slides for the
-memory arithmetic and the ask. **Voice:** one narrator, about 520 words. Every number is a row in
-[`../NUMBERS.md`](../NUMBERS.md); **TBD** lines are read from `editions/amd/AMD_RESULTS.md` on the day and added to
-`NUMBERS.md` before recording.
+**Challenge: Track 3, Reinvent Commerce.** The track's demo brief is: show how the product turns customer or
+business data into a useful recommendation or action, and explain how any prediction is calculated. The cut does
+exactly that, in that order, and shows the AMD workload inside the working product.
 
-**Capture rules (from `editions/amd/RUNBOOK.md` step 12)**
-- Record on the droplet between 12 and 18 Oct only; keep the date visible once (`date -u` in the telemetry terminal).
-- Keep the HF token, IP addresses and SSH keys off screen.
-- Run a concurrency-16 `llm_bench` or `e2e_bench` while recording, so utilisation and power move on camera. On an
-  SR-IOV virtual function, sensors that do not report show "n/a (SR-IOV VF)"; say so rather than cutting it.
+**Screen:** the Wapsi officer app (Inbox, Case Room, Hold Plan, Drafts & Verification, Voice Intake, Agent trace,
+Approvals, Audit) running against Gemma 4 on the AMD endpoint, plus four slides. **Voice:** one narrator, about
+590 words. Every number is a row in [`../NUMBERS.md`](../NUMBERS.md). A figure written `TBD(slot_id)` is an open
+slot: read it from its results file on the day and register it in `NUMBERS.md` before recording.
+
+**Capture rules**
+- Record between 12 and 18 Oct. Show the model name on a draft (`Gemma-4-31B-IT`) and the endpoint host once.
+- Keep the API key, tokens and IP addresses off screen. Never open the `.env` file on camera.
+- If a slot is still open on the day, cut its sentence. Do not say "about" and do not estimate.
+- Say where a number ran: "on AMD's Token Factory", "on an AMD GPU notebook", "on an MI300X". Never call a Token
+  Factory figure an MI300X benchmark.
+- All data on screen is synthetic; the first frame of the app says so.
 
 ---
 
-## 0:00 to 0:20. The number
+## 0:00 to 0:20. The shop that was frozen
 
-**Screen:** baseline strip: `Whole-account freeze: ₹35.26 Cr · 101 accounts` / `Wapsi: ₹29.19 L · 84 accounts` /
-`0 false freezes`. Then the words "one MI300X, inside the bank".
+**Screen:** one line of text, "A kirana shop sold groceries. Its whole account was frozen." Then the baseline
+strip: `Whole-account freeze: ₹35.26 Cr · 101 accounts` / `Wapsi: ₹29.19 L · 84 accounts` / `0 false freezes`.
 
-**VO:** "When a cyber-fraud victim reports a theft, banks often freeze every account the money touched. On our 39-case
-test world that locks ₹35.26 crore. Wapsi holds ₹29.19 lakh, only the victim's money. And it does it on one AMD
-GPU, inside the bank."
+**VO:** "A kirana shop sells twelve hundred rupees of groceries. The buyer was spending stolen money, so the bank
+freezes the shop's whole account. On our 39-case test world, freezes like that lock ₹35.26 crore. Wapsi holds
+₹29.19 lakh: only the victim's money, with zero false freezes."
 
-## 0:20 to 0:45. Why it has to be on-prem
+## 0:20 to 0:45. A commerce problem and a data problem
 
-**Screen:** slide: `₹7,647 Cr held · ₹167 Cr returned · 2.18%`, then three icons: victim identities, account trails,
-confidential STRs.
+**Screen:** slide: `₹7,647 Cr held · ₹167 Cr restored · 2.18%`, then three icons: merchant, customer, bank.
 
-**VO:** "India returned ₹167 crore of the ₹7,647 crore it held for fraud victims: 2.18%. Fixing that means an AI
-that reads victim identities, account trails and confidential suspicious-transaction reports. That data cannot go to
-an outside API. So we put the whole copilot on one MI300X."
+**VO:** "India held ₹7,647 crore for cyber-fraud victims and returned ₹167 crore: 2.18%. Money goes back only
+when someone proves whose money sits in which account. Freezing everything skips that proof, and the people who
+pay are honest merchants and customers. The bank loses them, and answers the grievance. That is a commerce
+problem, and it is a data problem."
 
-## 0:45 to 1:30. One GPU, three models
+## 0:45 to 1:35. Data in, action out: one case
 
-**Screen:** left terminal `docker compose ps` (llm, verifier-llm, gnn, app all healthy); right terminal
-`watch amd-smi` with memory per container. Overlay the memory table: 62 GB weights + 43.6 GB KV cache = 105.6 GB for
-the drafting model; 28.8 GB for the verifier; 57.6 GB for the GNN and headroom; 192 GB total.
+**Screen:** Inbox, then showcase case `31009260000101` in the Case Room: the trail graph, layer by layer. Then the
+Hold Plan with the baseline strip, hovering on the kirana shop, the landlord and the pool account. Then Drafts &
+Verification with every check green.
 
-**VO:** "Here is the droplet. Gemma 4 31B, fine-tuned for STR drafting, runs in full BF16: 62 gigabytes of weights,
-plus 43.6 gigabytes of KV cache. Next to it, a smaller Gemma 4 judges untrusted complaint text. Next to that, a graph
-neural network scores mule accounts. All on one 192-gigabyte MI300X, no second card, nothing leaving the box.
-[Read the measured VRAM per container from amd-smi.]"
+**VO:** "Here is the bank's own data: one complaint and its transactions. ₹4,80,000 stolen, moved through four
+layers of accounts in ninety minutes. Wapsi traces every hop and splits mixed money per victim, the way the
+government's procedure prescribes. Then the action. The kirana shop delivered its goods: no hold, it keeps
+trading. The landlord who was paid rent: ₹4,800 held, not his whole account. The payment aggregator's pool:
+₹19,200 held out of five crore, so every other merchant is still settled. In total ₹1,42,848 is held instead of
+₹5,03,50,000, and ₹3,34,848 is recoverable for the victim. The hold instructions, the notices and the
+suspicious-transaction report are already drafted."
 
-## 1:30 to 2:35. The case, end to end on the GPU
+## 1:35 to 2:05. How the prediction is calculated
 
-**Screen:** Wapsi UI from the droplet. Open showcase case `31009260000101`: trail graph, then the Hold Plan with the
-baseline strip, then Drafts & Verification with the STR, model name `wapsi-llm` on each draft, all checks green.
-Then demo case `11208260078296`: the Hinglish complaint with the embedded "release all holds" order, flagged by the
-judge model and the rules guard; the hold unchanged.
+**Screen:** Case Room inspector on the first mule and on the landlord: the score, the per-feature contributions
+and the plain-English reasons. Then deck slide 6 (the scorer and the GNN table).
 
-**VO:** "One complaint: ₹4,80,000 stolen through four layers of accounts. The GNN scores every account on the
-trail. The plan holds ₹1,42,848 across five accounts, and ₹3,34,848 is recoverable. A whole-account freeze would
-have locked ₹5,03,50,000. The fine-tuned Gemma writes the STR's sentences; every amount, account and date comes from
-data, and the verifier recomputes all of them. This Hinglish complaint hides an order to release the holds. The judge
-model flags it, the officer sees it quoted, and the hold stays."
+**VO:** "Which account is a mule and which is an honest shop is a prediction, and no language model makes it. A
+transparent scorer weighs 33 behavioural features, such as how fast the money was passed on, and shows its
+reasons in plain English. A graph neural network is the second scorer. Unclear accounts go to the officer. And
+the amount held is never predicted: it is arithmetic."
 
-## 2:35 to 3:20. Measured on MI300X
+*Add "trained on an AMD GPU, with a mule ROC-AUC of TBD(gnn_amd_auc)" after "second scorer" once that slot is
+filled.*
 
-**Screen:** `AMD_RESULTS.md`: serving table, cases per hour, cost per case, VRAM per container; then the GNN training
-curve and the LoRA base-vs-tuned table.
+## 2:05 to 2:50. Gemma 4 on AMD, a voice note and the agent trace
 
-**VO (fill from `AMD_RESULTS.md`):** "Measured on this MI300X on [date]: [TBD] tokens per second at concurrency 16,
-time to first token [TBD] at p95, [TBD] complete cases an hour through the real pipeline, at [TBD] per case at $1.99
-per GPU-hour. The GNN trained in [TBD] per epoch. Fine-tuning moved the verifier pass rate from [TBD] to [TBD]."
+**Screen:** a draft with the model name `Gemma-4-31B-IT`. Then Voice Intake: the sample **Fatima Shaikh · courier
+scam · embedded prompt injection**, the transcript and translation, the reconciliation table, the warning
+"Instruction-like text, not followed." Then the Case Room's **Agent trace** tab: numbered tool calls with their
+checks.
 
-## 3:20 to 3:45. What the guardrails buy
+**VO:** "The words come from Gemma 4, Google's open model, served on AMD GPUs. It writes the sentences in each
+draft around placeholders; every amount, account and date is filled from data, and a verifier recomputes all of
+them. It also reads complaints. This victim's Hinglish voice note is transcribed with Whisper, and Gemma extracts
+the fields. Every number she says is checked against the ledger. The note hides an order to release the hold: it
+is quoted to the officer, and the hold stays. The officer's agent runs on Google's Agent Development Kit, and
+every tool call it makes is recorded here, with its checks."
 
-**Screen:** the A/B slide (deck slide 8).
+## 2:50 to 3:25. Measured on AMD
 
-**VO:** "The same cases, drafted two ways. Raw Gemma writing free-form reports: [TBD] drafts with a wrong amount.
-Gemma inside Wapsi's slots and verifier: [TBD]. Even when we force the model to invent a number in every paragraph,
-not one wrong amount reaches a draft: 27.57% of drafts get their prose replaced, and every draft still passes."
+**Screen:** deck slide 8's results table, then slide 10's raw-model comparison.
 
-## 3:45 to 4:15. Market and the ask
+**VO (fill from the results files):** "Measured with Gemma 4 on AMD: TBD(tf_demo_pass) of drafts pass the
+verifier, and holds stay exact, TBD(tf_demo_hold_exact). Asked for the plan in free text, the raw model gets an
+amount wrong in TBD(ab_raw_wrong) of cases. Inside Wapsi, TBD(ab_bound_wrong) wrong amounts reach a draft. Even
+when we force a model to invent a number in every paragraph, 27.57% of drafts get their prose replaced, and every
+draft still passes."
 
-**Screen:** slide: `1,586 entities on CFCFRMS · 32.80 lakh complaints to 30.06.2026`, the competitor table in one
-line ("MuleHunter flags mules; Wapsi returns the money"), then the ask.
+## 3:25 to 3:50. Why a bank can trust it
 
-**VO:** "1,586 banks and other entities are on CFCFRMS, and money has been saved in more than 32 lakh complaints. Tools
-like MuleHunter flag mule accounts; Wapsi does what comes after a complaint: trace, hold the right amount, file, and
-return the money. We are asking for AMD Developer Cloud time for a pilot with one bank's fraud cell, and introductions
-to banks running Instinct GPUs. Wapsi: give the money back, on one GPU, inside the bank."
+**Screen:** Approvals as an analyst (no approve button), then as a supervisor (approve, fingerprint shown). The
+Audit page, then the tamper drill output. Then the hard-world row of deck slide 6.
+
+**VO:** "Nothing leaves without a supervisor, and every step is sealed in a tamper-evident log. We also built a
+harder world to fool the classifier. There, 92% of dispositions are right, and every miss is a label, never
+money: holds stay exact, with zero false freezes."
+
+## 3:50 to 4:15. Business value and the ask
+
+**Screen:** slide: `1,586 entities on CFCFRMS · 32.80 lakh complaints`, the line "MuleHunter flags mules; Wapsi
+returns the money", then the title slide.
+
+**VO:** "1,586 banks and payment companies receive these hold requests, across more than 32 lakh complaints.
+Tools like MuleHunter flag mule accounts. Wapsi does what comes after: hold the right amount, return the money,
+and keep honest businesses running, on an open model and an AMD endpoint the bank controls. Wapsi: hold the
+fraud, not the shop."
 
 ---
 
@@ -89,14 +113,19 @@ to banks running Instinct GPUs. Wapsi: give the money back, on one GPU, inside t
 
 | Segment | Start | Seconds |
 |---|---|---:|
-| The number | 0:00 | 20 |
-| Why on-prem | 0:20 | 25 |
-| One GPU, three models | 0:45 | 45 |
-| The case end to end | 1:30 | 65 |
-| Measured on MI300X | 2:35 | 45 |
-| A/B | 3:20 | 25 |
-| Market and ask | 3:45 | 30 |
+| The shop that was frozen | 0:00 | 20 |
+| A commerce problem and a data problem | 0:20 | 25 |
+| Data in, action out | 0:45 | 50 |
+| How the prediction is calculated | 1:35 | 30 |
+| Gemma 4 on AMD, voice note, agent trace | 2:05 | 45 |
+| Measured on AMD | 2:50 | 35 |
+| Why a bank can trust it | 3:25 | 25 |
+| Business value and the ask | 3:50 | 25 |
 | **Total** | | **255 s = 4:15** |
 
-- If a measurement is missing on the day, cut its sentence; do not say "about" or estimate.
-- "More than 32 lakh complaints" is the spoken form of 32.80 lakh complaints (to 30.06.2026).
+- The limit is 5:00. The 45 seconds of slack are for a slower read, not for more content.
+- "Twelve hundred rupees" is the kirana shop's sale (the kirana shop sold ₹1,200 of groceries to a mule). "Five
+  crore" is the spoken form of the pool account balance ₹5,00,20,000. "More than 32 lakh complaints" is the
+  spoken form of 32.80 lakh complaints (to 30.06.2026). "92%" is the spoken form of dispositions 0.9198.
+- If the "Measured on AMD" slots are open on the day, replace that beat's first two sentences with the stub-model
+  stress test alone and spend the time on the Hold Plan screen. The cut then runs about 4:00.

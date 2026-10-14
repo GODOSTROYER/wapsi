@@ -86,10 +86,11 @@ variables or from the platform's secret store.
 
 | Secret | Read from | Used by |
 |---|---|---|
-| API key for any OpenAI-compatible endpoint (vLLM, Gemini's OpenAI-compatible API, others) | `WAPSI_LLM_API_KEY` (optional for local servers) | `src/wapsi/adapters/llm_openai_compat.py` |
-| Gemini API key (AI Studio backend) | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `src/wapsi/adapters/gemini_llm.py` |
-| Role-grant signing key (Google Cloud edition) | `WAPSI_ROLE_SIGNING_KEY`, mounted from Secret Manager | [editions/gcp/README.md](editions/gcp/README.md) |
-| AMD edition tokens | the shell environment read by `editions/amd/docker-compose.yml` | [editions/amd/README.md](editions/amd/README.md) |
+| API key for the model endpoint: any OpenAI-compatible server (the AMD Token Factory API, a dedicated AMD endpoint, vLLM, others) | `WAPSI_LLM_API_KEY` (optional for local servers) | `src/wapsi/adapters/llm_openai_compat.py`, `pitch/amd/evidence/token_factory_smoke.py` |
+| Hosted-model API key (optional adapter) | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `src/wapsi/adapters/gemini_llm.py` |
+| Role-grant signing key (ADK agent app) | `WAPSI_ROLE_SIGNING_KEY`, from the platform's secret store | [editions/gcp/README.md](editions/gcp/README.md) |
+| AMD droplet tokens (model download, vLLM, app API) | the shell environment read by `editions/amd/docker-compose.yml` | [editions/amd/README.md](editions/amd/README.md) |
+| Evolus workspace key (only if that partner track is built) | `EVOLUS_API_KEY`, with `EVOLUS_APPLICATION_ID` | [pitch/EVOLUS_TRACK.md](pitch/EVOLUS_TRACK.md) |
 
 Rules:
 
@@ -99,7 +100,11 @@ Rules:
   (`.github/workflows/ci.yml`) uses no repository secrets.
 - Do not log secrets. The core LLM adapters read their key from the environment and do not log it; error
   messages name the environment variable, not the key. Keep it that way in new adapters.
-- Do not paste keys into prompts, notebooks, screenshots or Claude Code / Gemini CLI session transcripts.
+- Do not paste keys into prompts, notebooks, notebook outputs, screenshots, videos or coding-agent session
+  transcripts. A key shared with a team, or pasted anywhere by mistake, is rotated after the event.
+- **A shared model endpoint is a trial service.** Send it synthetic data only. Live runs are never part of the
+  test suite; they are sequential, spaced, and they honour rate limits. Evidence files written from a live run
+  hold timings, token counts and pass or fail results, never a key, a header or a prompt.
 
 **If a secret is committed:** revoke or rotate it at the provider first. Removing it from git history is not
 enough, because clones and forks may already hold it. Then remove it from history and tell the maintainers
