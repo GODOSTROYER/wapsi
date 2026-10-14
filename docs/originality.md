@@ -49,8 +49,8 @@ it reports a figure, the results file and the date of the run.
 
 | Work | Branch | Commits | Builds on (pre-event) |
 |---|---|---|---|
-| The Track 3 "Reinvent Commerce" product story: README, these docs, the pitch pack (deck, video script, form fields, track fit, partner-prize pages), the open-slot rule for unmeasured AMD figures | `wip/docs-features` | the commits after `f51cb10`; hashes to be filled at integration | the earlier docs and pitch pack |
-| A live smoke run against the AMD endpoint with a health probe (`pitch/amd/evidence/token_factory_smoke.py`) | `wip/docs-features` | to be filled at integration | `OpenAICompatLLM`, the pipeline, the showcase fixture |
+| The Track 3 "Reinvent Commerce" product story: README, these docs, the pitch pack (deck, video script, form fields, track fit, partner-prize pages), the open-slot rule for unmeasured AMD figures | `wip/docs-features` | `b103532` (2026-10-14) and the commits after it on this branch | the earlier docs and pitch pack |
+| A live smoke run against the AMD endpoint with a health probe (`pitch/amd/evidence/token_factory_smoke.py`) | `wip/docs-features` | `b103532` (2026-10-14); no results file committed yet | `OpenAICompatLLM`, the pipeline, the showcase fixture |
 | Gemma 4 on AMD GPUs as the drafting and extraction model (endpoint mode: `json_object` output, validation and repair, rate-limit handling) | to be filled at integration | to be filled | `OpenAICompatLLM`, the AMD app settings |
 | Open-model voice intake: a Whisper-class speech model plus Gemma 4 on AMD for the fields | `feat/open-voice` | to be filled | `wapsi.intake` (schema, masking, reconciliation), the six bundled samples |
 | The ADK agent on Gemma 4 served on AMD: LiteLLM connector, native tool calls, JSON-protocol fallback | `feat/adk-on-amd` | to be filled | the ADK agent app and the agent trace |
