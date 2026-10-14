@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wapsi Cover</title>
+<!--
+  Wapsi cover image. Rendered by render.py at:
+    ?v=cover   stage 1920x1080 -> wapsi_cover_1920x1080.png and wapsi_cover_1280x720.png
+    ?v=social  stage 1920x1008 -> wapsi_social_1200x630.png (scaled 0.625)
+  Fonts are local Windows fonts (Bahnschrift, Segoe UI, Consolas): no network needed.
+  Numbers: only rows of pitch/NUMBERS.md (demo_freeze_cr, demo_freeze_accounts, demo_hold_l,
+  demo_hold_accounts, demo_false_freeze). Synthetic data only.
+-->
+<style>
+  :root {
+    --ink: #0c171c;
+    --ink-2: #13242b;
+    --line: #26404a;
+    --paper: #f4efe4;
+    --paper-dim: #a9b8bd;
+    --amber: #ffb21a;
+    --amber-deep: #e08a00;
+    --open: #5fd6bb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--ink); }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--paper); }
+  .stage {
+    position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    background:
+      radial-gradient(1100px 800px at 78% 48%, #16303a 0%, rgba(22,48,58,0) 70%),
+      linear-gradient(180deg, #0e1c22 0%, var(--ink) 100%);
+  }
+  .social .stage { height: 1008px; }
+  /* faint ledger ruling */
+  .stage::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(180deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 54px);
+    pointer-events: none;
+  }
+  .rail {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
+    background: linear-gradient(180deg, var(--amber) 0 22%, var(--open) 22% 100%);
+  }
+  .text { position: absolute; left: 120px; top: 108px; width: 900px; }
+  .social .text { top: 78px; }
+  .eyebrow {
+    font-family: Bahnschrift, "Segoe UI", sans-serif; font-weight: 600;
+    font-size: 30px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--open);
+  }
+  h1 {
+    font-family: Bahnschrift, "Segoe UI", sans-serif; font-weight: 700;
+    font-size: 252px; line-height: 0.9; letter-spacing: -0.02em; margin-top: 26px;
+    color: var(--paper);
+  }
+  h1 .dot { color: var(--amber); }
+  .tagline {
+    font-family: Bahnschrift, "Segoe UI", sans-serif; font-weight: 600;
+    font-size: 70px; line-height: 1.06; margin-top: 40px; letter-spacing: -0.005em;
+  }
+  .tagline .hl {
+    color: var(--ink); background: var(--amber); padding: 0 14px; border-radius: 6px;
+    box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
+  .tagline .not { color: var(--paper-dim); }
+  .subline { font-size: 33px; line-height: 1.35; margin-top: 34px; color: var(--paper-dim); max-width: 860px; }
+  .subline b { color: var(--paper); font-weight: 600; }
+  .social h1 { font-size: 220px; margin-top: 18px; }
+  .social .tagline { font-size: 64px; margin-top: 30px; }
+  .social .subline { margin-top: 26px; }
+
+  .strip {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 150px;
+    background: rgba(5, 12, 15, 0.82); border-top: 2px solid var(--line);
+    display: flex; align-items: center; padding: 0 120px; gap: 40px;
+    font-family: Bahnschrift, "Segoe UI", sans-serif;
+  }
+  .social .strip { height: 132px; }
+  .fig { display: flex; flex-direction: column; gap: 4px; }
+  .fig .v { font-size: 58px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .fig .k { font-family: "Segoe UI", sans-serif; font-size: 23px; color: var(--paper-dim); }
+  .fig.frozen .v { color: var(--paper-dim); }
+  .fig.held .v { color: var(--amber); }
+  .fig.zero .v { color: var(--open); }
+  .arrow { font-size: 56px; color: var(--paper-dim); font-family: "Segoe UI Symbol", "Segoe UI", sans-serif; }
+  .sep { width: 2px; height: 76px; background: var(--line); }
+  .note { margin-left: auto; text-align: right; font-family: "Segoe UI", sans-serif; font-size: 22px; line-height: 1.4; color: var(--paper-dim); }
+  .note b { color: var(--paper); font-weight: 600; }
+
+  .graph { position: absolute; right: 40px; top: 70px; width: 900px; height: 820px; }
+  .social .graph { top: 40px; height: 780px; }
+  .graph svg { width: 100%; height: 100%; overflow: visible; }
+  .lbl { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 25px; fill: var(--paper-dim); letter-spacing: 0.04em; }
+  .lbl-strong { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 27px; font-weight: 700; fill: var(--paper); }
+  .lbl-amber { fill: var(--amber); }
+  .lbl-open { fill: var(--open); }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="rail"></div>
+
+  <div class="text">
+    <div class="eyebrow">Track 3 · Reinvent Commerce</div>
+    <h1>Wapsi<span class="dot">.</span></h1>
+    <p class="tagline"><span class="hl">Hold the tainted amount,</span><br><span class="not">not the whole account</span></p>
+    <p class="subline">Cyber-fraud money-trail copilot for banks<br><b>Gemma 4 on AMD Instinct MI300X</b></p>
+  </div>
+
+  <div class="graph"><svg id="g" viewBox="0 0 900 820" aria-label="Money trail: one fraud payment fans out to accounts; each account keeps its balance open and only a small tainted slice is held"></svg></div>
+
+  <div class="strip">
+    <div class="fig frozen"><span class="v">₹35.26 Cr</span><span class="k">whole-account freeze · 101 accounts</span></div>
+    <span class="arrow">→</span>
+    <div class="fig held"><span class="v">₹29.19 L</span><span class="k">Wapsi holds · 84 accounts</span></div>
+    <div class="sep"></div>
+    <div class="fig zero"><span class="v">0</span><span class="k">false freezes</span></div>
+    <div class="note"><b>Synthetic demo world</b>, 39 cases<br>Gemma 4 · Google ADK · ROCm</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  if (params.get("v") === "social") document.body.classList.add("social");
+
+  const NS = "http://www.w3.org/2000/svg";
+  const g = document.getElementById("g");
+  const el = (tag, attrs, parent) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    (parent || g).appendChild(n);
+    return n;
+  };
+
+  // Defs: glow for the held slices.
+  const defs = el("defs", {});
+  const f = el("filter", { id: "glow", x: "-50%", y: "-50%", width: "200%", height: "200%" }, defs);
+  el("feGaussianBlur", { stdDeviation: "6", result: "b" }, f);
+  const m = el("feMerge", {}, f);
+  el("feMergeNode", { in: "b" }, m);
+  el("feMergeNode", { in: "SourceGraphic" }, m);
+
+  // Illustrative layout (no data): source complaint -> layer 1 -> layer 2 -> layer 3.
+  // r = account balance (drawn size), s = tainted share of the balance (slice).
+  const src = { x: 70, y: 400 };
+  const nodes = [
+    { id: "a", x: 300, y: 190, r: 78, s: 0.10 },
+    { id: "b", x: 330, y: 470, r: 104, s: 0.06, focus: true },
+    { id: "c", x: 280, y: 700, r: 56, s: 0.16 },
+    { id: "d", x: 560, y: 110, r: 50, s: 0.14 },
+    { id: "e", x: 600, y: 330, r: 70, s: 0.09 },
+    { id: "f", x: 610, y: 610, r: 86, s: 0.07 },
+    { id: "g", x: 800, y: 230, r: 44, s: 0.18 },
+    { id: "h", x: 820, y: 470, r: 58, s: 0.12 },
+    { id: "i", x: 800, y: 730, r: 40, s: 0.2 },
+  ];
+  const by = Object.fromEntries(nodes.map(n => [n.id, n]));
+  // w = taint carried along the edge (stroke width), narrowing as it splits.
+  const edges = [
+    ["src", "a", 13], ["src", "b", 18], ["src", "c", 9],
+    ["a", "d", 6], ["a", "e", 6], ["b", "e", 7], ["b", "f", 9], ["c", "f", 4],
+    ["e", "g", 4], ["e", "h", 4], ["f", "h", 4], ["f", "i", 3],
+  ];
+  const P = id => (id === "src" ? src : by[id]);
+
+  // Edges: amber taint lines, curved, drawn under the nodes.
+  for (const [u, v, w] of edges) {
+    const a = P(u), b = P(v);
+    const mx = (a.x + b.x) / 2;
+    el("path", {
+      d: `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`,
+      fill: "none", stroke: "#ffb21a", "stroke-opacity": 0.55, "stroke-width": w, "stroke-linecap": "round",
+    });
+  }
+
+  // Accounts: the whole balance stays open (teal ring, dark fill); only the tainted slice is held (amber).
+  const slice = (cx, cy, r, frac) => {
+    const a0 = -Math.PI / 2, a1 = a0 + frac * 2 * Math.PI;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    return `M${cx},${cy} L${x0},${y0} A${r},${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x1},${y1} Z`;
+  };
+  for (const n of nodes) {
+    el("circle", { cx: n.x, cy: n.y, r: n.r, fill: "#0f2229", stroke: "#5fd6bb", "stroke-width": n.focus ? 5 : 3.5 });
+    el("circle", { cx: n.x, cy: n.y, r: n.r * 0.62, fill: "none", stroke: "#5fd6bb", "stroke-opacity": 0.18, "stroke-width": 2 });
+    el("path", { d: slice(n.x, n.y, n.r - 3, n.s), fill: "#ffb21a", filter: "url(#glow)" });
+  }
+
+  // Source: the fraud complaint.
+  el("circle", { cx: src.x, cy: src.y, r: 30, fill: "#ffb21a" });
+  el("circle", { cx: src.x, cy: src.y, r: 46, fill: "none", stroke: "#ffb21a", "stroke-opacity": 0.4, "stroke-width": 3 });
+  const t0 = el("text", { x: src.x, y: src.y - 96, "text-anchor": "middle", class: "lbl" });
+  t0.textContent = "1930 COMPLAINT";
+  const t0b = el("text", { x: src.x, y: src.y - 66, "text-anchor": "middle", class: "lbl" }); t0b.textContent = "one fraud payment";
+
+  // Legend (top of the graph): what the two marks mean.
+  const L = el("g", { transform: "translate(20,10)" });
+  el("path", { d: slice(18, 18, 18, 0.14), fill: "#ffb21a" }, L);
+  el("circle", { cx: 18, cy: 18, r: 18, fill: "none", stroke: "#5fd6bb", "stroke-width": 3 }, L);
+  const l1 = el("text", { x: 52, y: 28, class: "lbl-strong lbl-amber" }, L); l1.textContent = "tainted slice: held";
+  el("circle", { cx: 18, cy: 66, r: 18, fill: "#0f2229", stroke: "#5fd6bb", "stroke-width": 3 }, L);
+  const l2 = el("text", { x: 52, y: 76, class: "lbl-strong lbl-open" }, L); l2.textContent = "rest of the balance: open";
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wapsi video slides</title>
+<style>
+  :root {
+    --paper: #F2ECE1;
+    --paper-2: #E8E0D1;
+    --ink: #15202B;
+    --ink-2: #3B4651;
+    --muted: #6A6255;
+    --rule: #CFC4B1;
+    --sindoor: #B8321F;   /* frozen / fraud */
+    --sindoor-soft: #F3D9D2;
+    --held: #0B6E5B;      /* amount-specific hold / returned */
+    --held-soft: #D3EAE2;
+    --amd: #111111;
+    --gold: #9C6B12;
+    --num: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+    --serif: "Georgia", "Cambria", serif;
+    --mono: "Cascadia Mono", "Consolas", monospace;
+    --sans: "Segoe UI", "Bahnschrift", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--sans); }
+  section { display: none; position: absolute; inset: 0; padding: 88px 128px 160px; }
+  section.on { display: block; }
+  /* ledger rules: a faint column grid, the identity motif */
+  section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(90deg, transparent 0 96px, var(--sindoor) 96px 98px, transparent 98px) no-repeat,
+      repeating-linear-gradient(180deg, transparent 0 63px, rgba(21,32,43,.055) 63px 64px);
+    opacity: .9;
+  }
+  .step { opacity: 0; }
+  .show .step.s1, .s-1 .s1, .s-2 .s1, .s-2 .s2, .s-3 .s1, .s-3 .s2, .s-3 .s3 { opacity: 1; }
+  .kicker { font: 600 26px/1 var(--num); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .kicker b { color: var(--sindoor); font-weight: 700; }
+  .h1 { font: 400 92px/1.06 var(--serif); letter-spacing: -.01em; }
+  .h2 { font: 400 64px/1.12 var(--serif); }
+  .big { font: 700 220px/0.9 var(--num); letter-spacing: -.02em; font-stretch: condensed; }
+  .num { font-family: var(--num); font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); }
+  .src { position: absolute; left: 128px; right: 128px; bottom: 196px; font: 400 22px/1.35 var(--sans); color: var(--muted);
+         border-top: 1px solid var(--rule); padding-top: 14px; }
+  .src b { color: var(--ink-2); font-weight: 600; }
+  .brand { position: absolute; right: 128px; top: 64px; font: 700 30px/1 var(--num); letter-spacing: .04em; color: var(--ink); }
+  .brand i { font-style: normal; color: var(--held); }
+  .stamp { display: inline-block; border: 8px solid var(--sindoor); color: var(--sindoor); padding: 18px 34px 12px;
+           font: 700 74px/1 var(--num); letter-spacing: .08em; transform: rotate(-6deg); border-radius: 10px;
+           background: rgba(184,50,31,.06); box-shadow: inset 0 0 0 3px rgba(184,50,31,.25); }
+  .stamp.held { border-color: var(--held); color: var(--held); background: rgba(11,110,91,.06); box-shadow: inset 0 0 0 3px rgba(11,110,91,.25); transform: rotate(3deg); }
+  .card { background: #FBF8F2; border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 18px 40px -24px rgba(21,32,43,.45); }
+  .pill { display: inline-block; padding: 8px 18px; border-radius: 999px; font: 600 24px/1 var(--num); letter-spacing: .04em; }
+  .pill.amd { background: var(--amd); color: #fff; }
+  .pill.g { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+  .row { display: flex; gap: 40px; }
+  .tile { flex: 1; padding: 34px 36px 30px; }
+  .tile .v { font: 700 112px/1 var(--num); letter-spacing: -.01em; }
+  .tile .l { margin-top: 14px; font: 400 30px/1.25 var(--sans); color: var(--ink-2); }
+  .ok { color: var(--held); }
+  .bad { color: var(--sindoor); }
+
+  /* hook */
+  .ledger { width: 900px; padding: 36px 44px; }
+  .ledger .line { display: flex; justify-content: space-between; font: 400 34px/1.9 var(--mono); border-bottom: 1px dashed var(--rule); }
+  .ledger .line:last-child { border: 0; }
+
+  /* bars */
+  .bar { height: 120px; border-radius: 6px; display: flex; align-items: center; padding-left: 28px; color: #fff; font: 700 54px/1 var(--num); }
+  .barlabel { font: 400 32px/1.3 var(--sans); color: var(--ink-2); margin: 34px 0 14px; }
+
+  /* chart */
+  .chart { display: flex; align-items: flex-end; gap: 44px; width: 1060px; height: 470px; border-bottom: 3px solid var(--ink); padding: 0 20px; }
+  .col { width: 160px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .col .b { width: 100%; background: var(--ink); border-radius: 6px 6px 0 0; }
+  .col .t { font: 700 52px/1 var(--num); margin-bottom: 14px; }
+  .col .c { position: absolute; }
+  .xl { display: flex; gap: 44px; padding: 14px 20px 0; }
+  .xl div { width: 160px; text-align: center; font: 400 28px/1.2 var(--num); color: var(--muted); }
+  .callout { position: absolute; right: 128px; top: 330px; width: 520px; padding: 36px 40px; border-left: 10px solid var(--held); }
+  .callout .v { font: 700 128px/1 var(--num); color: var(--held); }
+  .callout .l { font: 400 30px/1.3 var(--sans); color: var(--ink-2); margin-top: 12px; }
+
+  /* compare */
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 46px; }
+  .side { padding: 40px 44px; }
+  .side h3 { font: 600 30px/1 var(--num); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 26px; }
+  .side .v { font: 700 150px/1 var(--num); }
+  .side .l { font: 400 32px/1.3 var(--sans); color: var(--ink-2); margin-top: 16px; }
+  .side.raw { border-top: 12px solid var(--sindoor); }
+  .side.bound { border-top: 12px solid var(--held); }
+
+  .pipeline { display: flex; gap: 18px; margin-top: 60px; }
+  .pipeline .p { flex: 1; padding: 30px 28px; min-height: 250px; }
+  .pipeline .p .n { font: 700 30px/1 var(--num); color: var(--held); }
+  .pipeline .p .t { font: 600 36px/1.15 var(--sans); margin-top: 18px; }
+  .pipeline .p .d { font: 400 25px/1.35 var(--sans); color: var(--ink-2); margin-top: 14px; }
+  .pipeline .p.human { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .pipeline .p.human .d { color: #C9C2B5; }
+  .pipeline .p.human .n { color: #8FD3BF; }
+
+  .checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 44px; }
+  .checks .card { padding: 30px 34px; }
+  .checks .v { font: 700 96px/1 var(--num); color: var(--held); }
+  .checks .l { font: 400 29px/1.3 var(--sans); color: var(--ink-2); margin-top: 10px; }
+
+  .tools { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
+  .tools span { font: 500 28px/1 var(--mono); padding: 14px 20px; background: #FBF8F2; border: 1px solid var(--rule); border-radius: 10px; }
+  .tools span.no { border-color: var(--sindoor); color: var(--sindoor); }
+</style>
+</head>
+<body>
+
+<!-- 1. hook -->
+<section id="hook_1">
+  <div class="kicker">Synthetic case · showcase world</div>
+  <div class="h1" style="margin-top:40px; max-width:1500px">A kirana shop sold <span class="num">₹1,200</span> of groceries.</div>
+  <div class="card ledger" style="margin-top:60px">
+    <div class="line"><span>Shree Ganesh Kirana</span><span>Merchant · L3</span></div>
+    <div class="line"><span>Sale, UPI, 11:40 IST</span><span class="num">₹1,200.00</span></div>
+    <div class="line"><span>Goods</span><span class="ok">DELIVERED</span></div>
+  </div>
+</section>
+<section id="hook_2">
+  <div class="kicker">Synthetic case · showcase world</div>
+  <div class="h1" style="margin-top:40px; max-width:1500px">Its <span class="bad">whole account</span> was frozen.</div>
+  <div style="position:relative">
+    <div class="card ledger" style="margin-top:60px; opacity:.55">
+      <div class="line"><span>Shree Ganesh Kirana</span><span>Merchant · L3</span></div>
+      <div class="line"><span>Sale, UPI, 11:40 IST</span><span class="num">₹1,200.00</span></div>
+      <div class="line"><span>Goods</span><span>DELIVERED</span></div>
+    </div>
+    <div class="stamp" style="position:absolute; left:520px; top:110px">WHOLE ACCOUNT FROZEN</div>
+  </div>
+</section>
+
+<!-- 2. national stat -->
+<section id="stat_1" class="s-1">
+  <div class="kicker">India · cyber-fraud money · Apr 2021 to Nov 2025</div>
+  <div class="barlabel" style="margin-top:70px">Held for victims</div>
+  <div class="bar" style="width:1660px; background:var(--ink)">₹7,647 Cr</div>
+  <div class="barlabel step s2">Restored to victims</div>
+  <div class="src"><b>Source:</b> MHA / I4C, SOP for NCRP-CFCFRMS, Custody, Restoration of money and Grievance Redressal (02.01.2026).</div>
+</section>
+<section id="stat_2" class="s-2">
+  <div class="kicker">India · cyber-fraud money · Apr 2021 to Nov 2025</div>
+  <div class="barlabel" style="margin-top:70px">Held for victims</div>
+  <div class="bar" style="width:1660px; background:var(--ink)">₹7,647 Cr</div>
+  <div class="barlabel">Restored to victims</div>
+  <div style="display:flex; align-items:center; gap:30px">
+    <div class="bar" style="width:36px; background:var(--held); padding:0"></div>
+    <div style="font:700 54px/1 var(--num); color:var(--held)">₹167 Cr</div>
+  </div>
+  <div style="position:absolute; right:128px; top:520px; text-align:right">
+    <div class="big bad">2.18%</div>
+    <div style="font:400 32px/1.3 var(--sans); color:var(--ink-2)">of the money held came back</div>
+  </div>
+  <div class="src"><b>Source:</b> MHA / I4C, SOP for NCRP-CFCFRMS, Custody, Restoration of money and Grievance Redressal (02.01.2026).</div>
+</section>
+
+<!-- 3. proof -->
+<section id="proof">
+  <div class="kicker">The missing step</div>
+  <div class="h2" style="margin-top:44px; max-width:1560px">Money goes back only when someone proves <em>whose</em> money sits in <em>which</em> account.</div>
+  <div class="row" style="margin-top:80px">
+    <div class="card tile"><div class="kicker"><b>Merchant</b></div><div class="l">Frozen for a sale it made. Cannot pay suppliers.</div></div>
+    <div class="card tile"><div class="kicker"><b>Customer</b></div><div class="l">Waits for money that is held but never apportioned.</div></div>
+    <div class="card tile"><div class="kicker"><b>Bank</b></div><div class="l">Loses good customers and answers the grievance.</div></div>
+  </div>
+</section>
+
+<!-- 4. what -->
+<section id="what">
+  <div class="brand">WAPSI <i>↩</i></div>
+  <div class="kicker">The nodal officer's copilot · Track 3, Reinvent Commerce</div>
+  <div class="h1" style="margin-top:36px">Hold the fraud, <span class="ok">not the shop.</span></div>
+  <div class="pipeline">
+    <div class="card p"><div class="n">01</div><div class="t">Trace</div><div class="d">Every hop of the victim's money, split per victim, pro-rata.</div></div>
+    <div class="card p"><div class="n">02</div><div class="t">Hold the tainted amount</div><div class="d">Amount-specific by default. Never a whole-account freeze without a recorded, approved exception.</div></div>
+    <div class="card p"><div class="n">03</div><div class="t">Draft</div><div class="d">Hold instructions, notices, the STR and the restoration packet.</div></div>
+    <div class="card p"><div class="n">04</div><div class="t">Verify</div><div class="d">Every number recomputed, every citation checked.</div></div>
+    <div class="card p human"><div class="n">05</div><div class="t">A human approves</div><div class="d">Maker-checker, sealed in the audit log.</div></div>
+  </div>
+  <div class="src">All data shown in this video is synthetic.</div>
+</section>
+
+<!-- whisper -->
+<section id="whisper">
+  <span class="pill amd">AMD Instinct MI300X</span>
+  <div class="kicker" style="margin-top:34px">Speech to text · Whisper large-v3-turbo on ROCm</div>
+  <div class="row" style="margin-top:60px; align-items:flex-end">
+    <div><div class="big num">26.75 s</div><div class="barlabel" style="margin:12px 0 0">Hinglish voice note (Fatima Shaikh sample)</div></div>
+    <div style="font:400 120px/1 var(--num); color:var(--muted); padding-bottom:70px">→</div>
+    <div><div class="big num ok">0.80 s</div><div class="barlabel" style="margin:12px 0 0">to transcribe it</div></div>
+  </div>
+  <div style="margin-top:46px; font:400 34px/1.35 var(--sans); color:var(--ink-2)">Steady-state real-time factor <b class="num" style="color:var(--ink)">0.03</b> (the first sample of the run includes warm-up and is excluded).</div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> (AMD AI Notebook, torch 2.11 + ROCm 7.14). The transcript on screen in the app came from the sample's script, not from this run.</div>
+</section>
+
+<!-- AMD title -->
+<section id="amd_title">
+  <span class="pill amd">AMD Instinct MI300X</span>
+  <div class="h1" style="margin-top:50px; max-width:1500px">Measured on AMD.</div>
+  <div style="margin-top:50px; font:400 40px/1.55 var(--sans); color:var(--ink-2)">
+    <div>One <b style="color:var(--ink)">AMD Instinct MI300X</b> VF on an <b style="color:var(--ink)">AMD AI Notebook</b></div>
+    <div><b style="color:var(--ink)">ROCm 7.14</b> · <b style="color:var(--ink)">Gemma-4-31B-IT</b> self-served with <b style="color:var(--ink)">vLLM 0.23</b></div>
+    <div><b style="color:var(--ink)">14 October 2026</b> · every figure that follows is from this run</div>
+  </div>
+  <div class="src"><b>Source:</b> editions/amd/evidence/notebook/2026-10-14 (evidence.md, bench/*.json, golden_eval.json). Not AMD Token Factory figures.</div>
+</section>
+
+<!-- throughput -->
+<section id="thru_1" class="s-1">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Gemma-4-31B-IT output tokens per second, by concurrent requests</div>
+  <div class="chart" style="margin-top:50px">
+    <div class="col"><div class="t">55</div><div class="b" style="height:31px"></div></div>
+    <div class="col"><div class="t">181</div><div class="b" style="height:103px"></div></div>
+    <div class="col"><div class="t">474</div><div class="b" style="height:271px"></div></div>
+    <div class="col"><div class="t">699</div><div class="b" style="height:400px"></div></div>
+    <div class="col step s2"><div class="t ok">773</div><div class="b" style="height:442px; background:var(--held)"></div></div>
+  </div>
+  <div class="xl"><div>1</div><div>4</div><div>16</div><div>64</div><div class="step s2">32 · real prompts</div></div>
+  <div class="callout card step s2"><div class="v">0.12 s</div><div class="l">median time to first token on real drafting prompts at concurrency 32</div></div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> · vLLM 0.23, ROCm 7.14 · bench files in editions/amd/evidence/notebook/2026-10-14/bench/</div>
+</section>
+<section id="thru_2" class="s-2">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Gemma-4-31B-IT output tokens per second, by concurrent requests</div>
+  <div class="chart" style="margin-top:50px">
+    <div class="col"><div class="t">55</div><div class="b" style="height:31px"></div></div>
+    <div class="col"><div class="t">181</div><div class="b" style="height:103px"></div></div>
+    <div class="col"><div class="t">474</div><div class="b" style="height:271px"></div></div>
+    <div class="col"><div class="t">699</div><div class="b" style="height:400px"></div></div>
+    <div class="col step s2"><div class="t ok">773</div><div class="b" style="height:442px; background:var(--held)"></div></div>
+  </div>
+  <div class="xl"><div>1</div><div>4</div><div>16</div><div>64</div><div class="step s2">32 · real prompts</div></div>
+  <div class="callout card step s2"><div class="v">0.12 s</div><div class="l">median time to first token on real drafting prompts at concurrency 32</div></div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> · vLLM 0.23, ROCm 7.14 · bench files in editions/amd/evidence/notebook/2026-10-14/bench/</div>
+</section>
+
+<!-- economics -->
+<section id="econ">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Complete cases through the whole pipeline, one GPU</div>
+  <div class="row" style="margin-top:60px">
+    <div class="card tile"><div class="v num">1,590</div><div class="l">complete cases per hour<br>(concurrency 16)</div></div>
+    <div class="card tile"><div class="v num">12,274</div><div class="l">drafts per GPU-hour</div></div>
+    <div class="card tile" style="border-top:10px solid var(--held)"><div class="v num ok">$1.25</div><div class="l">per 1,000 cases at the $1.99 / GPU-hour list price</div></div>
+  </div>
+  <div style="margin-top:40px; font:400 32px/1.4 var(--sans); color:var(--ink-2)">Every draft in these runs passed the verifier (pass rate 1.0).</div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> · bench/e2e_c16.json · cost = list price ÷ cases per hour.</div>
+</section>
+
+<!-- golden -->
+<section id="golden">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">39 golden cases · Gemma-4-31B-IT on vLLM inside the pipeline</div>
+  <div class="checks">
+    <div class="card"><div class="v">100%</div><div class="l">holds exact</div></div>
+    <div class="card"><div class="v">100%</div><div class="l">drafts pass the verifier</div></div>
+    <div class="card"><div class="v">100%</div><div class="l">numbers correct in drafts</div></div>
+    <div class="card"><div class="v">100%</div><div class="l">citations valid</div></div>
+    <div class="card"><div class="v">0</div><div class="l">injection leaks</div></div>
+    <div class="card"><div class="v" style="color:var(--ink)">11.1 s</div><div class="l">p95 per complete case</div></div>
+  </div>
+  <div class="src"><b>Measured 14 Oct 2026 on a second AMD Instinct MI300X</b> (session 4) · golden_eval.json.</div>
+</section>
+
+<!-- world -->
+<section id="world">
+  <div class="kicker">What gets immobilised · the 39-case test world</div>
+  <div class="vs">
+    <div class="card side raw"><h3 class="bad">Whole-account freeze</h3><div class="v num">₹35.26 Cr</div><div class="l">frozen across 101 accounts</div></div>
+    <div class="card side bound"><h3 class="ok">Wapsi, amount-specific</h3><div class="v num ok">₹29.19 L</div><div class="l">held across 84 accounts: only the victims' money</div></div>
+  </div>
+  <div style="margin-top:36px; font:400 30px/1.4 var(--sans); color:var(--ink-2)">Showcase case: <b class="num" style="color:var(--ink)">₹1,42,848</b> held across 5 accounts instead of <b class="num" style="color:var(--ink)">₹5,03,50,000</b> across 6.</div>
+  <div class="src"><b>Source:</b> golden_eval.json baseline (MI300X run, 14 Oct 2026) and pitch/NUMBERS.md (demo_freeze, demo_hold, sc1_total_hold, sc1_baseline). Hold amounts are arithmetic, not predictions.</div>
+</section>
+
+<!-- A/B -->
+<section id="ab_1" class="s-1">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Same model, with and without Wapsi's slots</div>
+  <div class="vs">
+    <div class="card side raw"><h3 class="bad">Raw Gemma 4, free-text plan</h3><div class="v num bad">48.7%</div><div class="l">19 of 39 cases carry an amount that is not in the case</div></div>
+    <div class="card side bound step s2"><h3 class="ok">Wapsi-bound drafts</h3><div class="v num ok">0 / 155</div><div class="l">drafts with a wrong amount</div></div>
+  </div>
+  <div class="src"><b>Measured 14 Oct 2026 on AMD Instinct MI300X</b> · golden_eval.json (session 4, 19 of 39) · ab_hallucination.json (session 5).</div>
+</section>
+<section id="ab_2" class="s-2">
+  <span class="pill amd">AMD Instinct MI300X · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Same model, with and without Wapsi's slots</div>
+  <div class="vs">
+    <div class="card side raw"><h3 class="bad">Raw Gemma 4</h3><div class="v num bad">4 / 20</div><div class="l">STRs with a wrong amount · clean documents 0.8</div></div>
+    <div class="card side bound"><h3 class="ok">Wapsi-bound</h3><div class="v num ok">0 / 17</div><div class="l">STRs with a wrong amount · 0 / 155 across all bound drafts · clean documents 1.0</div></div>
+  </div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> · A/B like with like · ab_hallucination.json.</div>
+</section>
+
+<!-- GNN -->
+<section id="gnn">
+  <span class="pill amd">AMD Instinct MI300X · ROCm 7.14 · 14 Oct 2026</span>
+  <div class="kicker" style="margin-top:30px">Graph neural network: a second opinion on who is a mule</div>
+  <div class="vs">
+    <div class="card side"><h3 style="color:var(--muted)">Standard synthetic world</h3><div class="v num" style="color:var(--muted)">AUC 1.0</div><div class="l">validation on a saturated world: it says little, and we say so</div></div>
+    <div class="card side bound"><h3 class="ok">Hard world, built to fool it</h3><div class="v num ok">87.5%</div><div class="l">of innocent account holders recognised (rule-based scorer: 69%) · dispositions 92%, level with it · holds still exact · 0 false freezes</div></div>
+  </div>
+  <div style="margin-top:30px; font:400 30px/1.4 var(--sans); color:var(--ink-2)">The amount held is never predicted: it is arithmetic. Unclear accounts go to the officer.</div>
+  <div class="src"><b>Measured 14 Oct 2026 on an AMD Instinct MI300X</b> · gnn_metrics.json, gnn_hard_eval.json.</div>
+</section>
+
+<!-- Google -->
+<section id="google">
+  <span class="pill g">Google · Gemma 4 + Agent Development Kit</span>
+  <div class="h2" style="margin-top:40px; max-width:1600px">Gemma 4 writes the words. <span class="ok">Data writes the numbers.</span></div>
+  <div class="kicker" style="margin-top:56px">The ADK officer agent · native tool calls</div>
+  <div class="tools">
+    <span>open_case</span><span>trace_money</span><span>hold_plan</span><span>verification_report</span>
+    <span>draft_documents</span><span>explain_account</span><span>search_sop</span><span class="no">approve_draft → refused for an analyst</span>
+  </div>
+  <div style="margin-top:40px; font:400 32px/1.45 var(--sans); color:var(--ink-2)">Guard plugin screens every input · trace plugin seals every call into the audit chain · open weights, so a bank can serve the model on its own AMD GPU.</div>
+  <div class="src">The agent trace shown was recorded live on 14 Oct 2026 with Gemma-4-31B-IT on <b>AMD Token Factory</b> (AMD's hosted API), not the MI300X notebook.</div>
+</section>
+
+<!-- close -->
+<section id="close">
+  <div class="brand">WAPSI <i>↩</i></div>
+  <div class="kicker">AMD Developer Hackathon ACT III · Track 3, Reinvent Commerce</div>
+  <div class="h1" style="margin-top:60px; font-size:120px">Hold the fraud,<br><span class="ok">not the shop.</span></div>
+  <div class="mono" style="margin-top:70px; font-size:56px">github.com/GODOSTROYER/wapsi</div>
+  <div style="margin-top:26px; font:400 30px/1.4 var(--sans); color:var(--ink-2)">MIT licence · synthetic data only · Gemma 4 on AMD Instinct MI300X</div>
+</section>
+
+<!-- frame behind the app screenshots: the shot sits at x=144 y=22, 1632x918 -->
+<section id="uiframe" style="padding:0">
+  <div style="position:absolute; left:132px; top:10px; width:1656px; height:942px; border-radius:12px; background:#FBF8F2; box-shadow:0 24px 50px -26px rgba(21,32,43,.55); border:1px solid var(--rule)"></div>
+  <div style="position:absolute; left:20px; top:940px; width:900px; transform:rotate(-90deg); transform-origin:0 0; font:600 22px/1 var(--num); letter-spacing:.22em; color:var(--muted); white-space:nowrap">
+    WAPSI OFFICER APP · RECORDED RUN · <span style="color:var(--sindoor)">SYNTHETIC DATA</span></div>
+  <div style="position:absolute; left:1820px; top:940px; width:900px; transform:rotate(-90deg); transform-origin:0 0; font:600 22px/1 var(--num); letter-spacing:.22em; color:var(--muted); white-space:nowrap">
+    STREAMLIT · LOCALHOST · 14 OCT 2026</div>
+</section>
+
+<script>
+  function show(id) {
+    document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === id));
+  }
+  window.SLIDES = [...document.querySelectorAll('section')].map(s => s.id);
+</script>
+</body>
+</html>

@@ -381,7 +381,7 @@ Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook, ROCm
 | nb_golden_leaks | injection leaks 0 | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.injection_leaks` |
 | nb_golden_fallback | prose replaced by fixed text in 0.0332 of all 301 drafts | 0.0332 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_prose_fallback_rate` |
 | nb_golden_p95 | p95 11.12 s per case to verified drafts | 11.12 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.p95_total_s` |
-| nb_raw_rate | raw Gemma 4 in free text: a wrong amount in 0.4872 of cases | 0.4872 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_only_hallucination_rate` |
+| nb_raw_rate | raw Gemma 4 in free text: a wrong amount in 0.4872 of cases (48.7%) | 0.4872 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_only_hallucination_rate` |
 | nb_raw_wrong | 19 of 39 cases | 19 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.llm_only.summaries_with_wrong_amounts` |
 | nb_bound_drafts | the same run's 301 Wapsi drafts | 301 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.wapsi_bound.drafts` |
 | nb_bound_wrong | 0 of them with a numeric error | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.wapsi_bound.drafts_with_numeric_errors` |
@@ -391,10 +391,10 @@ Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook, ROCm
 | nb_ab_str_docs | 17 Wapsi-bound STRs | 17 | editions/amd/evidence/notebook/2026-10-14/ab_hallucination.json | `json:arms.bound.str_only.docs` |
 | nb_gnn_params | the GNN trained on the MI300X has 410k parameters | 410017 | editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json | `json:parameters` |
 | nb_gnn_hard_disp | MI300X-trained GNN on the hard world: dispositions 0.9198 | 0.9198 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.disposition_accuracy` |
-| nb_gnn_hard_ih | innocent-holder recall 0.875 | 0.875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.INNOCENT_HOLDER` |
+| nb_gnn_hard_ih | innocent-holder recall 0.875 (87.5%) | 0.875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.INNOCENT_HOLDER` |
 | nb_gnn_hard_mule_recall | its mule recall falls to 0.7415 | 0.7415 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.MULE` |
 | nb_heur_hard_auc | against the default heuristic's mule ROC-AUC 0.9411 (same run) | 0.9411 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.classification.mule_auc` |
-| nb_heur_hard_ih | the heuristic's innocent-holder recall 0.6875 | 0.6875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.role_recall.INNOCENT_HOLDER` |
+| nb_heur_hard_ih | the heuristic's innocent-holder recall 0.6875 (69%) | 0.6875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.role_recall.INNOCENT_HOLDER` |
 | nb_heur_hard_mule_recall | the heuristic's mule recall 0.966 | 0.966 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.role_recall.MULE` |
 | nb_heur_hard_disp | the heuristic's dispositions 0.9198 | 0.9198 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.disposition_accuracy` |
 | nb_best_feature_auc | level with the best single feature (ROC-AUC 0.9205, `hist_credit_turnover_ratio`) | 0.9205 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.classification.best_single_feature_auc` |

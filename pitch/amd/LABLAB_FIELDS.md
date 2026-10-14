@@ -79,12 +79,12 @@ the notebook is not the droplet.
 
 | Field | Value |
 |---|---|
-| Demo video (limit 5:00) | **TODO (user):** link of the 4:15 cut, [`VIDEO_SCRIPT.md`](VIDEO_SCRIPT.md) |
-| Pitch presentation | **TODO (user):** PDF exported from [`DECK_OUTLINE.md`](DECK_OUTLINE.md) |
-| Public GitHub repository (MIT) | **TODO (user):** repository URL; it must contain the tag `amd-baseline`. Push explicit refs only: `git push origin main amd-baseline`. Never `git push --tags` or `--all`: local refs from earlier work (another event's tag and branch) must stay off the public repository |
+| Demo video (limit 5:00) | **TODO (user):** upload link. Draft cut (4:35, synthetic voice) is built locally by [`video/scripts/build_video.py`](video/scripts/build_video.py); narration and sources per beat in [`video/SCRIPT_FINAL.md`](video/SCRIPT_FINAL.md), captions in [`video/captions.srt`](video/captions.srt) |
+| Pitch presentation | [`deck/WAPSI_DECK.pdf`](deck/WAPSI_DECK.pdf) (12 slides, 16:9; rebuilt by [`deck/build_deck.py`](deck/build_deck.py) from [`deck/deck.html`](deck/deck.html)) |
+| Public GitHub repository (MIT) | https://github.com/GODOSTROYER/wapsi; it must contain the tag `amd-baseline`. Push explicit refs only: `git push origin main amd-baseline`. Never `git push --tags` or `--all`: local refs from earlier work (another event's tag and branch) must stay off the public repository |
 | Demo application platform | **TODO (user):** where the app is hosted (container host or the AMD instance) |
 | Application URL | **TODO (user):** the public URL; the page states that all data is synthetic |
-| Cover image | **TODO (user):** image made from the brief above |
+| Cover image | [`cover/wapsi_cover_1920x1080.png`](cover/wapsi_cover_1920x1080.png) (also 1280x720 and a 1200x630 social card; rebuilt by [`cover/render.py`](cover/render.py)) |
 
 ## Originality statement (paste into the long description's last line or the README section it links to)
 

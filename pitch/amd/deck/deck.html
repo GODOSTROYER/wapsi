@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<title>Wapsi Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --paper:#F5F0E4; --paper-2:#ECE4D1; --ink:#13203A; --ink-2:#2B3A57; --muted:#5A6275;
+  --rule:#CFC4AC; --stamp:#B3261E; --stamp-soft:#F3D9D3; --held:#0B6B50; --held-soft:#D5EBDF;
+  --gold:#9A6B12; --night:#0E1729; --night-2:#18243C; --on-night:#F5F0E4; --on-night-muted:#AEB6C7;
+  --serif:"Fraunces","Iowan Old Style","Georgia",serif;
+  --sans:"IBM Plex Sans","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono","Cascadia Mono","Consolas",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#555;}
+body{font-family:var(--sans);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:1920px 1080px;margin:0}
+.slide{width:1920px;height:1080px;position:relative;overflow:hidden;background:var(--paper);
+  padding:88px 120px 120px;display:flex;flex-direction:column;page-break-after:always;break-after:page;margin:0 auto 24px}
+@media print{.slide{margin:0}}
+.slide.dark{background:var(--night);color:var(--on-night)}
+/* ledger rule lines on paper slides */
+.slide:not(.dark)::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,transparent 0 53px,rgba(19,32,58,.045) 53px 54px)}
+.slide:not(.dark)::after{content:"";position:absolute;top:0;bottom:0;left:84px;width:2px;background:rgba(179,38,30,.25)}
+.kicker{font-family:var(--mono);font-size:22px;letter-spacing:.14em;text-transform:uppercase;color:var(--stamp);
+  display:flex;justify-content:space-between;position:relative;z-index:1}
+.dark .kicker{color:#F08A7E}
+.kicker .no{color:var(--muted)} .dark .kicker .no{color:var(--on-night-muted)}
+h1,h2{font-family:var(--serif);font-weight:700;letter-spacing:-.01em;line-height:1.04;position:relative;z-index:1}
+h2{font-size:76px;margin:22px 0 36px;max-width:1600px}
+.lede{font-size:32px;line-height:1.4;color:var(--ink-2);max-width:1500px;position:relative;z-index:1}
+.dark .lede{color:var(--on-night-muted)}
+.body{flex:1;position:relative;z-index:1;min-height:0}
+.src{position:absolute;left:120px;right:120px;bottom:40px;font-family:var(--mono);font-size:17px;color:var(--muted);
+  border-top:1px solid var(--rule);padding-top:12px;z-index:1;line-height:1.4}
+.dark .src{color:var(--on-night-muted);border-color:#2E3B57}
+.src b{color:var(--ink);font-weight:600} .dark .src b{color:var(--on-night)}
+.inr{font-variant-numeric:tabular-nums lining-nums}
+.big{font-family:var(--serif);font-weight:900;line-height:.95;letter-spacing:-.02em}
+.stamp{display:inline-block;border:5px solid var(--stamp);color:var(--stamp);font-family:var(--mono);font-weight:600;
+  text-transform:uppercase;letter-spacing:.12em;padding:8px 22px;border-radius:6px;transform:rotate(-4deg)}
+.stamp.held{border-color:var(--held);color:var(--held)}
+.pill{display:inline-block;font-family:var(--mono);font-size:20px;padding:6px 14px;border-radius:999px;
+  background:var(--paper-2);color:var(--ink-2);margin:0 8px 8px 0}
+.grid{display:grid;gap:32px}
+.card{background:#FFFCF5;border:1.5px solid var(--rule);border-radius:14px;padding:30px 34px}
+.dark .card{background:var(--night-2);border-color:#2E3B57}
+.card h3{font-family:var(--serif);font-size:36px;font-weight:700;margin-bottom:12px}
+.card p,.card li{font-size:25px;line-height:1.42;color:var(--ink-2)}
+.dark .card p,.dark .card li{color:var(--on-night-muted)}
+.card ul{padding-left:26px}
+table{border-collapse:collapse;width:100%;font-size:26px}
+th{font-family:var(--mono);font-size:19px;letter-spacing:.08em;text-transform:uppercase;text-align:left;
+  color:var(--muted);font-weight:600;padding:12px 18px;border-bottom:2px solid var(--ink)}
+td{padding:15px 18px;border-bottom:1px solid var(--rule);vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.dark th{color:var(--on-night-muted);border-color:var(--on-night)} .dark td{border-color:#2E3B57}
+.frozen{color:var(--stamp);font-weight:700} .heldc{color:var(--held);font-weight:700}
+.dark .frozen{color:#FF8F82} .dark .heldc{color:#6FD3A8}
+.mono{font-family:var(--mono)}
+.where{font-family:var(--mono);font-size:19px;color:var(--gold);letter-spacing:.04em}
+.dark .where{color:#E9C46A}
+/* ---- slide specific ---- */
+.hook-figs{display:grid;grid-template-columns:1.15fr 0.95fr 0.9fr;gap:56px;align-items:end;margin-top:30px}
+.hook-figs .lbl{font-family:var(--mono);font-size:22px;letter-spacing:.1em;text-transform:uppercase;color:var(--on-night-muted);margin-top:14px}
+.bar{height:34px;border-radius:4px;margin-top:22px}
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:10px}
+.step{padding:34px 30px 30px;border-top:8px solid var(--ink);position:relative;background:#FFFCF5;border-right:1.5px solid var(--rule);min-height:440px}
+.step:last-child{border-right:none}
+.step .num{font-family:var(--serif);font-size:84px;font-weight:900;color:var(--paper-2);position:absolute;right:24px;top:6px;line-height:1}
+.step h3{font-family:var(--serif);font-size:40px;margin-bottom:16px;position:relative;padding-right:64px}
+.step p{font-size:25px;line-height:1.42;color:var(--ink-2);position:relative}
+.step .tag{margin-top:20px;font-family:var(--mono);font-size:19px;color:var(--held)}
+.shots{display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:1fr 1fr;gap:22px;height:100%}
+.shot{position:relative;border:1.5px solid var(--rule);border-radius:12px;overflow:hidden;background:#fff}
+.shot.main{grid-row:1 / span 2}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top left;display:block}
+.shot .cap{position:absolute;left:0;right:0;bottom:0;background:rgba(19,32,58,.92);color:var(--on-night);
+  font-size:22px;padding:12px 18px;line-height:1.3}
+.shot .cap b{font-family:var(--mono);color:#E9C46A;font-weight:600;margin-right:10px}
+.shot .ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-family:var(--mono);
+  font-size:22px;color:var(--muted);background:repeating-linear-gradient(45deg,#FFFCF5 0 14px,var(--paper-2) 14px 28px)}
+.shot.missing img{display:none} .shot.missing .ph{display:flex}
+.kpi{border-left:6px solid var(--held);padding:6px 0 6px 24px}
+.dark .kpi{border-color:#6FD3A8}
+.kpi .v{font-family:var(--serif);font-weight:900;font-size:76px;line-height:1}
+.kpi .k{font-size:23px;line-height:1.35;color:var(--on-night-muted);margin-top:10px}
+.mem{display:flex;height:96px;border-radius:10px;overflow:hidden;border:2px solid #2E3B57;margin-top:12px}
+.mem div{display:flex;align-items:center;padding:0 20px;font-family:var(--mono);font-size:21px;white-space:nowrap}
+.ab{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.ab .col{border-radius:16px;padding:40px 44px}
+.ab .raw{background:var(--stamp-soft);border:2px solid var(--stamp)}
+.ab .bound{background:var(--held-soft);border:2px solid var(--held)}
+.ab .big{font-size:150px}
+.ab .what{font-size:26px;line-height:1.4;margin-top:8px;color:var(--ink-2)}
+.ab .row{display:flex;justify-content:space-between;border-top:1px solid rgba(19,32,58,.18);padding:16px 0;font-size:27px}
+.ab .row:first-of-type{margin-top:26px}
+.ab .row span:last-child{font-family:var(--mono);font-weight:600}
+.versus{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:34px}
+.vbar{height:56px;border-radius:6px;display:flex;align-items:center;padding:0 18px;color:#fff;font-family:var(--mono);font-size:22px;font-weight:600}
+.close-url{font-family:var(--mono);font-size:56px;color:#E9C46A;margin-top:24px}
+</style>
+</head>
+<body>
+
+<!-- 1 HOOK -->
+<section class="slide dark" id="s1">
+  <div class="kicker"><span>Wapsi · AMD Developer Hackathon ACT III · Track 3, Reinvent Commerce</span><span class="no">01 / 12</span></div>
+  <div class="body" style="display:flex;flex-direction:column;justify-content:center">
+    <div style="display:flex;align-items:center;gap:40px">
+      <h1 style="font-size:132px">Hold the fraud,<br>not the shop.</h1>
+      <div class="stamp" style="font-size:42px;margin-left:60px;border-color:#FF8F82;color:#FF8F82">Account frozen</div>
+    </div>
+    <p class="lede" style="margin-top:34px;font-size:34px;max-width:1400px">One fraud payment lands in an honest merchant's account, and the whole account is frozen. Across India, the money held mostly never comes back.</p>
+    <div class="hook-figs">
+      <div><div class="big inr" style="font-size:132px;white-space:nowrap">₹7,647 Cr</div><div class="bar" style="background:#FF8F82;width:100%"></div><div class="lbl">held on complaints</div></div>
+      <div><div class="big inr" style="font-size:132px;white-space:nowrap;color:#6FD3A8">₹167 Cr</div><div class="bar" style="background:#6FD3A8;width:2.18%;min-width:14px"></div><div class="lbl">restored to victims</div></div>
+      <div><div class="big" style="font-size:190px;color:#E9C46A">2.18%</div><div class="lbl">of held money returned</div></div>
+    </div>
+  </div>
+  <div class="src">Source: <b>MHA/I4C SOP for NCRP-CFCFRMS, Custody, Restoration and Grievance Redressal, 02.01.2026</b> — April 2021 to November 2025 · pitch/NUMBERS.md</div>
+</section>
+
+<!-- 2 PROBLEM AND USER -->
+<section class="slide" id="s2">
+  <div class="kicker"><span>The problem and the user</span><span class="no">02 / 12</span></div>
+  <h2>A ₹1,200 grocery sale froze a ₹51,200 shop.</h2>
+  <div class="body grid" style="grid-template-columns:1.15fr 1fr;gap:56px">
+    <div>
+      <table>
+        <thead><tr><th>Account on the trail</th><th class="n">Whole-account freeze</th></tr></thead>
+        <tbody>
+          <tr><td>Kirana shop · goods delivered</td><td class="n frozen inr">₹51,200</td></tr>
+          <tr><td>Landlord · ₹5,000 rent received</td><td class="n frozen inr">₹1,55,000</td></tr>
+          <tr><td>Payment-aggregator pool · settles other merchants</td><td class="n frozen inr">₹5,00,20,000</td></tr>
+          <tr><td>Three mule accounts</td><td class="n inr">₹1,23,800</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:30px;line-height:1.4;margin-top:34px"><span class="big" style="font-size:64px;color:var(--stamp)">99.75%</span>&nbsp; of what the freeze locks belongs to people who did nothing wrong.</p>
+    </div>
+    <div class="grid" style="gap:24px;align-content:start">
+      <div class="card"><h3>Who uses Wapsi</h3><p>The bank's <b>cyber-fraud nodal officer</b>: traces split and layered money by hand, with an STR due within 7 working days.</p></div>
+      <div class="card"><h3>Who it protects</h3><p>The <b>merchant</b> who loses working capital and the <b>customer</b> who loses the account. The bank loses both, and answers the grievance.</p></div>
+      <div class="card" style="border-color:var(--held)"><h3 style="color:var(--held)">Reinvent Commerce</h3><p>Keep commerce running and keep the customer: hold the victim's money, not the business.</p></div>
+    </div>
+  </div>
+  <div class="src">Source: showcase case 1, hand-computed synthetic fixture <b>src/wapsi/fixtures/showcase.py</b> · rows in pitch/NUMBERS.md · STR deadline: data/docs/facts.json (FIU-IND FAQ)</div>
+</section>
+
+<!-- 3 WHAT WAPSI DOES -->
+<section class="slide" id="s3">
+  <div class="kicker"><span>What Wapsi does</span><span class="no">03 / 12</span></div>
+  <h2>Trace. Hold the amount. Verify. A human signs.</h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h3>Trace</h3><p>Follow the complaint's money through every layer of mule accounts, split per victim pro-rata (SOP 5(xiii)).</p><div class="tag">transactions · NCRP text · voice notes</div></div>
+      <div class="step"><div class="num">2</div><h3>Amount-specific hold</h3><p>Hold <span class="mono">min(victim money, balance)</span> per account. Never a whole-account freeze unless an approved, recorded exception.</p><div class="tag">SOP 5(ix), 9.1</div></div>
+      <div class="step"><div class="num">3</div><h3>Verified drafts</h3><p>STR, hold instructions, customer notice, restoration packet. Gemma 4 writes the words; the verifier recomputes every number and citation.</p><div class="tag">numbers from data, words from the model</div></div>
+      <div class="step" style="border-top-color:var(--held)"><div class="num">4</div><h3>Maker-checker</h3><p>A supervisor other than the analyst approves, bound to the draft's SHA-256 fingerprint, into a hash-chained audit log.</p><div class="tag">nothing moves without a human</div></div>
+    </div>
+    <div style="display:flex;gap:60px;margin-top:44px;align-items:baseline">
+      <div style="font-size:30px">Showcase case 1: freeze baseline <span class="frozen inr">₹5,03,50,000</span> in 6 accounts</div>
+      <div style="font-size:30px">Wapsi holds <span class="heldc inr">₹1,42,848</span> in 5 accounts</div>
+    </div>
+  </div>
+  <div class="src">Source: <b>pitch/NUMBERS.md</b> (showcase case 1, src/wapsi/fixtures/showcase.py) · rules: AGENTS.md hard rules, SOP IDs in src/wapsi/citations.py · synthetic data</div>
+</section>
+
+<!-- 4 DEMO FLOW -->
+<section class="slide" id="s4">
+  <div class="kicker"><span>Live demo flow · the officer's case room</span><span class="no">04 / 12</span></div>
+  <h2 style="font-size:60px;margin-bottom:26px">From complaint to an approvable hold plan.</h2>
+  <div class="body">
+    <div class="shots">
+      <figure class="shot main"><img src="screens/hold_plan.png" alt="Hold plan screen" onerror="this.parentNode.classList.add('missing')"><div class="ph">screens/hold_plan.png</div><figcaption class="cap"><b>HOLD PLAN</b>₹5.04 Cr freeze baseline vs ₹1.43 L held, account by account, SOP basis per step</figcaption></figure>
+      <figure class="shot"><img src="screens/agent_trace.png" alt="Agent trace tab" onerror="this.parentNode.classList.add('missing')"><div class="ph">screens/agent_trace.png</div><figcaption class="cap"><b>AGENT TRACE</b>every ADK tool call with guard and verifier verdicts</figcaption></figure>
+      <figure class="shot"><img src="screens/drafts.png" alt="Drafts and verification" onerror="this.parentNode.classList.add('missing')"><div class="ph">screens/drafts.png</div><figcaption class="cap"><b>DRAFTS</b>STR and notices, each number re-checked before approval</figcaption></figure>
+    </div>
+  </div>
+  <div class="src">Screens: <b>Streamlit UI (ui/app.py), recorded mode</b>, synthetic showcase case 1; the prose is a labelled replay of Gemma 4 on AMD Token Factory (14 Oct 2026). More: screens/case_room.png, screens/voice_intake.png</div>
+</section>
+
+<!-- 5 PREDICTIONS -->
+<section class="slide" id="s5">
+  <div class="kicker"><span>How predictions work</span><span class="no">05 / 12</span></div>
+  <h2>Transparent predictions. Never the money.</h2>
+  <div class="body grid" style="grid-template-columns:1fr 1.15fr;gap:56px">
+    <div class="grid" style="gap:22px;align-content:start">
+      <div class="card"><h3>Predicted: the account's role</h3><p>Mule, innocent holder, merchant, pool account. A transparent logistic scorer (default) with per-feature reasons; a GraphSAGE GNN on ROCm behind the same interface.</p></div>
+      <div class="card"><h3>Never predicted: the amount</h3><p>A hold is arithmetic, <span class="mono">min(victim money, balance)</span>. Score ≥ 0.6 mule, ≤ 0.35 innocent, between: the officer decides.</p></div>
+      <div class="card"><h3>Hard rules first</h3><p>A merchant needs a delivered invoice for every disputed credit. Pool accounts never get a forward hold.</p></div>
+    </div>
+    <div>
+      <p class="where" style="margin-bottom:12px">GNN trained on an AMD Instinct MI300X, 14 Oct 2026</p>
+      <table>
+        <thead><tr><th>Hard world, 64 cases</th><th class="n">Heuristic</th><th class="n">GNN · MI300X</th></tr></thead>
+        <tbody>
+          <tr><td>Mule ROC-AUC</td><td class="n">0.9411</td><td class="n">0.9202</td></tr>
+          <tr><td>Dispositions right</td><td class="n">0.9198</td><td class="n">0.9198</td></tr>
+          <tr><td>Innocent-holder recall</td><td class="n">0.6875</td><td class="n heldc">0.875</td></tr>
+          <tr><td>Holds exact · over-hold</td><td class="n">1.0 · ₹0</td><td class="n">1.0 · ₹0</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:23px;line-height:1.45;color:var(--ink-2);margin-top:22px">Validation AUC 1.0 is on a saturated synthetic world, so we report the hard world built to fool the classifier. 410,017 parameters, 0.055 s per epoch, 0.39 GB peak. Every miss is a label, never money.</p>
+    </div>
+  </div>
+  <div class="src">Source: <b>editions/amd/evidence/notebook/2026-10-14/</b> gnn_metrics.json, gnn_hard_eval.json (<span class="mono">by_scorer</span>: GNN and heuristic, same run) · AGENTS.md</div>
+</section>
+
+<!-- 6 WHY AMD -->
+<section class="slide dark" id="s6">
+  <div class="kicker"><span>Why AMD</span><span class="no">06 / 12</span></div>
+  <h2>One MI300X serves the whole copilot.</h2>
+  <div class="body">
+    <p class="where">Measured 14 Oct 2026 on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM 0.23)</p>
+    <div class="mem">
+      <div style="background:#C2410C;color:#fff;width:32%">Gemma 4 31B · BF16 · ≈62 GB weights</div>
+      <div style="background:#9A3412;color:#fff;width:18.3%">KV cache + serving</div>
+      <div style="background:#18243C;color:var(--on-night-muted);flex:1">free: 94.7 GB of 191.7 GB</div>
+    </div>
+    <p style="font-family:var(--mono);font-size:20px;color:var(--on-night-muted);margin-top:10px">Device peak while serving: 97.0 GB of 191.7 GB. Whisper and the GNN were measured on the same GPU, each in turn.</p>
+    <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:40px;margin-top:56px">
+      <div class="kpi"><div class="v">773</div><div class="k">output tok/s on real drafting prompts, concurrency 32 (TTFT p50 0.12 s)</div></div>
+      <div class="kpi"><div class="v">1,590</div><div class="k">complete cases per hour through the pipeline, concurrency 16</div></div>
+      <div class="kpi"><div class="v">0.03</div><div class="k">Whisper large-v3-turbo real-time factor, steady state: a 31 s voice note in 0.92 s</div></div>
+      <div class="kpi"><div class="v">0.055 s</div><div class="k">per GNN epoch, PyTorch on ROCm, 0.39 GB peak</div></div>
+    </div>
+    <p class="lede" style="margin-top:50px;font-size:28px">Open weights, the bank's own rack: the same code moves from AMD's hosted API to one AMD GPU by changing three settings.</p>
+  </div>
+  <div class="src">Sources: <b>editions/amd/evidence/notebook/2026-10-14/evidence.md</b> (serving, VRAM) · <b>editions/amd/bench/results/voice-mi300x-notebook-20261014/whisper_rtf.json</b> (steady state, warm-up sample excluded) · <b>gnn_metrics.json</b> · weights ≈62 GB: pitch/NUMBERS.md (31B × 2 bytes)</div>
+</section>
+
+<!-- 7 RESULTS TABLE -->
+<section class="slide" id="s7">
+  <div class="kicker"><span>MI300X results</span><span class="no">07 / 12</span></div>
+  <h2>Gemma 4 31B, self-served, measured.</h2>
+  <div class="body grid" style="grid-template-columns:1fr 1fr;gap:64px">
+    <div>
+      <p class="where" style="margin-bottom:10px">Serving · AMD Instinct MI300X · 14 Oct 2026</p>
+      <table>
+        <thead><tr><th>Concurrency</th><th class="n">Output tok/s</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="n">55</td></tr>
+          <tr><td>4</td><td class="n">181</td></tr>
+          <tr><td>16</td><td class="n">474</td></tr>
+          <tr><td>64</td><td class="n">699</td></tr>
+          <tr><td>32 · real drafting prompts</td><td class="n heldc">773</td></tr>
+        </tbody>
+      </table>
+      <table style="margin-top:30px">
+        <tbody>
+          <tr><td>Cases per hour (c = 16)</td><td class="n">1,590</td></tr>
+          <tr><td>Drafts per GPU-hour</td><td class="n">12,274</td></tr>
+          <tr><td>Cost per case at $1.99 / GPU-hour</td><td class="n">$0.0013 ($1.25 / 1,000)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <p class="where" style="margin-bottom:10px">Golden eval · 39 cases · a second MI300X (session 4) · 14 Oct 2026</p>
+      <table>
+        <thead><tr><th>With Gemma 4 writing the prose</th><th class="n">Result</th></tr></thead>
+        <tbody>
+          <tr><td>Holds exact to the paisa</td><td class="n heldc">1.0</td></tr>
+          <tr><td>Drafts passing the verifier</td><td class="n heldc">1.0</td></tr>
+          <tr><td>Numeric accuracy</td><td class="n heldc">1.0</td></tr>
+          <tr><td>Citation validity</td><td class="n heldc">1.0</td></tr>
+          <tr><td>Injection leaks</td><td class="n heldc">0</td></tr>
+          <tr><td>Prose replaced by fixed text</td><td class="n">0.0332 (10 / 301)</td></tr>
+          <tr><td>p95 per case, to verified drafts</td><td class="n">11.1 s</td></tr>
+          <tr><td>Raw model, no slots: cases wrong</td><td class="n frozen">0.4872 (19 / 39)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="src">Sources: <b>editions/amd/evidence/notebook/2026-10-14/</b> evidence.md + bench/*.json (session 5) · golden_eval.json (session 4, a second MI300X; see SESSIONS.md) · AMD AI Notebook, ROCm 7.14, vLLM 0.23</div>
+</section>
+
+<!-- 8 A/B -->
+<section class="slide" id="s8">
+  <div class="kicker"><span>A/B · raw Gemma 4 vs Wapsi-bound Gemma 4</span><span class="no">08 / 12</span></div>
+  <h2>Same model. Only one gets the rupees right.</h2>
+  <div class="body ab">
+    <div class="col raw">
+      <div class="stamp" style="font-size:24px">Raw Gemma 4, free text</div>
+      <div class="big" style="color:var(--stamp);margin-top:26px">48.7%</div>
+      <div class="what">19 of 39 cases: the plan named an amount that is not in the case.</div>
+      <div class="row"><span>STRs with a wrong amount</span><span>4 / 20</span></div>
+      <div class="row"><span>Clean documents</span><span>0.8</span></div>
+    </div>
+    <div class="col bound">
+      <div class="stamp held" style="font-size:24px">Wapsi-bound Gemma 4</div>
+      <div class="big" style="color:var(--held);margin-top:26px">0</div>
+      <div class="what">wrong amounts: Gemma writes sentences around slots, and the verifier recomputes every number.</div>
+      <div class="row"><span>STRs with a wrong amount</span><span>0 / 17</span></div>
+      <div class="row"><span>All bound drafts with a wrong amount</span><span>0 / 155</span></div>
+      <div class="row"><span>Clean documents</span><span>1.0</span></div>
+    </div>
+  </div>
+  <div class="src">Measured 14 Oct 2026 on AMD Instinct MI300X · <b>editions/amd/evidence/notebook/2026-10-14/golden_eval.json</b> (session 4; llm_only_hallucination_rate 0.4872) · <b>ab_hallucination.json</b> (session 5) (STR A/B, 155 bound drafts)</div>
+</section>
+
+<!-- 9 GOOGLE -->
+<section class="slide" id="s9">
+  <div class="kicker"><span>Google partner technology</span><span class="no">09 / 12</span></div>
+  <h2>Gemma 4 writes. Google ADK runs the agent.</h2>
+  <div class="body grid" style="grid-template-columns:1fr 1fr 1fr;gap:32px">
+    <div class="card"><h3>Gemma 4 31B</h3><ul><li>Primary model for draft prose, complaint and voice-note fields</li><li>Never types a number: placeholders only</li><li>Every draft names the model that wrote it</li></ul></div>
+    <div class="card"><h3>Google ADK agent</h3><ul><li>10 pipeline tools, native tool calls from Gemma 4</li><li>JSON tool protocol as the safety net</li><li>A reply with an amount no tool returned is replaced</li></ul></div>
+    <div class="card"><h3>Agent trace</h3><ul><li>Every tool call with guard and verifier verdicts</li><li>Redacted and sealed into the case's audit chain</li><li>Replay is always labelled as a recording</li></ul></div>
+    <div class="card" style="grid-column:1 / span 3;border-color:var(--gold)">
+      <p class="where" style="margin-bottom:12px">Live run · AMD Token Factory (Gemma-4-31B-IT), 14 Oct 2026 · AMD-served, not an MI300X benchmark</p>
+      <div style="display:flex;gap:70px;align-items:baseline">
+        <div><span class="big" style="font-size:72px">5</span> <span style="font-size:25px">tool calls behind "Open case"</span></div>
+        <div><span class="big" style="font-size:72px;color:var(--held)">16/16</span> <span style="font-size:25px">drafts verified</span></div>
+        <div><span class="big" style="font-size:72px;color:var(--held)">24/24</span> <span style="font-size:25px">values in the reply came from a tool</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="src">Source: <b>pitch/NUMBERS.md</b> (AMD Token Factory agent run: editions/amd/bench/results/agent-tokenfactory-20261014/agent-demo-showcase-gemma4.json) · tools: editions/shared/tools.py</div>
+</section>
+
+<!-- 10 BUSINESS VALUE -->
+<section class="slide" id="s10">
+  <div class="kicker"><span>Business value</span><span class="no">10 / 12</span></div>
+  <h2>Free the honest money, for $1.25 per 1,000 cases.</h2>
+  <div class="body">
+    <div class="versus">
+      <div>
+        <p class="where" style="margin-bottom:12px">Showcase case 1 · hand-computed</p>
+        <div class="vbar" style="background:var(--stamp);width:100%">Freeze ₹5,03,50,000 · 6 accounts</div>
+        <div class="vbar" style="background:var(--held);width:max(0.28%,330px);margin-top:10px">Wapsi ₹1,42,848 · 5</div>
+        <p style="font-size:24px;margin-top:12px;color:var(--ink-2)">The freeze locks 352× what Wapsi holds.</p>
+      </div>
+      <div>
+        <p class="where" style="margin-bottom:12px">Demo world · 39 cases, 10 fraud typologies</p>
+        <div class="vbar" style="background:var(--stamp);width:100%">Freeze ₹35.26 Cr · 101 accounts</div>
+        <div class="vbar" style="background:var(--held);width:max(0.83%,330px);margin-top:10px">Wapsi ₹29.19 L · 84</div>
+        <p style="font-size:24px;margin-top:12px;color:var(--ink-2)">0.83% of the freeze; 0 false freezes.</p>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:32px">
+      <div class="card"><h3 class="inr">$1.25 / 1,000 cases</h3><p>Gemma 4 on one MI300X at the $1.99 per GPU-hour list price, concurrency 16.</p></div>
+      <div class="card"><h3>1,590 cases / hour</h3><p>One GPU; 12,274 drafts per GPU-hour, each verified before a human sees it.</p></div>
+      <div class="card"><h3>1,586 buyers</h3><p>Regulated entities on CFCFRMS. A licence per entity, on an endpoint the bank controls.</p></div>
+    </div>
+  </div>
+  <div class="src">Sources: <b>pitch/NUMBERS.md</b> (showcase case 1 = src/wapsi/fixtures/showcase.py; demo world = evals/reports/demo.json, same baseline in golden_eval.json) · cost and throughput: <b>editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json</b>, MI300X, 14 Oct 2026 · entities: data/docs/facts.json</div>
+</section>
+
+<!-- 11 LIMITS -->
+<section class="slide" id="s11">
+  <div class="kicker"><span>Honest limits and next steps</span><span class="no">11 / 12</span></div>
+  <h2>What this is not, yet.</h2>
+  <div class="body grid" style="grid-template-columns:1fr 1fr;gap:48px;align-items:start">
+    <div class="card" style="border-color:var(--stamp)"><h3 style="color:var(--stamp)">Limits we state</h3><ul>
+      <li>All banking data is synthetic. No real customer, victim or bank data.</li>
+      <li>CFCFRMS is a <b>simulated interface</b>; nothing is sent to the portal.</li>
+      <li>The RBI money-mule SOP is a <b>DRAFT</b> (comments closed 2 Oct 2026), never treated as in force.</li>
+      <li>GNN validation AUC 1.0 is on a saturated world; the heuristic stays the default.</li>
+      <li>Our metric is money identified and held correctly, not money restored.</li>
+    </ul></div>
+    <div class="card" style="border-color:var(--held)"><h3 style="color:var(--held)">Next</h3><ul>
+      <li>A pilot with one bank's fraud desk on data it controls.</li>
+      <li>Payment aggregators whose pool accounts get frozen.</li>
+      <li>Voice intake with Whisper in the loop, measured end to end.</li>
+      <li>A verifier-filtered LoRA of Gemma 4 on the MI300X.</li>
+      <li>Price set after bank validation calls.</li>
+    </ul></div>
+  </div>
+  <div class="src">Source: <b>AGENTS.md</b> (synthetic data, simulated CFCFRMS, DRAFT RBI SOP) · pitch/amd/DECK_OUTLINE.md · docs/originality.md (pre-event core tagged amd-baseline)</div>
+</section>
+
+<!-- 12 ASK -->
+<section class="slide dark" id="s12">
+  <div class="kicker"><span>The ask</span><span class="no">12 / 12</span></div>
+  <div class="body" style="display:flex;flex-direction:column;justify-content:center">
+    <h1 style="font-size:110px">Hold the fraud.<br><span style="color:#6FD3A8">Keep the shop open.</span></h1>
+    <p class="lede" style="margin-top:40px;font-size:34px;max-width:1500px">We ask for a pilot with one bank's cyber-fraud desk on an AMD endpoint it controls, and introductions to payment aggregators whose pool accounts get frozen.</p>
+    <div class="close-url">github.com/GODOSTROYER/wapsi</div>
+    <div style="margin-top:40px">
+      <span class="pill" style="background:var(--night-2);color:var(--on-night)">Gemma 4 on AMD Instinct MI300X</span>
+      <span class="pill" style="background:var(--night-2);color:var(--on-night)">Google ADK</span>
+      <span class="pill" style="background:var(--night-2);color:var(--on-night)">ROCm 7.14</span>
+      <span class="pill" style="background:var(--night-2);color:var(--on-night)">MIT licence · solo entry</span>
+    </div>
+  </div>
+  <div class="src">Track 3, Reinvent Commerce · lablab.ai AMD Developer Hackathon ACT III · all case data synthetic</div>
+</section>
+
+</body>
+</html>
