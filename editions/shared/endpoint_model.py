@@ -117,6 +117,11 @@ class EndpointClient(LiteLLMClient):
                 litellm.suppress_debug_info = True  # no "Give Feedback" banners on errors
             except Exception:  # noqa: BLE001 - cosmetic
                 pass
+            if os.environ.get("WAPSI_AGENT_DEBUG", "").strip().lower() not in ("1", "true", "yes", "on"):
+                # ADK points LiteLLM's own log handler at stdout; one INFO line per request there would corrupt
+                # machine-readable output (the CLI's --json) whenever the host logs at INFO
+                for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+                    logging.getLogger(name).setLevel(logging.WARNING)
         if "max_completion_tokens" in kwargs:  # vLLM and AMD Token Factory document ``max_tokens``; an agent's
             kwargs["max_tokens"] = kwargs.pop("max_completion_tokens")  # own limit wins over the endpoint default
         if tools and self.endpoint.parallel_tool_calls is not None:

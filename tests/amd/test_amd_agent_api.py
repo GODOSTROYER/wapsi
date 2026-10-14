@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from dataclasses import replace
@@ -122,8 +123,9 @@ def test_agent_run_reports_a_missing_extra(client, monkeypatch):
 # --------------------------------------------------------------------------- CLI
 
 
-def test_cli_runs_the_showcase_case_offline_and_verifies_the_outcome(tmp_path, capsys):
-    code = agent_demo.main(["--case", sc.N1, "--json", "--state-dir", str(tmp_path / "state")])
+def test_cli_runs_the_showcase_case_offline_and_verifies_the_outcome(tmp_path, capsys, caplog):
+    with caplog.at_level(logging.INFO):  # a host that logs at INFO must not get log lines mixed into the JSON
+        code = agent_demo.main(["--case", sc.N1, "--json", "--state-dir", str(tmp_path / "state")])
     out = json.loads(capsys.readouterr().out)
     assert code == agent_demo.EXIT_OK and out["live"] is False
     o = out["outcome"]
