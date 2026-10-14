@@ -47,6 +47,7 @@ no credit card, in three ways. All of them serve the same thing: the shared offi
 | `WAPSI_LLM_MODEL` | `Gemma-4-31B-IT` | variable |
 | `WAPSI_LLM_JSON_MODE` | optional: `json_object` (default), `json_schema`, or `none` (send no `response_format`) | variable |
 | `WAPSI_LLM_EXTRA_BODY` | optional: a JSON object merged into every request | variable |
+| `WAPSI_LLM_MODELS` | recommended on a shared endpoint: `Gemma-4-31B-IT,DeepSeek-V4-Flash`, the models to fail over along, in order, while one is withdrawn or answers in garbage. Each draft's chip names the model that wrote it | variable |
 | `WAPSI_LLM_PLATFORM` | optional: `AMD` for your own vLLM on AMD hardware. `*.amd.com(.cn)` hosts are recognised; any other host is shown without a platform unless you state it | variable |
 | `WAPSI_LLM_RPM` | optional: requests a minute the app may send (default 12; the Token Factory allows 20 per account) | variable |
 | `WAPSI_UI_LLM` | optional: `auto` (default in the demo), `recorded` (never call the endpoint), `live` (never replay) | variable |
@@ -59,6 +60,8 @@ no credit card, in three ways. All of them serve the same thing: the shared offi
 > (5 showcase prose fields, 7 calls, median 9.8 s per call, 34,422 prompt and 1,215 completion tokens, endpoint-reported
 > cost $0.000954), so the bundled recording is from that model and is labelled with it. Before you publish the URL,
 > check the model you configure (see "Check the live endpoint") and record again with Gemma 4 once it answers.
+> Set `WAPSI_LLM_MODELS` too: while the first model answers in garbage, the next one writes the prose live, and the
+> recorded run is the last resort.
 
 ## a. Hugging Face Spaces (Docker Space)
 
@@ -112,6 +115,7 @@ Notes:
    WAPSI_LLM_BASE_URL = "https://developer.amd.com.cn/radeon/api/v1"
    WAPSI_LLM_API_KEY = "<your key>"
    WAPSI_LLM_MODEL = "Gemma-4-31B-IT"
+   WAPSI_LLM_MODELS = "Gemma-4-31B-IT,DeepSeek-V4-Flash"
    ```
    Top-level secrets are also set as environment variables, which is where the app reads them.
 4. Deploy. Judged URL: `https://<app>.streamlit.app/?page=case-room&case=CASE-31009260000101`.

@@ -59,7 +59,7 @@ def showcase_world(tmp_path: Path) -> Path:
 def _env(monkeypatch):
     for name in (BASE_URL_ENV, API_KEY_ENV, MODEL_ENV, "WAPSI_LLM_JSON_MODE", "WAPSI_LLM_EXTRA_BODY",
                  "WAPSI_LLM_PLATFORM", "WAPSI_LLM_RPM", "WAPSI_LLM_RPD", "WAPSI_LLM_MIN_INTERVAL_S",
-                 "WAPSI_LLM_PRICE_IN", "WAPSI_LLM_PRICE_OUT"):
+                 "WAPSI_LLM_PRICE_IN", "WAPSI_LLM_PRICE_OUT", "WAPSI_LLM_MODELS", "WAPSI_LLM_FALLBACK_MODELS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -118,6 +118,7 @@ def test_harness_openai_compat_429_then_success_and_cached_rerun(monkeypatch, tm
     assert cost["this_run"] == pytest.approx(0.00002 * llm["ok"]) and cost["paid_tier_equivalent"] is None
     assert "reported by the endpoint" in cost["basis"]
     assert m["llm_prose_fallback_rate"] == 0.0 and m["draft_verification_pass_rate"] == 1.0
+    assert list(rep["prose_by_model"]) == [f"Gemma-4-31B-IT on AMD @ {HOST}"]  # who wrote the prose
     assert m["hold_exact_match_rate"] == 1.0 and m["llm_only_hallucination_rate"] == 1.0
     assert ab["llm_only"]["hallucination_rate"] == 1.0 and ab["wapsi_bound"]["hallucination_rate"] == 0.0
     md = capsys.readouterr().out
@@ -158,3 +159,34 @@ def test_a_garbling_endpoint_is_scored_as_it_is(monkeypatch, showcase_world):
     assert rep["metrics"]["llm_prose_fallback_rate"] == round(5 / drafts, 4)  # all five prose fields fell back
     assert rep["metrics"]["draft_verification_pass_rate"] == 1.0 and rep["metrics"]["hold_exact_match_rate"] == 1.0
     assert rep["llm"]["errors"] == 0 and rep["llm"]["unusable_answers"] == 0  # no accept hook in an evaluation
+
+
+def test_harness_fails_over_along_the_model_list_and_counts_prose_per_model(monkeypatch, tmp_path, showcase_world):
+    """2026-10-14: Gemma-4-31B-IT answered HTTP 200 with runs of slashes. With ``WAPSI_LLM_MODELS`` set, the next
+    model writes the prose; the report says which model wrote how many drafts. Without the list nothing is swapped."""
+
+    class Degraded(Endpoint):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            if body["model"] == "Gemma-4-31B-IT" and body.get("response_format"):
+                self.calls += 1
+                self.models.add(body["model"])
+                return httpx.Response(200, json={"choices": [{"message": {"role": "assistant",
+                                                                          "content": '{"' + "/" * 80},
+                                                              "finish_reason": "length"}],
+                                                 "usage": {"prompt_tokens": 400, "completion_tokens": 700}})
+            return super().__call__(request)
+
+    endpoint = Degraded()
+    configure(monkeypatch, endpoint)
+    monkeypatch.setenv("WAPSI_LLM_MODELS", "Gemma-4-31B-IT,DeepSeek-V4-Flash")
+    out = tmp_path / "reports"
+    argv = ["--world", "showcase", "--world-dir", str(showcase_world), "--llm", "openai-compat", "--out", str(out),
+            "--cache-dir", str(tmp_path / "cache"), "--rpm", "0"]
+    assert harness.main(argv) == 0
+    rep = json.loads((out / "showcase-openai-compat.json").read_text(encoding="utf-8"))
+    assert rep["config"]["llm"].endswith("failover: DeepSeek-V4-Flash")
+    assert list(rep["prose_by_model"]) == [f"DeepSeek-V4-Flash on AMD @ {HOST}"]
+    assert rep["metrics"]["llm_prose_fallback_rate"] == 0.0 and rep["metrics"]["draft_verification_pass_rate"] == 1.0
+    assert rep["llm"]["rejected_by_model"] == {"Gemma-4-31B-IT": 1}  # garbage once, then it rests
+    assert "DeepSeek-V4-Flash" in rep["llm"]["answers_by_model"] and SENTINEL not in json.dumps(rep)

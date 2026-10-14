@@ -1,1 +1,1 @@
-"""Wapsi, Google Cloud edition (AI Builder Cup): ADK agents on Cloud Run, Gemini, Gemma, BigQuery, Firestore."""
+"""Wapsi, Google Cloud edition: ADK agents on Cloud Run, Gemini, Gemma, BigQuery, Firestore."""

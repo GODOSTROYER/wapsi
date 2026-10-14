@@ -172,9 +172,11 @@ def make_llm(kind: str, *, cache_dir: str | Path | None = LLM_CACHE, rpm: int | 
         if model:  # openai-compat:<model>: another model on the same endpoint
             cfg = replace(cfg, model=model, platform=platform_for(cfg.host, cfg.platform))
         inner = make_endpoint(cfg)
-        # the daily cap is the endpoint's own (the AMD Token Factory counts cost, not requests): no client-side RPD
+        # the daily cap is the endpoint's own (the AMD Token Factory counts cost, not requests): no client-side RPD.
+        # failover along WAPSI_LLM_MODELS unless one model was named here; the report counts prose per model
         return resilient_endpoint_llm(cfg, inner=inner, cache_dir=cache_dir, rpm=rpm,
-                                      rpd=rpd if rpd is not None else 0, min_interval_s=min_interval_s)
+                                      rpd=rpd if rpd is not None else 0, min_interval_s=min_interval_s,
+                                      failover=not model, make_inner=make_endpoint)
     if kind.startswith("openai:"):  # openai:<base_url>|<model>
         from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
@@ -317,6 +319,7 @@ def evaluate(
     role_fp: Counter = Counter()
     role_fn: Counter = Counter()
     per_typ: dict[str, Counter] = defaultdict(Counter)
+    prose_by_model: Counter = Counter()
     failures: list[dict] = []
     t_plan: list[float] = []
     t_total: list[float] = []
@@ -417,6 +420,8 @@ def evaluate(
                 counts["citation_ok"] += int(not cit_errors)
             if d.structured.get("llm_fallback"):
                 counts["prose_fallback"] += 1
+            elif d.llm_model:
+                prose_by_model[d.llm_model] += 1  # which model actually wrote the prose (failover can change it)
 
         # injection
         if g.is_adversarial:
@@ -482,7 +487,7 @@ def evaluate(
     return {
         "world": world,
         "generated_at": utcnow().isoformat(),
-        "config": {"rule": cfg.trace.rule.value, "llm": getattr(llm, "name", llm_kind),
+        "config": {"rule": cfg.trace.rule.value, "llm": getattr(llm, "label", None) or getattr(llm, "name", llm_kind),
                    "scorer": getattr(model, "name", scorer), "scorer_spec": scorer, "search": search is not None},
         "cases": counts["cases"],
         "adversarial_cases": counts["adv"],
@@ -496,6 +501,7 @@ def evaluate(
         },
         "classification": classification_summary(cls_rows),
         "llm": llm.report() if hasattr(llm, "report") else None,
+        "prose_by_model": dict(sorted(prose_by_model.items())),  # drafts whose prose a model wrote, by that model
         "ab_test": ab_test,
         "failures": failures[:200],
     }

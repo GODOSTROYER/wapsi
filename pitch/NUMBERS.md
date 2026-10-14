@@ -259,6 +259,24 @@ guards; scripted model).
 | trace_verifier | Verifier · 17/17 passed (plan check plus 16 drafts) | 17 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 17` |
 | trace_grounding | Reply grounding · 23/23 values traced to tools | 23 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 23` |
 
+## Measured with Gemma 4 served on AMD (AMD Token Factory, 2026-10-14; committed results files)
+
+Smoke runs made during the event on synthetic data. The model ran on AMD GPUs on the provider's side (AMD's Token
+Factory API); latency is measured at the client and includes the network. These are not benchmarks of a dedicated
+MI300X. The agent run is written up in `editions/amd/AGENT.md` ("What was measured"); the voice run is
+`editions/amd/bench/results/voice-tokenfactory-20261014/` (the text model only: the samples' scripts stood in for
+the speech recogniser, so no speech model ran).
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| tf_agent_tool_calls | 5 tool calls behind "Open case 31009260000101", Gemma 4 driving the ADK agent through native tool calls (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 5 | editions/amd/AGENT.md | `text:Showcase case, "Open case 31009260000101": 5 tool calls, 6 model turns, reply grounded` |
+| tf_agent_drafts | that agent run on the AMD Token Factory ended VERIFIED: 16 of 16 drafts verified | 16 | editions/amd/AGENT.md | `text:16 of 16 drafts verified` |
+| tf_voice_notes | Gemma 4 on AMD answered for all 6 sample transcripts (AMD Token Factory, text model only) | 6 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.answers_by_model.Gemma-4-31B-IT` |
+| tf_voice_extract_p50 | a median of 7.5 s per note to translate and extract the fields (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 7.5 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.extract_s.p50` |
+| tf_voice_agreement | share of extracted values that agree with the samples' expected answers (AMD Token Factory run) | 0.9833 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.value_agreement` |
+| tf_voice_agreement_pct | 98.3% of the extracted values agree with the expected answers (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 98.3 | derived | `calc:100 * tf_voice_agreement` |
+| tf_voice_as_documented | 4 of 6 notes reconciled as documented on the AMD Token Factory run; the other two were false alarms on a caller's closing plea | 4 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.samples_as_documented` |
+
 ## AMD, MI300X droplet mode: memory plan and budget (design from config in `editions/amd/`; not a measurement)
 
 These rows are arithmetic over configuration values. They say what is planned to fit on one MI300X, not what was
@@ -289,7 +307,7 @@ measured on one. Measured memory per container is the slot `droplet_vram`.
 | cmd_drill | 6/6 tampering attempts detected (plus an in-store edit), 40-event chain | 6 | src/wapsi/audit/drill.py | `cmd:uv run python -m wapsi.audit drill` |
 | cmd_policy | 48/48 policy re-checks pass on showcase case 1 | 48 | .claude/skills/lien-calculator/scripts/hold_plan.py | `cmd:uv run python .claude/skills/lien-calculator/scripts/hold_plan.py 31009260000101 --world showcase-memory` |
 | cmd_str_slots | 78 numbers in the STR recomputed by the verifier | 78 | .claude/skills/str-drafter/scripts/draft_and_verify.py | `cmd:uv run python .claude/skills/str-drafter/scripts/draft_and_verify.py 31009260000101 --world showcase-memory` |
-| cmd_tests | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | 1765 | pyproject.toml | `cmd:uv run pytest -q` |
+| cmd_tests | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | 2212 | pyproject.toml | `cmd:uv run pytest -q` |
 | cmd_trace_run1 | 5 tool calls behind "Open case 31009260000101" (agent trace demo, 07-10-2026) | 5 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
 | cmd_trace_case | Agent trace · 8: 8 tool calls in 4 runs on the showcase case, 2 blocked (agent trace demo, 07-10-2026) | 8 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
 
@@ -303,31 +321,37 @@ cut; it is never estimated.
 
 "Where it runs" is part of the claim and goes on the slide with the figure.
 
-**Check the run was healthy before promoting a figure from the shared endpoint.** Wapsi's verifier checks numbers,
-citations and policy, not the quality of the prose, so a run made while the endpoint was returning truncated or
-degenerate text can still report every draft as passing. Run
-`uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only` before and after the measurement, read a
-few draft bodies from the run, and look at the timings: replies that all stop at the token limit and take several
-times longer than usual are the signature of a degraded model. A figure from an unhealthy run is discarded.
+**Check the run was healthy before promoting a figure from the shared endpoint.** A degenerate answer is rejected
+by the prose validator and replaced by the fixed paragraph, so a run made while the endpoint was returning
+degenerate text still reports every draft as passing: what it measured is the fallback text, not the model. Run
+`uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only` before and after the measurement, read the
+run's prose fallback rate and a few draft bodies, and look at the timings: a fallback rate near 1.0, or replies
+that all stop at the token limit and take several times longer than usual, are the signature of a degraded model.
+A figure from an unhealthy run is discarded.
+
+**Filling slots from a kickoff run.** `uv run python editions/amd/kickoff/fill_pitch.py --evidence <evidence.json>`
+does the steps above for every slot an evidence bundle carries (dry-run diff; `--write` applies it): it replaces
+each `TBD(slot_id)` in the pitch, adds the rows that back the figure to a generated section of this page and
+deletes the slot's row below. `--slots` lists which slots a bundle fills and which stay with their own results
+files.
 
 | Slot | Will be pitched as | Where it runs | Planned source |
 |---|---|---|---|
 | tf_showcase_pass | showcase world, drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_verification_pass_rate`) |
-| tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report |
-| tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`) |
-| tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`) |
+| tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_p95 | demo world, p95 seconds per case, trace to verified drafts, with the real model | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.p95_total_s`) |
-| ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`) |
-| ab_bound_wrong | the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0) | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_numeric_accuracy`) |
-| tf_call_latency | median seconds per prose request, one request at a time | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.latency_s_median`) |
+| ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| ab_bound_wrong | the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0) | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_numeric_accuracy`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| tf_call_latency | median seconds per prose request, one request at a time | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.latency_s_median`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_tokens_case | prompt and completion tokens for one showcase case | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.prompt_tokens`, `pipeline.completion_tokens`) |
-| adk_tool_calls | tool calls Gemma 4 made through Google ADK behind "Open case 31009260000101" (native tool calling) | AMD Token Factory, Gemma-4-31B-IT | agent trace recorded by the ADK-on-AMD run (path set at integration) |
 | adk_grounding | reply grounding of that run: values in the reply that came from a tool | AMD Token Factory, Gemma-4-31B-IT | the same agent trace |
-| voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | open-model voice run (path set at integration) |
+| voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | `uv run python -m editions.amd.bench.voice_bench --asr local` (`voice_bench.json` under `editions/amd/bench/results/`) |
 | voice_asr_seconds | seconds to transcribe the 31-second note | local Whisper; state CPU or the GPU used | open-model voice run |
-| gnn_amd_auc | GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/` |
-| gnn_amd_epoch | GraphSAGE training time per epoch on an AMD GPU | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/` |
-| droplet_tokens_s | dedicated vLLM endpoint: tokens per second at concurrency 1 / 4 / 16 | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md` |
-| droplet_cases_hour | complete cases per hour through the pipeline | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md` |
-| droplet_vram | measured GPU memory per container (drafting model, verifier, GNN) | MI300X droplet | `editions/amd/AMD_RESULTS.md` |
+| gnn_amd_auc | GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| gnn_amd_epoch | GraphSAGE training time per epoch on an AMD GPU | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| droplet_tokens_s | dedicated vLLM endpoint: tokens per second at concurrency 1 / 4 / 16 | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| droplet_cases_hour | complete cases per hour through the pipeline | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
+| droplet_vram | measured GPU memory per container (drafting model, verifier, GNN) | MI300X droplet | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | evolus_blocks | Evolus building blocks driven from the app through the REST API (at least 2) | Evolus event workspace + own vLLM endpoint on AMD | `pitch/EVOLUS_TRACK.md` evidence table |

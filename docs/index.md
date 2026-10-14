@@ -140,7 +140,7 @@ All results come from synthetic data. [Evaluation](evaluation.md) explains the m
 | Audit log tamper drill | 6 of 6 tampering attempts on a 40-event hash-chained case log detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
 | Prompt-injection guard, blind holdout (151 texts written without seeing the rules) | precision 0.9661, recall 0.75. The guard is a warning layer: template-bound drafts and the verifier are the real defence | `evals/reports/guard-latest.json` |
 | Speed (demo world, laptop, stub LLM) | p95 0.72 s per case, trace to verified drafts | `evals/reports/demo.json` |
-| Test suite | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Test suite | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | `uv run pytest -q` |
 
 ## One core, and what runs on AMD
 

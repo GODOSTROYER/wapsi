@@ -94,8 +94,8 @@ shown to judges.
 | Workload in the product | Runs on | Status |
 |---|---|---|
 | Prose fields of every draft | Gemma 4 31B on AMD GPUs through the AMD Token Factory endpoint | built during the event; drafts passing the verifier TBD(tf_demo_pass) |
-| Complaint and voice-note field extraction, translation | the same model and endpoint | built during the event; TBD(voice_asr_samples) |
-| The officer's agent and its tool calls (Google ADK) | the same model and endpoint | built during the event; TBD(adk_tool_calls) |
+| Complaint and voice-note field extraction, translation | the same model and endpoint | built during the event and run live on 2026-10-14 on the six sample transcripts: 98.3% of the extracted values agree with the expected answers (AMD Token Factory, text model only); with Whisper transcribing: TBD(voice_asr_samples) |
+| The officer's agent and its tool calls (Google ADK) | the same model and endpoint | built during the event and run live on 2026-10-14: 5 tool calls behind "Open case 31009260000101" (AMD Token Factory, Gemma-4-31B-IT) |
 | GraphSAGE mule scorer | PyTorch on ROCm, AMD GPU notebook or MI300X droplet | code and a CPU development checkpoint exist; AMD GPU training TBD(gnn_amd_auc) |
 | Dedicated serving of both models next to the GNN | vLLM on one MI300X (droplet mode) | compose stack and benchmarks prepared and tested offline; TBD(droplet_tokens_s) |
 

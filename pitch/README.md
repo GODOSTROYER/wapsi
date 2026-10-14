@@ -30,14 +30,27 @@ fails the build until the pitch is updated.
 A figure that has not been measured on AMD is written `TBD(slot_id)` and listed at the end of `NUMBERS.md`. To
 fill one:
 
-1. Check the run was healthy (`amd/evidence/token_factory_smoke.py --probe-only` before and after it, and a
-   look at a few draft bodies): the verifier checks numbers, not prose quality, so a degraded endpoint can still
-   produce a "pass". Then commit the results file (for example a harness report under `evals/reports/`, or a file
-   written by `amd/evidence/token_factory_smoke.py`).
+1. Check the run was healthy (`amd/evidence/token_factory_smoke.py --probe-only` before and after it, the run's
+   prose fallback rate and a look at a few draft bodies): a degenerate answer is rejected and replaced by the
+   fixed paragraph, so a degraded endpoint still produces a "pass" that says nothing about the model. Then commit
+   the results file (for example a harness report under `evals/reports/`, an evidence bundle under
+   `editions/amd/evidence/`, or a file written by `amd/evidence/token_factory_smoke.py`).
 2. Add a row with a locator to a numbers table in `NUMBERS.md`. Its "Pitched as" text says where the figure ran:
    AMD Token Factory, an AMD GPU notebook or an MI300X droplet.
 3. Replace `TBD(slot_id)` in the deck, the video script and the other pages with the figure.
 4. Delete the slot's row, then run `check_numbers.py`.
+
+For the slots an evidence bundle of `editions/amd/kickoff/run_all.sh` carries, one command does steps 2 to 4:
+
+```bash
+uv run python editions/amd/kickoff/fill_pitch.py --slots                               # which slot is filled from what
+uv run python editions/amd/kickoff/fill_pitch.py --evidence <path>/evidence.json       # dry run: the diff
+uv run python editions/amd/kickoff/fill_pitch.py --evidence <path>/evidence.json --write
+uv run python pitch/check_numbers.py                                                   # must print PASS
+```
+
+It fills a slot only under words that fit the run: a Token Factory slot from an endpoint run of Gemma 4, a droplet
+slot from an MI300X run. It refuses a CPU rehearsal and a run outside the event window.
 
 Never fill a slot from memory, from a CPU run or from a rehearsal. A slot that is still open on recording day has
 its sentence cut from the video.

@@ -143,13 +143,13 @@ def test_settings_from_env():
     assert s.memory_service_uri() is None and s.model_armor() is None
     assert s.gemini_backend == "aistudio" and s.ledger == "bigquery" and s.adk_store == "memory"
 
-    env = {"WAPSI_PROJECT": "wapsi-aibc", "WAPSI_BQ_DATASET": "ledger", "WAPSI_MODEL": "gemini-3.6-flash",
+    env = {"WAPSI_PROJECT": "wapsi-demo", "WAPSI_BQ_DATASET": "ledger", "WAPSI_MODEL": "gemini-3.6-flash",
            "WAPSI_MODEL_ARMOR_TEMPLATE": "wapsi-intake", "WAPSI_MEMORY_BANK_ID": "789",
            "WAPSI_SUPERVISORS": "Ravi@bank.example, meena@bank.example", "WAPSI_PRIVATE_LLM_URL": "https://g.run.app"}
     c = load_settings(env)
     assert not c.demo_mode and not c.serve_adk_web and c.bq_dataset == "ledger"
-    assert c.model_armor() == ("wapsi-aibc", "asia-south1", "wapsi-intake")
-    assert c.agent_engine_resource() == "projects/wapsi-aibc/locations/asia-south1/reasoningEngines/789"
+    assert c.model_armor() == ("wapsi-demo", "asia-south1", "wapsi-intake")
+    assert c.agent_engine_resource() == "projects/wapsi-demo/locations/asia-south1/reasoningEngines/789"
     assert c.supervisors == ("ravi@bank.example", "meena@bank.example")
     full = GcpSettings.from_env({**env, "WAPSI_MODEL_ARMOR_TEMPLATE": "projects/x/locations/us/templates/t"})
     assert full.model_armor() == ("x", "us", "t")
@@ -167,7 +167,7 @@ def test_settings_from_env():
 def test_free_trial_defaults_are_off_for_paid_features(monkeypatch):
     key = "AIzaSy-healthz-must-not-leak"
     monkeypatch.setenv("GEMINI_API_KEY", key)
-    c = load_settings({"WAPSI_PROJECT": "wapsi-aibc"})
+    c = load_settings({"WAPSI_PROJECT": "wapsi-demo"})
     assert c.gemini_backend == "aistudio" and c.model == "gemini-3.8-flash"
     assert c.private_llm_url is None  # Gemma on Cloud Run GPU: off
     assert c.memory_bank_id is None and c.memory_service_uri() is None  # Memory Bank: off
@@ -197,18 +197,18 @@ def test_cloud_services_wiring_is_lazy():
     from wapsi.adapters.gemini_llm import GeminiLLM, PrivateGemmaLLM
     from wapsi.adapters.model_armor_guard import ModelArmorGuard
 
-    settings = GcpSettings(demo_mode=False, project="wapsi-aibc", model_armor_template="wapsi-intake")
+    settings = GcpSettings(demo_mode=False, project="wapsi-demo", model_armor_template="wapsi-intake")
     svc = build_services(settings)  # no Gemini API key needed until the first call
     assert isinstance(svc.ledger, BigQueryLedger) and svc.ledger._client is None
     assert isinstance(svc.store, FirestoreCaseStore) and svc.store._client is None
     assert isinstance(svc.llm, GeminiLLM) and svc.llm._client is None
     assert svc.llm.backend == "aistudio" and svc.llm.name == "gemini-api:gemini-3.8-flash"
-    vertex = build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", gemini_backend="vertex"))
-    assert vertex.llm.backend == "vertex" and vertex.llm.project == "wapsi-aibc"
+    vertex = build_services(GcpSettings(demo_mode=False, project="wapsi-demo", gemini_backend="vertex"))
+    assert vertex.llm.backend == "vertex" and vertex.llm.project == "wapsi-demo"
     assert isinstance(svc.guard, ModelArmorGuard) and svc.guard._client is None
-    assert svc.guard.template == "projects/wapsi-aibc/locations/asia-south1/templates/wapsi-intake"
+    assert svc.guard.template == "projects/wapsi-demo/locations/asia-south1/templates/wapsi-intake"
 
-    private = build_services(GcpSettings(demo_mode=False, project="wapsi-aibc",
+    private = build_services(GcpSettings(demo_mode=False, project="wapsi-demo",
                                          private_llm_url="https://gemma-x.a.run.app/v1"))
     assert isinstance(private.llm, PrivateGemmaLLM)
     assert private.llm._auth.audience == "https://gemma-x.a.run.app"
@@ -220,9 +220,9 @@ def test_parquet_ledger_replaces_bigquery(tmp_path):
 
     world = tmp_path / "world"
     assert synth_main(["--size", "showcase", "--seed", "7", "--out", str(world), "--golden-dir", ""]) == 0
-    svc = build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", ledger="parquet",
+    svc = build_services(GcpSettings(demo_mode=False, project="wapsi-demo", ledger="parquet",
                                      world_path=str(world)))
     assert isinstance(svc.ledger, ParquetLedger)
     with pytest.raises(ValueError, match="BAKE_WORLD"):
-        build_services(GcpSettings(demo_mode=False, project="wapsi-aibc", ledger="parquet",
+        build_services(GcpSettings(demo_mode=False, project="wapsi-demo", ledger="parquet",
                                    world_path=str(tmp_path / "missing")))

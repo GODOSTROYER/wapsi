@@ -39,7 +39,9 @@ officer ─> ADK agent (wapsi_officer, 10 tools, guard + trace plugins)
 - **Before the event:** the agent's model was already a setting, and it already had a LiteLLM path to an
   OpenAI-compatible server (`build_model` in [`editions/gcp/app/agent.py`](../editions/gcp/app/agent.py)).
   **During the event:** Gemma 4 on AMD becomes the agent's real model, with the fallback and the evidence below.
-  Exact commands: see the README section after integration.
+  Commands: `uv run python -m editions.amd.app.agent_demo --case 31009260000101 --demo` (offline, a fake
+  OpenAI-compatible endpoint) and `--live` (Gemma 4 on AMD); measured runs are in
+  [`editions/amd/AGENT.md`](../editions/amd/AGENT.md).
 - **Guardrails are the same as for any model:** the agent's tools return figures; the reply is checked so that
   every amount and account number in it came from a tool; an analyst cannot approve; injected instructions are
   rewritten or blocked ([`docs/trust-and-safety.md`](../docs/trust-and-safety.md)).
@@ -63,11 +65,12 @@ Reproduce: `uv run --extra gcp python -m editions.gcp.app.trace_demo`, then open
 
 | Evidence | Slot | How it is produced |
 |---|---|---|
-| Gemma 4 drives the same agent on AMD: tool calls behind "Open case" | TBD(adk_tool_calls) | the ADK-on-AMD run writes an agent trace; commit it and cite it |
+| Gemma 4 drives the same agent on AMD: tool calls behind "Open case" | **measured:** 5 tool calls through native tool calling, and the run ended with 16 of 16 drafts verified (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | [`editions/amd/AGENT.md`](../editions/amd/AGENT.md), "What was measured"; re-run with `uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live` |
 | Every value in the agent's reply came from a tool | TBD(adk_grounding) | the same trace's reply-grounding check |
 | Gemma 4 writes the prose and the verifier passes the drafts | TBD(tf_demo_pass), TBD(tf_demo_fallback) | the golden-set harness with the endpoint as the LLM |
 | Raw Gemma 4 against Gemma 4 inside Wapsi | TBD(ab_raw_wrong) against TBD(ab_bound_wrong) | the harness's raw-model comparison |
-| Gemma 4 reads a Hinglish voice note's transcript | TBD(voice_asr_samples) | the open-model voice run on the six bundled samples |
+| Gemma 4 reads the fields from a Hinglish voice note's transcript | **measured, text model only:** all 6 sample transcripts answered by Gemma 4 on AMD, a median of 7.5 s per note, 98.3% of the extracted values agree with the expected answers, 4 of 6 notes reconciled as documented (two false alarms on a closing plea) (AMD Token Factory, 2026-10-14) | `editions/amd/bench/results/voice-tokenfactory-20261014/`; re-run with `uv run python -m editions.amd.bench.voice_bench --asr scripts` |
+| The same with Whisper transcribing the audio | TBD(voice_asr_samples) | `uv run python -m editions.amd.bench.voice_bench --asr local` on the six bundled samples |
 
 A manual probe on 2026-10-14 saw Gemma 4 on the AMD endpoint return native tool calls and accept a tool result.
 That probe is not a results file in this repository, so it stays a slot and is not quoted as a number.

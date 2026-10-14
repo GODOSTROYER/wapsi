@@ -749,7 +749,9 @@ def probe(*, base_url: str | None = None, model: str | None = None, env: Mapping
     # call (HTTP 400 "Unsupported model": the catalogue was changing, seen live on 2026-10-14) counts as not served,
     # and the plan is asked again without it.
     refused: list[str] = []
+    garbage: list[str] = []  # listed, answers HTTP 200, but with unusable output
     out["models_refused"] = refused
+    out["models_degenerate"] = garbage
     for _ in range(4):
         plan = plan_endpoint([m for m in out["models"] if m not in refused], env)
         chosen = plan["drafting"]["id"]
@@ -759,7 +761,10 @@ def probe(*, base_url: str | None = None, model: str | None = None, env: Mapping
         out["model_card"] = card_summary(card)
         if not chosen:
             why = "; ".join(plan["warnings"][:1]) or f"model {wanted!r} is not served"
-            if refused:
+            if garbage:
+                why = (f"{', '.join(garbage)} is listed by GET /models but answers with unusable output right now "
+                       f"(HTTP 200 with garbage): the shared deployment is degraded. {why}")
+            elif refused:
                 why = (f"{', '.join(refused)} is listed by GET /models but refuses calls right now (HTTP 400): the "
                        f"catalogue is changing. {why}")
             out.update(ok=False, error=f"{why}; available: {', '.join(out['models'][:20])}")
@@ -775,10 +780,30 @@ def probe(*, base_url: str | None = None, model: str | None = None, env: Mapping
             out.pop("error", None)
             return out
         out.update(ok=False, error=answer["error"])
-        if not answer.get("model_refused"):
+        if not (answer.get("model_refused") or answer.get("degenerate")):
             return out
         refused.append(chosen)
+        if answer.get("degenerate"):
+            garbage.append(chosen)
     return out
+
+
+_RUN = re.compile(r"(\S)\1{24,}")  # one visible character 25+ times in a row
+_CYCLE = re.compile(r"(\S{2,6}?)\1{11,}")  # a 2-6 character pattern 12+ times in a row
+
+
+def degenerate_reason(text: str) -> str | None:
+    """Why ``text`` is not model output a measurement can use, or ``None``: an empty answer, a run of one symbol
+    (``{"////0000//...``), a short pattern repeated over and over, or a long answer of a handful of characters. The
+    same rules as ``wapsi.intake.llm_chain.is_degenerate`` (kept here: this client is standard library + httpx)."""
+    body = (text or "").strip()
+    if not body:
+        return "empty answer"
+    if _RUN.search(body) or _CYCLE.search(body):
+        return "runaway repetition"
+    if len(body) > 40 and len(set(body)) < 12:
+        return "a handful of distinct characters"
+    return None
 
 
 MODEL_REFUSED_RE = re.compile(r"unsupported model|model\b.{0,60}\bnot (supported|found|available)|unknown model", re.I)
@@ -797,6 +822,10 @@ def _probe_call(url: str, model: str, env: Mapping[str, str],
             parsed = json.loads(text[text.index("{"): text.rindex("}") + 1])
         except ValueError:
             parsed = None
+        bad = None if isinstance(parsed, dict) else degenerate_reason(text)
+        if bad:  # HTTP 200 with garbage (seen live on 2026-10-14): the model is not answering, whatever the status
+            return {"ok": False, "model": model, "model_refused": False, "degenerate": True,
+                    "error": f"the model answered with unusable output ({bad}): {text[:40]!r}"}
         rep = llm.report()
         return {"ok": True, "model": model, "json_object_ok": isinstance(parsed, dict),
                 "latency_s": rep["latency_s"]["mean"], "prompt_tokens": rep["prompt_tokens"],

@@ -10,6 +10,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -397,11 +398,51 @@ def _checker():
     return mod
 
 
-def _pitch_copy(tmp_path: Path) -> Path:
+# Figures a bundle carries that the pitch does not use today: a page an author could add (TBD(id) + a row in the
+# open-slots table of NUMBERS.md), so the tests cover the optional slots next to the real deck's own. The last
+# line is a slot that is filled by hand, never by a bundle.
+EXTRA_PAGE = """
+## Measured on the GPU box
+
+Measured on TBD(gpu_where). Time to first token p50 / p95 at concurrency 16: TBD(gpu_ttft). Verifier tokens/s:
+TBD(gpu_verifier_tps). Cost per case: TBD(gpu_cost_case). Memory: TBD(gpu_vram_peak). LoRA: TBD(gpu_lora).
+The GNN on the hard world: TBD(gpu_gnn_hard). STR against STR (TBD(ab_where)): TBD(ab_str_wrong).
+
+By hand: TBD(evolus_blocks).
+"""
+EXTRA_IDS = ("gpu_where", "gpu_ttft", "gpu_verifier_tps", "gpu_cost_case", "gpu_vram_peak", "gpu_lora", "gpu_gnn_hard",
+             "ab_where", "ab_str_wrong")
+HAND_FILLED = "evolus_blocks"  # in fill_pitch.MANUAL_SLOTS: no bundle may ever fill it
+_FILLED = re.compile(r"<!-- slot:([a-z0-9_]+) -->.*?<!-- /slot -->", re.S)
+
+
+def _pitch_copy(tmp_path: Path, extra_page: str = EXTRA_PAGE, extra_ids: tuple[str, ...] = EXTRA_IDS) -> Path:
+    """The real deck, video script and NUMBERS.md as they are before any run, plus ``extra_page``.
+
+    The tests must not depend on how far the pitch has been filled during the event week, so the copy is put back
+    into its open state: a slot a real run has filled is ``TBD(id)`` again, the generated NUMBERS.md section is
+    gone, every slot the pitch owns is on the deck at least once, and every id used is listed as an open slot."""
     pitch = tmp_path / "pitch"
     (pitch / "amd").mkdir(parents=True)
     for rel in ("NUMBERS.md", "amd/DECK_OUTLINE.md", "amd/VIDEO_SCRIPT.md"):
-        shutil.copy(ROOT / "pitch" / rel, pitch / rel)
+        text = _FILLED.sub(lambda m: f"TBD({m.group(1)})", (ROOT / "pitch" / rel).read_text(encoding="utf-8"))
+        (pitch / rel).write_text(text, encoding="utf-8", newline="\n")
+    deck = pitch / "amd" / "DECK_OUTLINE.md"
+    text = deck.read_text(encoding="utf-8")
+    own = [s.sid for s in fill_pitch.SLOTS if f"TBD({s.sid})" not in text]  # reworded out of the deck since
+    text += "".join(f"\n{sid}: TBD({sid}).\n" for sid in own) + extra_page
+    deck.write_text(text, encoding="utf-8", newline="\n")
+    numbers = pitch / "NUMBERS.md"
+    text = numbers.read_text(encoding="utf-8")
+    if fill_pitch.END in text:  # a real run has been merged: drop its generated section from the copy
+        start = text.index(fill_pitch.BEGIN.split(" (")[0])
+        text = text[:start] + text[text.index(fill_pitch.END) + len(fill_pitch.END):]
+    assert "| Slot |" in text and text.rstrip().splitlines()[-1].startswith("|"), "the open-slots table ends the page"
+    listed = set(_checker().parse_slots(numbers))
+    wanted = [*(s.sid for s in fill_pitch.SLOTS), HAND_FILLED, *extra_ids]
+    rows = "".join(f"| {sid} | a figure not measured yet | as measured | a results file |\n"
+                   for sid in dict.fromkeys(wanted) if sid not in listed)
+    numbers.write_text(text.rstrip("\n") + "\n" + rows, encoding="utf-8", newline="\n")
     return pitch
 
 
@@ -414,16 +455,23 @@ def _fixture_bundle(tmp_path: Path) -> Path:
     return path
 
 
-def test_every_slot_anchor_is_in_the_real_pitch_and_still_honest():
-    """Each slot is either TBD (exactly one anchor) or filled from a valid MI300X evidence bundle."""
+def test_the_real_pitch_and_fill_pitch_agree_on_the_slots_and_stay_honest():
+    """Every TBD(id) of the pitch is a slot fill_pitch can fill or a documented hand-filled one, and is listed in the
+    open-slots table of NUMBERS.md; nothing is filled except from a valid evidence bundle."""
+    check = _checker()
+    listed = set(check.parse_slots(ROOT / "pitch" / "NUMBERS.md"))
+    texts = fill_pitch.pitch_texts(ROOT / "pitch")
+    open_ids = fill_pitch.open_slot_ids(texts) - {"slot_id"}  # "TBD(slot_id)" is the notation, explained in prose
+    fillable, manual = {s.sid for s in fill_pitch.ALL_SLOTS}, set(fill_pitch.MANUAL_SLOTS)
+    assert len(fillable) == len(fill_pitch.ALL_SLOTS) and not fillable & manual
+    assert open_ids <= fillable | manual, sorted(open_ids - fillable - manual)
+    assert open_ids <= listed, sorted(open_ids - listed)
+    assert listed <= fillable | manual, sorted(listed - fillable - manual)
+    for slot in fill_pitch.SLOTS:  # the ids fill_pitch calls "the pitch's" really are in the pitch (open or filled)
+        assert fill_pitch.find(slot, texts), slot.sid
     numbers = (ROOT / "pitch" / "NUMBERS.md").read_text(encoding="utf-8")
-    filled_any = False
-    for slot in fill_pitch.SLOTS:
-        text = (ROOT / "pitch" / slot.file).read_text(encoding="utf-8")
-        matches = list(fill_pitch._anchor(slot).finditer(text))
-        assert len(matches) == 1, slot.sid
-        filled_any |= matches[0].group("v") != slot.placeholder
-    if filled_any:  # after the event: the generated NUMBERS.md section must point at a valid GPU bundle
+    filled_any = any(fill_pitch._marker(s.sid).search(t) for s in fill_pitch.ALL_SLOTS for t in texts.values())
+    if filled_any:  # after a run: the generated NUMBERS.md section must point at valid evidence bundles
         assert fill_pitch.END in numbers
         sources = {line.split("|")[4].strip() for line in numbers.splitlines() if line.startswith("| amd_")}
         assert sources
@@ -433,14 +481,13 @@ def test_every_slot_anchor_is_in_the_real_pitch_and_still_honest():
             assert ev.get("results_valid", ev.get("gpu_results_valid")) is True and not ev.get("synthetic_fixture"), src
     else:
         assert fill_pitch.END not in numbers
-    # endpoint-run slots have no anchor text: the author places a marker, at most once per file
-    pages = {p.relative_to(ROOT / "pitch").as_posix(): p.read_text(encoding="utf-8")
-             for p in (ROOT / "pitch").rglob("*.md") if p.name != "NUMBERS.md"}
-    assert {s.sid for s in fill_pitch.EP_SLOTS}.isdisjoint({s.sid for s in fill_pitch.SLOTS})
-    for slot in fill_pitch.EP_SLOTS:
-        assert slot.marker_only and slot.modes == ("endpoint",), slot.sid
-        for rel, text in pages.items():
-            assert len(fill_pitch._marker(slot.sid).findall(text)) <= 1, (slot.sid, rel)
+    # what a slot may claim: a Token Factory figure is an endpoint run of Gemma, a droplet figure an MI300X run
+    by_id = {s.sid: s for s in fill_pitch.ALL_SLOTS}
+    for sid in ("tf_demo_pass", "tf_demo_fallback", "tf_demo_hold_exact", "tf_call_latency", "ab_raw_wrong"):
+        assert by_id[sid].modes == ("endpoint",) and by_id[sid].gemma, sid
+    for sid in ("droplet_tokens_s", "droplet_cases_hour", "droplet_vram"):
+        assert by_id[sid].mi300x and "endpoint" not in by_id[sid].modes, sid
+    assert all("endpoint" not in by_id[sid].modes for sid in ("gnn_amd_auc", "gnn_amd_epoch"))
 
 
 def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
@@ -453,16 +500,29 @@ def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
     assert {p: p.read_text(encoding="utf-8") for p in pitch.rglob("*.md")} == before  # dry run touches nothing
 
     assert fill_pitch.main([*args, "--write"]) == 0
+    out = capsys.readouterr().out
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
     video = (pitch / "amd" / "VIDEO_SCRIPT.md").read_text(encoding="utf-8")
-    assert "| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | <!-- slot:deck_llm_tps -->" \
-           "**50 / 180 / 600 / 1,500**<!-- /slot --> |" in deck
-    assert "**$0.0022 (₹0.19)**" in deck and "**102.5 GB / 28.3 GB / 2.0 GB**" in deck
-    assert "**7 of 20** STRs | **0 of 20** STRs (target 0; all 180 bound drafts: 0)" in deck  # like with like
-    assert "## 7. Benchmarks on MI300X <!-- slot:deck_slide7_heading -->(measured 2026-10-12" in deck
-    assert "Measured on this MI300X on <!-- slot:video_date -->2026-10-12<!-- /slot -->:" in video
-    assert "<!-- slot:video_lora -->0.8 to 0.97<!-- /slot -->" in video
-    assert "**TBD**" not in deck.split("## 7.")[1].split("## 9.")[0]  # every benchmark and A/B slot filled
+    # the deck's own slots, filled where the words fit an MI300X run (the sentence around each stays the author's)
+    assert "<!-- slot:droplet_tokens_s -->50 / 180 / 600 tokens/s at concurrency 1 / 4 / 16<!-- /slot -->" in deck
+    assert "<!-- slot:droplet_vram -->102.5 GB / 28.3 GB / 2.0 GB (drafting model / verifier / GNN)<!-- /slot -->" in deck
+    assert "<!-- slot:droplet_cases_hour -->900<!-- /slot -->" in deck
+    assert "<!-- slot:gnn_amd_auc -->0.985 (MI300X)<!-- /slot -->" in deck and "<!-- slot:gnn_amd_epoch -->1.50 s" in deck
+    assert "<!-- slot:ab_bound_wrong -->0 (of 180 drafts)<!-- /slot -->" in deck
+    for page in (deck, video):  # every place of a slot, in every file
+        assert "TBD(gnn_amd_auc)" not in page and "TBD(ab_bound_wrong)" not in page
+    # the optional slots of the extra page
+    assert "Measured on <!-- slot:gpu_where -->MI300X, 2026-10-12<!-- /slot -->." in deck
+    assert "<!-- slot:gpu_cost_case -->$0.0022 (₹0.19)<!-- /slot -->" in deck
+    assert "<!-- slot:gpu_lora -->pass 0.8 to 0.97, fallback 0.12 to 0.02<!-- /slot -->" in deck
+    assert "(<!-- slot:ab_where -->MI300X, 2026-10-12<!-- /slot -->): <!-- slot:ab_str_wrong -->7 of 20 raw STRs, " \
+           "0 of 20 Wapsi-bound STRs<!-- /slot -->" in deck  # like with like
+    # a droplet run never fills what the pitch words as a Token Factory figure, nor a hand-filled slot
+    for sid in ("tf_demo_pass", "tf_demo_fallback", "tf_call_latency", "ab_raw_wrong", HAND_FILLED):
+        assert f"TBD({sid})" in deck and f"<!-- slot:{sid} -->" not in deck, sid
+    assert "filled by hand from their own results files" in out and HAND_FILLED in out
+    for sid in EXTRA_IDS:  # every optional slot of the page filled
+        assert f"TBD({sid})" not in deck, sid
 
     check = _checker()
     rows = check.parse_rows(pitch / "NUMBERS.md")
@@ -475,6 +535,10 @@ def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
     for page in (pitch / "amd" / "DECK_OUTLINE.md", pitch / "amd" / "VIDEO_SCRIPT.md"):
         for tok in check.TOKEN_RE.findall(page.read_text(encoding="utf-8")):
             assert check._norm(tok) in registered, (page.name, tok)
+    # the open-slots table: a slot filled everywhere loses its row, an open one keeps it
+    still_listed = check.parse_slots(pitch / "NUMBERS.md")
+    assert not {"droplet_vram", "droplet_tokens_s", "gnn_amd_auc", "gpu_lora", "ab_where"} & set(still_listed)
+    assert {"tf_demo_pass", "ab_raw_wrong", "tf_call_latency", HAND_FILLED} <= set(still_listed)
 
     # same evidence again: nothing changes; newer evidence: values replaced in place, no duplicate section
     assert fill_pitch.main([*args, "--write"]) == 0
@@ -484,7 +548,7 @@ def test_fill_pitch_dry_run_then_write_then_refill(tmp_path, capsys):
     bundle.write_text(json.dumps(ev), encoding="utf-8")
     assert fill_pitch.main([*args, "--write"]) == 0
     deck2 = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
-    assert "**55 / 180 / 600 / 1,500**" in deck2 and "**50 / 180" not in deck2
+    assert "-->55 / 180 / 600 tokens/s" in deck2 and "-->50 / 180" not in deck2
     numbers = (pitch / "NUMBERS.md").read_text(encoding="utf-8")
     assert numbers.count(fill_pitch.END) == 1 and "| amd_llm_tok_s_c1 | 55 " in numbers
 
@@ -497,9 +561,10 @@ def test_fill_pitch_leaves_unmeasured_slots_tbd(tmp_path, capsys):
     bundle.write_text(json.dumps(ev), encoding="utf-8")
     assert fill_pitch.main(["--evidence", str(bundle), "--pitch-dir", str(pitch), "--allow-fixture", "--write"]) == 0
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
-    assert "| LoRA: base vs tuned, verifier pass rate and prose fallback rate | **TBD** |" in deck
-    assert "**$0.0022**<!-- /slot -->" in deck  # no rupee figure without the day's rate
-    assert "deck_lora" in capsys.readouterr().out
+    assert "LoRA: TBD(gpu_lora)." in deck  # not measured: still an open slot, never a guess
+    assert "<!-- slot:gpu_cost_case -->$0.0022<!-- /slot -->" in deck  # no rupee figure without the day's rate
+    assert "gpu_lora" in capsys.readouterr().out
+    assert "gpu_lora" in _checker().parse_slots(pitch / "NUMBERS.md")  # and still listed as open
 
 
 def test_fill_pitch_refuses_rehearsal_invalid_and_fixture_on_real_pitch(tmp_path, capsys):
@@ -723,13 +788,12 @@ def test_fill_pitch_merges_a_later_bundle_instead_of_dropping_earlier_rows(tmp_p
 
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
     video = (pitch / "amd" / "VIDEO_SCRIPT.md").read_text(encoding="utf-8")
-    assert "**77 / 180 / 600 / 1,500**" in deck  # refilled from the later bundle
-    assert "**7 of 20** STRs" in deck and "AUC 0.97" in deck  # kept from the first bundle
-    assert "(measured 2026-10-12 to 2026-10-14, AMD Developer Cloud)" in deck
-    assert "(measured on MI300X, 2026-10-12)" in deck  # the A/B is still the first bundle's
-    assert "Measured on this MI300X on <!-- slot:video_date -->2026-10-14<!-- /slot -->:" in video
-    assert "**99.9 GB / 28.3 GB / 2.0 GB**" in deck  # slide 7 VRAM refilled
-    assert "**llm 102.5 GB, verifier 28.3 GB, gnn 2.0 GB; device peak 136.7 GB" in deck  # slide 5 kept
+    assert "-->77 / 180 / 600 tokens/s at concurrency 1 / 4 / 16<!-- /slot -->" in deck  # refilled from the later bundle
+    assert "7 of 20 raw STRs" in deck and "0.985 (MI300X)" in deck  # kept from the first bundle
+    assert "Measured on <!-- slot:gpu_where -->MI300X, 2026-10-12 to 2026-10-14<!-- /slot -->." in deck
+    assert "(<!-- slot:ab_where -->MI300X, 2026-10-12<!-- /slot -->)" in deck  # the A/B is still the first bundle's
+    assert "<!-- slot:droplet_vram -->99.9 GB / 28.3 GB / 2.0 GB" in deck  # the deck's own VRAM slot refilled
+    assert "drafting model 102.5 GB, verifier 28.3 GB, GNN 2.0 GB; device peak 136.7 GB" in deck  # device peak kept
 
     check = _checker()
     rows = [r for r in check.parse_rows(pitch / "NUMBERS.md") if r.rid.startswith("amd_")]
@@ -751,7 +815,7 @@ def test_fill_pitch_merges_a_later_bundle_instead_of_dropping_earlier_rows(tmp_p
     assert fill_pitch.main(["--evidence", str(first), *common]) == 0
     rows = [r for r in check.parse_rows(pitch / "NUMBERS.md") if r.rid.startswith("amd_")]
     assert check.check_numbers(rows)[0] == [] and len({r.rid for r in rows}) == len(rows)
-    assert "**50 / 180 / 600 / 1,500**" in (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
+    assert "-->50 / 180 / 600 tokens/s" in (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- A/B: API key, like with like

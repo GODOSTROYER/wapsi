@@ -18,7 +18,8 @@ model chain (``WAPSI_VOICE_LLM_MODELS`` / ``WAPSI_LLM_MODELS``, comma separated;
 default is Gemma-4-31B-IT, DeepSeek-V4-Flash, Qwen3.8-27B, MiniCPM-V-4.7-35B-A3B): a model that fails its health
 probe or returns garbage is skipped for a while and the next one answers (``wapsi.intake.llm_chain``). "On AMD" in a label is
 a claim about hardware, so it is only made when it is known: the AMD Token Factory host, a ROCm GPU seen by torch,
-or an endpoint the operator marked with ``WAPSI_LLM_ON_AMD=1`` / ``WAPSI_ASR_ON_AMD=1``.
+or an endpoint the operator marked with ``WAPSI_LLM_ON_AMD=1`` (``WAPSI_LLM_PLATFORM=AMD`` says the same) /
+``WAPSI_ASR_ON_AMD=1``.
 
 Nothing here prints, logs or returns a key.
 """
@@ -64,6 +65,7 @@ LLM_MODEL_ENV = "WAPSI_LLM_MODEL"
 LLM_API_KEY_ENV = "WAPSI_LLM_API_KEY"
 LLM_TIMEOUT_ENV = "WAPSI_LLM_TIMEOUT_S"
 LLM_ON_AMD_ENV = "WAPSI_LLM_ON_AMD"
+LLM_PLATFORM_ENV = "WAPSI_LLM_PLATFORM"  # the label the draft chip uses (wapsi.adapters.llm_env); "AMD" = on AMD
 LLM_PROVIDER_ENV = "WAPSI_LLM_PROVIDER"
 OFFLINE_ENV = "WAPSI_VOICE_OFFLINE"
 PROBE_CACHE_ENV = "WAPSI_ASR_PROBE_CACHE"
@@ -75,7 +77,7 @@ TRUE = {"1", "true", "yes", "on"}
 # every variable that changes which model is built (``env_signature``); *_KEY values are hashed, never stored
 _ENV_NAMES = (
     VOICE_BACKEND_ENV, OFFLINE_ENV, VOICE_LLM_MODEL_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV, LLM_API_KEY_ENV,
-    LLM_TIMEOUT_ENV, LLM_ON_AMD_ENV, LLM_PROVIDER_ENV, JSON_MODE_ENV, "WAPSI_LLM_JSON_MODE", A.ASR_BACKEND_ENV,
+    LLM_TIMEOUT_ENV, LLM_ON_AMD_ENV, LLM_PLATFORM_ENV, LLM_PROVIDER_ENV, JSON_MODE_ENV, "WAPSI_LLM_JSON_MODE", A.ASR_BACKEND_ENV,
     A.ASR_BASE_URL_ENV, A.ASR_API_KEY_ENV, A.ASR_MODEL_ENV, A.ASR_LANGUAGE_ENV, A.ASR_PROMPT_ENV, A.ASR_DEVICE_ENV,
     A.ASR_TIMEOUT_ENV, A.ASR_CHAT_AUDIO_ENV, A.ASR_ON_AMD_ENV, VOICE_MODELS_ENV, MODELS_ENV, COOLDOWN_ENV,
     HEALTH_TTL_ENV, PROBE_ENV, "WAPSI_VOICE_MODEL", "WAPSI_MODEL",
@@ -133,7 +135,7 @@ def llm_provider(base_url: str, env: Mapping[str, str] | None = None) -> tuple[s
     label = _get(e, LLM_PROVIDER_ENV)
     if is_amd_host(base_url):
         return label or "AMD Token Factory", True
-    if _flag(e, LLM_ON_AMD_ENV):
+    if _flag(e, LLM_ON_AMD_ENV) or "amd" in _get(e, LLM_PLATFORM_ENV).lower():  # one statement, two spellings
         return label or "vLLM-ROCm on AMD", True
     return label or (urlsplit(base_url or "").hostname or "").lower() or "text LLM endpoint", False
 

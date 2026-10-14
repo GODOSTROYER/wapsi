@@ -13,6 +13,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -423,6 +424,7 @@ def test_a_model_that_is_listed_but_refuses_calls_counts_as_not_served():
                                     {**env, "WAPSI_ALLOW_MODEL_FALLBACK": "1"})
     assert plan["drafting"]["id"] == "Qwen3.8-27B"  # the models stage plans without the refused model too
 
+
     c, said = Clock(), []
 
     def nap(seconds: float) -> None:
@@ -438,6 +440,35 @@ def test_a_model_that_is_listed_but_refuses_calls_counts_as_not_served():
     # any other failure of the probe is a failure, not a reason to try another model
     broken = endpoint.probe(env={**env, "WAPSI_LLM_API_KEY": "rc-wrong"}, transport=tf.transport)
     assert broken["ok"] is False and "models_refused" not in broken
+
+
+def test_a_model_that_answers_http_200_with_garbage_does_not_count_as_answering():
+    """Seen live on 2026-10-14 ~00:20-00:50 UTC: Gemma-4-31B-IT answered every request with HTTP 200 and a run of
+    slashes. The probe (and ``wait-model --call``) must not record that as a model that answers."""
+
+    class Degraded(FakeTokenFactory):
+        def handler(self, request):
+            if request.method == "POST" and json.loads(request.content)["model"] == GEMMA:
+                self.chats.append(json.loads(request.content))
+                return httpx.Response(200, json={
+                    "choices": [{"message": {"role": "assistant", "content": '{"' + "/" * 40 + "0000" * 6},
+                                 "finish_reason": "length"}],
+                    "usage": {"prompt_tokens": 20, "completion_tokens": 32, "total_tokens": 52, "cost": 0.000003}})
+            return super().handler(request)
+
+    assert endpoint.degenerate_reason('{"' + "/" * 40) == "runaway repetition"
+    assert endpoint.degenerate_reason('{"ok": true}') is None and endpoint.degenerate_reason("") == "empty answer"
+    tf = Degraded()
+    env = {"WAPSI_LLM_BASE_URL": TF_URL, "WAPSI_LLM_API_KEY": KEY, "WAPSI_LLM_MODEL": GEMMA}
+    strict = endpoint.probe(env=env, transport=tf.transport)
+    assert strict["ok"] is False and strict["models_degenerate"] == [GEMMA]
+    assert "answers with unusable output right now" in strict["error"] and KEY not in json.dumps(strict)
+    allowed = endpoint.probe(env={**env, "WAPSI_ALLOW_MODEL_FALLBACK": "1"}, transport=tf.transport)
+    assert allowed["ok"] is True and allowed["model"] != GEMMA and allowed["model_fallback"] is True
+    said: list[str] = []
+    assert endpoint.wait_model(env=env, transport=tf.transport, timeout_s=10, interval_s=30, call=True,
+                               sleep=lambda s: None, say=said.append) is False
+    assert "does not answer yet" in said[-1] and "unusable output" in said[-1]
 
 
 # --------------------------------------------------------------------------- model plan
@@ -800,6 +831,25 @@ def test_endpoint_bundle_validity_rules(tf, tmp_path, monkeypatch):
     assert sum("stub LLM" in w for w in stub["warnings"]) == 2
 
 
+def test_a_run_whose_prose_was_mostly_the_fixed_paragraph_is_not_valid(tf, tmp_path, monkeypatch):
+    """A degraded deployment answers HTTP 200 with garbage; the prose validator rejects it and the draft gets its
+    fixed paragraph, so every draft still "passes". Such a run measured the fallback text, not the model."""
+    monkeypatch.setenv("WAPSI_LLM_RPM", "600")
+    assert collect_evidence.model_health({"golden_llm_prose_fallback_rate": 0.24}) == []  # healthy Gemma 4
+    assert collect_evidence.model_health({"golden_llm_prose_fallback_rate": 1.0})
+    assert collect_evidence.model_health({"e2e_best_prose_fallback_rate": 0.9}, "endpoint")
+    assert collect_evidence.model_health({"e2e_best_prose_fallback_rate": 0.9}, "droplet") == []  # LoRA's business
+    evid = make_endpoint_evidence(tf, tmp_path / "ok")
+    rep_path = evid / "golden_eval.json"
+    rep = json.loads(rep_path.read_text(encoding="utf-8")) if rep_path.exists() else None
+    if rep is None or rep.get("stub"):
+        pytest.skip("the endpoint fixture wrote no real-model golden report")
+    rep.setdefault("metrics", {})["llm_prose_fallback_rate"] = 1.0
+    rep_path.write_text(json.dumps(rep), encoding="utf-8")
+    ev = collect_evidence.build(evid, "endpoint")
+    assert ev["results_valid"] is False and any("fixed paragraph" in r for r in ev["invalid_reasons"])
+
+
 def make_notebook_evidence(root: Path, *, gpu: str = "AMD Radeon PRO W7900", static: bool = False,
                            hip: str | None = "7.1.0") -> Path:
     """A notebook-mode folder: the fixture files of the droplet tests plus the notebook's own GPU identity."""
@@ -842,12 +892,10 @@ def _checker():
     return mod
 
 
-def _pitch_copy(tmp_path: Path) -> Path:
-    pitch = tmp_path / "pitch"
-    (pitch / "amd").mkdir(parents=True)
-    for rel in ("NUMBERS.md", "amd/DECK_OUTLINE.md", "amd/VIDEO_SCRIPT.md"):
-        shutil.copy(ROOT / "pitch" / rel, pitch / rel)
-    return pitch
+def _pitch_copy(tmp_path: Path, extra_page: str = "", extra_ids: tuple[str, ...] = ()) -> Path:
+    from test_amd_kickoff import _pitch_copy as copy_pitch
+
+    return copy_pitch(tmp_path, extra_page, extra_ids)
 
 
 def _fixture(evid: Path, mode: str) -> Path:
@@ -861,23 +909,28 @@ def _fixture(evid: Path, mode: str) -> Path:
 EP_PAGE = """
 ## Measured through the AMD Token Factory API
 
-Measured on <!-- slot:ep_where -->TBD<!-- /slot -->, through the shared trial API.
+Measured on TBD(ep_where), through the shared trial API. The A/B: TBD(ab_where).
 
 | Metric | Value |
 |---|---|
-| Request latency p50 / p95, one at a time | <!-- slot:ep_llm_latency -->TBD<!-- /slot --> |
-| Output tokens per second at concurrency 1 / 4 / 8 | <!-- slot:ep_llm_tps -->TBD<!-- /slot --> |
-| Verified drafts per hour at the trial key's request cap | <!-- slot:ep_drafts_hour -->TBD<!-- /slot --> |
-| API-reported cost per case | <!-- slot:ep_cost_case -->TBD<!-- /slot --> |
-| Golden set: numeric accuracy / citation validity / verifier pass | <!-- slot:ep_golden -->TBD<!-- /slot --> |
+| Request latency p50 / p95, one at a time | TBD(ep_llm_latency) |
+| Output tokens per second at concurrency 1 / 4 / 8 | TBD(ep_llm_tps) |
+| Verified drafts per hour at the trial key's request cap | TBD(ep_drafts_hour) |
+| API-reported cost per case | TBD(ep_cost_case) |
+| Golden set: numeric accuracy / citation validity / verifier pass | TBD(ep_golden) |
+| STR against STR | TBD(ab_str_wrong) |
+| On the GPU box (TBD(gpu_where)) | TBD(gpu_ttft) |
+
+By hand: TBD(evolus_blocks).
 """
+EP_IDS = ("ep_where", "ab_where", "ep_llm_latency", "ep_llm_tps", "ep_drafts_hour", "ep_cost_case", "ep_golden",
+          "ab_str_wrong", "gpu_where", "gpu_ttft")
 
 
 def test_fill_pitch_from_an_endpoint_bundle_words_it_as_an_endpoint_run(tf, tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("WAPSI_LLM_RPM", "600")
-    pitch = _pitch_copy(tmp_path)
+    pitch = _pitch_copy(tmp_path, EP_PAGE, EP_IDS)
     deck_path = pitch / "amd" / "DECK_OUTLINE.md"
-    deck_path.write_text(deck_path.read_text(encoding="utf-8") + EP_PAGE, encoding="utf-8")
     bundle = _fixture(make_endpoint_evidence(tf, tmp_path), "endpoint")
     args = ["--evidence", str(bundle), "--pitch-dir", str(pitch), "--allow-fixture", "--strict"]
     before = deck_path.read_text(encoding="utf-8")
@@ -888,20 +941,24 @@ def test_fill_pitch_from_an_endpoint_bundle_words_it_as_an_endpoint_run(tf, tmp_
     deck = deck_path.read_text(encoding="utf-8")
     video = (pitch / "amd" / "VIDEO_SCRIPT.md").read_text(encoding="utf-8")
     where = "AMD Token Factory (Gemma-4-31B-IT on AMD GPUs)"
-    # the A/B (the table says "Gemma", the bundle's model is Gemma) is filled and says where it was measured
-    assert f"**Slot 1, drafting <!-- slot:deck_ab_heading -->(measured on {where}, 2026-10-14)<!-- /slot -->:**" in deck
-    assert "**2 of 2** STRs | **0 of 2** STRs (target 0; all" in deck
-    assert "Raw Gemma writing free-form reports: <!-- slot:video_ab_raw -->2 of 2<!-- /slot -->" in video
-    # the endpoint slots the author placed
+    # the real deck's Token Factory sentences (they say "Gemma 4", the bundle's model is Gemma) are filled
+    assert re.search(r"<!-- slot:tf_demo_pass -->1\.0 \(\d+ cases\)<!-- /slot -->", deck)
+    assert "TBD(tf_demo_pass)" not in video  # every place of a slot, in every file
+    for sid in ("tf_demo_fallback", "tf_demo_hold_exact", "tf_call_latency", "ab_raw_wrong", "ab_bound_wrong"):
+        assert f"<!-- slot:{sid} -->" in deck and f"TBD({sid})" not in deck, sid
+    assert re.search(r"<!-- slot:tf_call_latency -->\d+\.\d\d s<!-- /slot -->", deck)
+    # the optional endpoint slots the author placed say where they were measured
     assert f"Measured on <!-- slot:ep_where -->{where}, 2026-10-14<!-- /slot -->, through the shared trial API." in deck
+    assert f"The A/B: <!-- slot:ab_where -->{where}, 2026-10-14<!-- /slot -->." in deck
+    assert "<!-- slot:ab_str_wrong -->2 of 2 raw STRs, 0 of 2 Wapsi-bound STRs<!-- /slot -->" in deck
     for sid in ("ep_llm_latency", "ep_llm_tps", "ep_drafts_hour", "ep_cost_case", "ep_golden"):
-        assert f"<!-- slot:{sid} -->TBD" not in deck, sid
+        assert f"TBD({sid})" not in deck, sid
     assert "<!-- slot:ep_golden -->1.0 / 1.0 / 1.0<!-- /slot -->" in deck and "<!-- slot:ep_cost_case -->$0.0" in deck
-    # nothing an endpoint cannot know: every MI300X slot keeps its TBD
-    assert "## 7. Benchmarks on MI300X (all TBD, 12 to 18 Oct)" in deck
-    assert "| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | **TBD** |" in deck
-    assert "| VRAM per container (llm, verifier, gnn) | **TBD** |" in deck and "Measured on this MI300X on [date]:" in video
-    assert "no marker in the pitch yet" in out and "ep_cases_hour" in out  # measured, simply not placed
+    # nothing an endpoint cannot know: every GPU-box slot stays open, and so does every hand-filled one
+    for sid in ("droplet_vram", "droplet_tokens_s", "droplet_cases_hour", "gnn_amd_auc", "gnn_amd_epoch", "gpu_where",
+                "gpu_ttft", "evolus_blocks"):
+        assert f"TBD({sid})" in deck, sid
+    assert "measured, not in the pitch" in out and "ep_cases_hour" in out  # measured, simply not placed
 
     check = _checker()
     rows = check.parse_rows(pitch / "NUMBERS.md")
@@ -915,12 +972,15 @@ def test_fill_pitch_from_an_endpoint_bundle_words_it_as_an_endpoint_run(tf, tmp_
             assert check._norm(tok) in registered, tok
     numbers = (pitch / "NUMBERS.md").read_text(encoding="utf-8")
     assert f"## AMD edition: measured on {where}" in numbers and "of the endpoint runs on 2026-10-14 (UTC)" in numbers
+    listed = set(check.parse_slots(pitch / "NUMBERS.md"))  # filled slots leave the open-slots table, open ones stay
+    assert not {"tf_demo_pass", "tf_call_latency", "ab_bound_wrong", "ep_golden"} & listed
+    assert {"droplet_vram", "gnn_amd_auc", "gpu_ttft", "evolus_blocks"} <= listed
     assert fill_pitch.main([*args, "--write"]) == 0 and deck_path.read_text(encoding="utf-8") == deck  # idempotent
 
 
 def test_fill_pitch_never_puts_a_run_under_words_that_do_not_fit(tf, tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("WAPSI_LLM_RPM", "600")
-    # 1. the endpoint serves no Gemma today: the fallback model must not fill the "Raw Gemma" table
+    # 1. the endpoint serves no Gemma today: the fallback model must not fill a "Gemma 4 on AMD" sentence
     monkeypatch.setenv("WAPSI_LLM_MODEL", "Qwen3.8-27B")
     qwen = FakeTokenFactory(models=("Qwen3.8-27B", JUDGE))
     bundle = _fixture(make_endpoint_evidence(qwen, tmp_path / "q"), "endpoint")
@@ -930,36 +990,47 @@ def test_fill_pitch_never_puts_a_run_under_words_that_do_not_fit(tf, tmp_path, m
     assert fill_pitch.main(["--evidence", str(bundle), "--pitch-dir", str(pitch), "--allow-fixture", "--write"]) == 0
     out = capsys.readouterr().out
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
-    assert "| Drafts with a wrong amount | **TBD** | **TBD** (target 0) |" in deck  # untouched
-    assert "its text says Gemma and the drafting model is Qwen3.8-27B" in out
+    for sid in ("tf_demo_pass", "tf_demo_fallback", "tf_call_latency", "ab_raw_wrong", "ab_bound_wrong"):
+        assert f"TBD({sid})" in deck and f"<!-- slot:{sid} -->" not in deck, sid  # untouched
+    assert "the pitch words it as a Gemma 4 figure and the drafting model is Qwen3.8-27B" in out
     assert fill_pitch.END not in (pitch / "NUMBERS.md").read_text(encoding="utf-8")
-    # 2. a notebook GPU that is not an MI300X never fills "Benchmarks on MI300X"
+    assert "tf_demo_pass" in _checker().parse_slots(pitch / "NUMBERS.md")  # still an open slot
+    # 2. a notebook GPU that is not an MI300X never fills what the pitch words as a droplet figure
     nb = _fixture(make_notebook_evidence(tmp_path / "n"), "notebook")
     pitch = _pitch_copy(tmp_path / "n")
     assert fill_pitch.main(["--evidence", str(nb), "--pitch-dir", str(pitch), "--allow-fixture", "--write"]) == 0
     out = capsys.readouterr().out
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
-    assert "## 7. Benchmarks on MI300X (all TBD, 12 to 18 Oct)" in deck and "tokens/s at concurrency 1 / 4 / 16 / 64 | **TBD**" in deck
-    assert "its text says MI300X and this run was measured on AMD Radeon PRO W7900 (AMD ROCm notebook)" in out
-    assert "**7 of 20** STRs" in deck and "(measured on AMD Radeon PRO W7900 (AMD ROCm notebook), 2026-10-15)" in deck
+    for sid in ("droplet_tokens_s", "droplet_cases_hour", "droplet_vram"):
+        assert f"TBD({sid})" in deck, sid
+    assert ("the pitch words it as an MI300X figure and this run was measured on AMD Radeon PRO W7900 (AMD ROCm "
+            "notebook)") in out
+    # what it did measure is filled and names the GPU it ran on
+    assert "<!-- slot:gnn_amd_auc -->0.985 (AMD Radeon PRO W7900 (AMD ROCm notebook))<!-- /slot -->" in deck
+    assert "<!-- slot:ab_bound_wrong -->0 (of 180 drafts)<!-- /slot -->" in deck
     # 3. a notebook whose GPU is an MI300X fills them like the droplet does
     mi = _fixture(make_notebook_evidence(tmp_path / "m", gpu="AMD Instinct MI300X", static=True), "notebook")
     pitch = _pitch_copy(tmp_path / "m")
     assert fill_pitch.main(["--evidence", str(mi), "--pitch-dir", str(pitch), "--allow-fixture", "--write", "--strict"]) == 0
-    assert "**50 / 180 / 600 / 1,500**" in (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
+    assert "-->50 / 180 / 600 tokens/s" in (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
     # 4. an invalid endpoint bundle is refused like any other
     bad = collect_evidence.build(make_endpoint_evidence(tf, tmp_path / "b", date="2026-10-10",
                                                         started="2026-10-10T06:00:00Z"), "endpoint")
     (tmp_path / "bad.json").write_text(json.dumps(bad), encoding="utf-8")
     assert fill_pitch.main(["--evidence", str(tmp_path / "bad.json"), "--write"]) == fill_pitch.EXIT_REFUSED
     assert "results_valid is false" in capsys.readouterr().out
+    # 5. --strict fails on a TBD(id) nobody defines (a typo would otherwise stay open for ever)
+    pitch = _pitch_copy(tmp_path / "t", "\nTypo: TBD(tf_demo_passs).\n", ("tf_demo_passs",))
+    args = ["--evidence", str(mi), "--pitch-dir", str(pitch), "--allow-fixture"]
+    assert fill_pitch.main(args) == 0 and fill_pitch.main([*args, "--strict"]) == 1
+    assert "tf_demo_passs" in capsys.readouterr().out
 
 
 def test_fill_pitch_merges_an_endpoint_run_and_a_droplet_run(tf, tmp_path, monkeypatch):
     from test_amd_kickoff import make_evidence
 
     monkeypatch.setenv("WAPSI_LLM_RPM", "600")
-    pitch = _pitch_copy(tmp_path)
+    pitch = _pitch_copy(tmp_path, EP_PAGE, EP_IDS)
     common = ["--pitch-dir", str(pitch), "--allow-fixture", "--write", "--strict"]
     first = _fixture(make_endpoint_evidence(tf, tmp_path), "endpoint")  # Wednesday: the endpoint
     assert fill_pitch.main(["--evidence", str(first), *common]) == 0
@@ -968,10 +1039,12 @@ def test_fill_pitch_merges_an_endpoint_run_and_a_droplet_run(tf, tmp_path, monke
     second = _fixture(droplet, "droplet")
     assert fill_pitch.main(["--evidence", str(second), *common]) == 0
     deck = (pitch / "amd" / "DECK_OUTLINE.md").read_text(encoding="utf-8")
-    assert "## 7. Benchmarks on MI300X <!-- slot:deck_slide7_heading -->(measured 2026-10-16, AMD Developer Cloud)" in deck
-    assert "**50 / 180 / 600 / 1,500**" in deck  # the droplet's sweep
-    assert "(measured on AMD Token Factory (Gemma-4-31B-IT on AMD GPUs), 2026-10-14)" in deck  # the A/B, still Wednesday's
-    assert "**2 of 2** STRs | **0 of 2** STRs" in deck
+    where = "AMD Token Factory (Gemma-4-31B-IT on AMD GPUs)"
+    assert "| On the GPU box (<!-- slot:gpu_where -->MI300X, 2026-10-16<!-- /slot -->) | <!-- slot:gpu_ttft -->" in deck
+    assert "<!-- slot:droplet_tokens_s -->50 / 180 / 600 tokens/s" in deck  # the droplet's sweep
+    assert f"The A/B: <!-- slot:ab_where -->{where}, 2026-10-14<!-- /slot -->." in deck  # the A/B, still Wednesday's
+    assert "<!-- slot:ab_str_wrong -->2 of 2 raw STRs, 0 of 2 Wapsi-bound STRs<!-- /slot -->" in deck
+    assert re.search(r"<!-- slot:tf_demo_pass -->1\.0 \(\d+ cases\)<!-- /slot -->", deck)  # and so are the endpoint's
     check = _checker()
     rows = [r for r in check.parse_rows(pitch / "NUMBERS.md") if r.rid.startswith("amd_")]
     assert check.check_numbers(rows)[0] == []
@@ -986,10 +1059,13 @@ def test_fill_pitch_merges_an_endpoint_run_and_a_droplet_run(tf, tmp_path, monke
 def test_fill_pitch_lists_its_slots(capsys):
     assert fill_pitch.main(["--slots"]) == 0
     out = capsys.readouterr().out
-    assert "| `ep_cost_case` | API-reported cost per case in dollars | endpoint | marker only:" in out
-    assert "| `deck_llm_tps` |" in out and "droplet / notebook (MI300X only)" in out
+    assert "| `ep_cost_case` | API-reported cost per case in dollars | endpoint | optional: add `ep_cost_case` to " in out
+    assert "| `tf_demo_pass` |" in out and "| endpoint (Gemma only) | write `TBD(tf_demo_pass)`; listed in" in out
+    assert "| `droplet_tokens_s` |" in out and "droplet / notebook (MI300X only)" in out
     assert "droplet / notebook / endpoint (Gemma only)" in out
-    assert len([line for line in out.splitlines() if line.startswith("| `")]) == len(fill_pitch.ALL_SLOTS)
+    assert "| `adk_tool_calls` | (no evidence bundle carries it) | by hand, from editions.amd.app.agent_demo" in out
+    listed = [line for line in out.splitlines() if line.startswith("| `")]
+    assert len(listed) == len(fill_pitch.ALL_SLOTS) + len(fill_pitch.MANUAL_SLOTS)
     assert len({s.sid for s in fill_pitch.ALL_SLOTS}) == len(fill_pitch.ALL_SLOTS)
 
 

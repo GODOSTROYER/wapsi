@@ -10,7 +10,7 @@
 # Needs billing upgraded (the free trial blocks GPUs and quota increases) and Cloud Run GPU quota in the chosen
 # region, so it refuses to run unless ALLOW_GPU=1.
 #
-#   export PROJECT_ID=wapsi-aibc
+#   export PROJECT_ID=wapsi-demo
 #   ALLOW_GPU=1 TIER=l4  bash editions/gcp/deploy/gemma_vllm_service.sh   # NVIDIA L4, us-central1, gemma-4-E4B-it
 #   ALLOW_GPU=1 TIER=rtx bash editions/gcp/deploy/gemma_vllm_service.sh   # RTX PRO 6000, asia-south2 (Delhi)
 #
@@ -90,7 +90,7 @@ gc beta run deploy "${SERVICE}" \
   --min-instances "${MIN_INSTANCES}" --max-instances "${MAX_INSTANCES}" \
   --concurrency 64 --timeout 600 \
   --startup-probe "tcpSocket.port=8080,initialDelaySeconds=240,failureThreshold=1,timeoutSeconds=240,periodSeconds=240" \
-  --labels app=wapsi,component=gemma,event=aibc \
+  --labels app=wapsi,component=gemma,edition=gcp \
   ${VPC_FLAGS[@]+"${VPC_FLAGS[@]}"} \
   --command "vllm" \
   --args="${ARGS}"

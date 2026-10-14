@@ -189,14 +189,20 @@ def _live_gate() -> Any:
 def _live_llm(fresh: bool) -> Any | None:
     """The configured live endpoint behind ``ResilientLLM`` (disk cache, rate limit, one retry), or ``None`` when
     it is not configured. One client and one rate limiter per process; ``fresh`` skips the cache read (the officer
-    asked for new drafts) and still stores the answer."""
-    from wapsi.adapters.llm_env import BACKEND, endpoint_config, make_endpoint_llm
+    asked for new drafts) and still stores the answer. With a model list (``WAPSI_LLM_MODELS``) every model gets
+    its own client behind ``FailoverLLM`` (one shared rate limiter): a model that answers in garbage or is
+    withdrawn is skipped and the next one writes the prose; each draft names the model that wrote it."""
+    from dataclasses import replace
+
+    from wapsi.adapters.llm_env import BACKEND, chain_models, endpoint_config, make_endpoint_llm
+    from wapsi.adapters.llm_failover import build as failover
     from wapsi.adapters.llm_resilience import RPM_ENV, RateLimiter, ResilientLLM
 
     cfg = endpoint_config()
     if not cfg.configured:
         return None
-    key = ("live", cfg.base_url, cfg.model, cfg.json_mode, cfg.timeout_s, cfg.platform, cfg.has_key,
+    models = chain_models(cfg)
+    key = ("live", cfg.base_url, tuple(models), cfg.json_mode, cfg.timeout_s, cfg.platform, cfg.has_key,
            json.dumps(cfg.extra_body, sort_keys=True, default=str))
     with _LLM_LOCK:
         pair = _LLM_STATE.get(key)
@@ -208,14 +214,21 @@ def _live_llm(fresh: bool) -> Any | None:
             except ValueError:
                 rpm = UI_LIVE_RPM
             cache_dir = os.environ.get(LLM_CACHE_ENV, "").strip() or str(Path(tempfile.gettempdir()) / "wapsi-llm-cache")
-            inner = make_endpoint_llm(cfg, timeout=min(cfg.timeout_s, 45.0))
             limiter = RateLimiter(rpm, 0, max_wait_s=UI_LIVE_MAX_WAIT_S)
-            # accept: an HTTP 200 with degenerate output is refused (never cached), and the recorded run answers
-            common: dict[str, Any] = {"model_id": cfg.model, "backend": BACKEND, "cache_dir": cache_dir,
-                                      "cache_namespace": cfg.host, "limiter": limiter, "max_retries": 1,
-                                      "backoff_s": 2.0, "max_backoff_s": 6.0, "name": cfg.served_name,
-                                      "accept": _optional("wapsi.adapters.llm_replay", "prose_answer_problem")}
-            pair = (ResilientLLM(inner, **common), ResilientLLM(inner, read_cache=False, **common))
+            # accept: an HTTP 200 with degenerate output is refused (never cached); the next model in the list
+            # answers, and after the last one the recorded run
+            accept = _optional("wapsi.adapters.llm_replay", "prose_answer_problem")
+            cached, uncached = [], []
+            for model in models:
+                one = replace(cfg, model=model)
+                inner = make_endpoint_llm(one, timeout=min(cfg.timeout_s, 45.0))
+                common: dict[str, Any] = {"model_id": model, "backend": BACKEND, "cache_dir": cache_dir,
+                                          "cache_namespace": cfg.host, "limiter": limiter, "max_retries": 1,
+                                          "backoff_s": 2.0, "max_backoff_s": 6.0, "name": one.served_name,
+                                          "accept": accept}
+                cached.append(ResilientLLM(inner, **common))
+                uncached.append(ResilientLLM(inner, read_cache=False, **common))
+            pair = (failover(cached, accept=accept), failover(uncached, accept=accept))
             _LLM_STATE[key] = pair
     return pair[1 if fresh else 0]
 

@@ -1,4 +1,4 @@
-# Wapsi, Google Cloud edition (AI Builder Cup)
+# Wapsi, Google Cloud edition
 
 ADK 2.9 agents on Cloud Run with Gemini, BigQuery, Firestore, Secret Manager and Cloud Logging, plus optional
 Pub/Sub, Cloud Scheduler and Cloud Storage. The default path runs on a Google Cloud **free trial** with Gemini
@@ -26,7 +26,7 @@ The scripts cannot do these steps for you.
 
 1. **Start the free trial and create a project.** In the [console](https://console.cloud.google.com/freetrial),
    start the free trial ($300 credit for 90 days; a free-trial billing account is created for you). Then create a
-   project, for example `wapsi-aibc-<suffix>` (project ids are globally unique).
+   project, for example `wapsi-demo-<suffix>` (project ids are globally unique).
 2. **Link the free-trial billing account to the project.** Cloud Run, Cloud Build, Artifact Registry and Secret
    Manager need a linked billing account, even inside their free tiers. You are not charged while the account is
    a free-trial account.

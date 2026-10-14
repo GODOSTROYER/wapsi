@@ -94,6 +94,22 @@ def load_ledger(world_path: str | None) -> Ledger:
     return showcase_ledger()
 
 
+def llm_name(base_url: str, model: str) -> str:
+    """The name drafts record for the model (``Draft.llm_model``; the UI's chip reads it back). It says what really
+    serves the model: ``vllm-rocm:<model>`` for this stack's own vLLM-ROCm server, otherwise the endpoint
+    (``Gemma-4-31B-IT on AMD @ developer.amd.com.cn`` for the AMD Token Factory; "on AMD" for any other host only
+    when the deployer states it with ``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD``)."""
+    from wapsi.adapters.llm_env import declared_platform, platform_for, served_name
+    from wapsi.adapters.llm_openai_compat import endpoint_host
+
+    from .settings import is_stack_server
+
+    if is_stack_server(base_url):
+        return f"vllm-rocm:{model}"
+    host = endpoint_host(base_url)
+    return served_name(model, host, platform_for(host, declared_platform()))
+
+
 def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = None,
                    verifier_llm: LLM | None = None, scorer: Any | None = None,
                    search: DocSearch | None | bool = True) -> Services:
@@ -112,11 +128,15 @@ def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = Non
 
             llm = FakeLLM(name="fake-llm (demo mode)")
         else:
+            from wapsi.adapters.llm_failover import build as failover
             from wapsi.adapters.llm_openai_compat import OpenAICompatLLM
 
-            llm = OpenAICompatLLM(base_url=settings.llm_base_url, model=settings.llm_model,
-                                  timeout=settings.llm_timeout_s, json_mode=settings.llm_json_mode,
-                                  name=f"vllm-rocm:{settings.llm_model}")
+            # one client per model of WAPSI_LLM_MODELS: a model that is withdrawn or answers in garbage is skipped
+            # and the next one writes the prose (each draft records which one did)
+            llm = failover([OpenAICompatLLM(base_url=settings.llm_base_url, model=model,
+                                            timeout=settings.llm_timeout_s, json_mode=settings.llm_json_mode,
+                                            name=llm_name(settings.llm_base_url, model))
+                            for model in (settings.llm_model, *settings.llm_fallback_models)])
 
     guard: Guard = RulesGuard()
     if verifier_llm is None and settings.verifier_base_url and not settings.demo_mode:
@@ -125,7 +145,7 @@ def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = Non
         verifier_llm = OpenAICompatLLM(base_url=settings.verifier_base_url, model=settings.verifier_model,
                                        api_key=settings.verifier_api_key, timeout=min(settings.llm_timeout_s, 60),
                                        max_retries=1, json_mode=settings.llm_json_mode,
-                                       name=f"vllm-rocm:{settings.verifier_model}")
+                                       name=llm_name(settings.verifier_base_url, settings.verifier_model))
     if verifier_llm is not None:
         from .judge import LLMJudgeGuard
 
@@ -158,8 +178,13 @@ def build_voice(services: Services, env: Any = None) -> Any:
         if requested == "auto" and callable(getattr(services.llm, "extract_media", None)):
             return services.llm
         return safe_voice_model(e)  # an explicit backend in demo mode is built from WAPSI_LLM_* / WAPSI_ASR_*
-    served_by, on_amd = llm_provider(str(getattr(services.llm, "base_url", "") or ""), e)
-    return safe_voice_model(e, text_llm=services.llm, served_by=served_by, llm_on_amd=on_amd)
+    from wapsi.adapters.llm_failover import FailoverLLM
+
+    # the first drafting client; voice builds its own chain along the same WAPSI_LLM_MODELS list (health probe,
+    # the JSON-mode ladder per client), sharing what the drafts' failover learnt through the health registry
+    head = services.llm.primary if isinstance(services.llm, FailoverLLM) else services.llm
+    served_by, on_amd = llm_provider(str(getattr(head, "base_url", "") or ""), e)
+    return safe_voice_model(e, text_llm=head, served_by=served_by, llm_on_amd=on_amd)
 
 
 def voice_model(services: Services) -> Any:

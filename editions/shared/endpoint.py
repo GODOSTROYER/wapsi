@@ -8,7 +8,7 @@ The same variables as the drafting LLM, so one endpoint serves both, with agent-
 | ``WAPSI_LLM_API_KEY`` | unset | bearer token (never logged, never part of ``describe()`` or ``repr``) |
 | ``WAPSI_LLM_MODEL`` | ``Gemma-4-31B-IT`` | model id as the endpoint names it |
 | ``WAPSI_AGENT_BASE_URL`` / ``WAPSI_AGENT_API_KEY`` / ``WAPSI_AGENT_MODEL`` | the three above | agent-only endpoint (e.g. base Gemma 4 for the agent, a fine-tuned checkpoint for drafts) |
-| ``WAPSI_AGENT_FALLBACK_MODELS`` | unset | comma-separated model ids on the same endpoint to use, in order, while the model above is not served or returns unusable output (shared catalogs change); every run is labelled with the model that answered |
+| ``WAPSI_AGENT_FALLBACK_MODELS`` | ``WAPSI_LLM_MODELS`` | comma-separated model ids on the same endpoint to use, in order, while the model above is not served or returns unusable output (shared catalogs change); every run is labelled with the model that answered. Unset: the other models of ``WAPSI_LLM_MODELS`` (else ``WAPSI_LLM_FALLBACK_MODELS``), the list voice intake and the kickoff model plan read, when the agent runs on the drafting endpoint; no fallback when neither is set |
 | ``WAPSI_AGENT_EXTRA_BODY`` | unset | JSON object merged into every request body (e.g. ``{"reasoning_effort": "low"}``, or vLLM's ``{"chat_template_kwargs": {"enable_thinking": false}}``) |
 | ``WAPSI_AGENT_TOOL_MODE`` | ``auto`` | ``auto`` = capability probe; ``native`` = OpenAI tool calls; ``json`` = strict JSON tool protocol |
 | ``WAPSI_AGENT_TOOL_RESULT_ROLE`` | ``auto`` | message role of tool results in native mode: ``auto`` = what the probe found (``tool`` without a probe), ``tool`` (OpenAI), ``tool_responses`` (what ADK's LiteLlm sends for ``gemma-4`` model ids) |
@@ -21,7 +21,7 @@ The same variables as the drafting LLM, so one endpoint serves both, with agent-
 | ``WAPSI_AGENT_MAX_TOOL_CALLS`` | ``12`` | tool calls allowed per officer message |
 | ``WAPSI_AGENT_MAX_LLM_CALLS`` | ``24`` | model turns allowed per run (ADK ``RunConfig.max_llm_calls``) |
 | ``WAPSI_AGENT_MIN_INTERVAL_S`` | ``0`` | minimum seconds between model calls (shared rate limits: 20 requests/min on AMD Token Factory) |
-| ``WAPSI_AGENT_PROVIDER_LABEL`` | from the host | how the UI names the serving platform (e.g. ``vLLM-ROCm on MI300X``) |
+| ``WAPSI_AGENT_PROVIDER_LABEL`` | from the host | how the UI names the serving platform (e.g. ``vLLM-ROCm on MI300X``). Unset: ``WAPSI_LLM_PROVIDER`` (voice intake's label), else the host's own name, with the deployer's ``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD`` statement added "as declared" for a host that says nothing itself |
 
 Default model: ``Gemma-4-31B-IT`` is the id AMD Token Factory serves Google's Gemma 4 31B IT under; a vLLM server
 names it with ``--served-model-name`` (the AMD compose file uses ``wapsi-llm``), so set ``WAPSI_LLM_MODEL`` there.
@@ -62,6 +62,28 @@ def _number(env: Mapping[str, str], key: str, default: float) -> float:
         return float(raw) if raw else default
     except ValueError as exc:
         raise ValueError(f"{key} must be a number, got {raw!r}") from exc
+
+
+def _shared_fallbacks(env: Mapping[str, str], model: str, same_endpoint: bool) -> tuple[str, ...]:
+    """The agent's fallback models: its own list, else the other models of the drafting endpoint's ordered list
+    (``WAPSI_LLM_MODELS``, else ``WAPSI_LLM_FALLBACK_MODELS``) when the agent runs on that endpoint."""
+    raw = (env.get("WAPSI_AGENT_FALLBACK_MODELS") or "").strip()
+    if not raw and same_endpoint:
+        raw = (env.get("WAPSI_LLM_MODELS") or env.get("WAPSI_LLM_FALLBACK_MODELS") or "").strip()
+    names = [m.strip() for m in raw.split(",") if m.strip() and m.strip() != model]
+    return tuple(dict.fromkeys(names))
+
+
+def _declared_label(base_url: str, env: Mapping[str, str]) -> str:
+    """A label for a host that says nothing about its hardware, when the deployer stated the platform
+    (``WAPSI_LLM_PLATFORM`` / ``WAPSI_LLM_ON_AMD``, read through ``wapsi.adapters.llm_env``). "" otherwise."""
+    name = provider_label(base_url)
+    if not name.startswith(("OpenAI-compatible endpoint", "local OpenAI-compatible server")):
+        return ""  # the host names its platform itself (AMD Token Factory, the compose stack, the offline fake)
+    from wapsi.adapters.llm_env import declared_platform
+
+    declared = declared_platform(env)
+    return f"{name}, on {declared} as declared" if declared else ""
 
 
 def provider_label(base_url: str) -> str:
@@ -148,9 +170,11 @@ class AgentEndpoint:
             max_tool_calls=max(1, int(_number(e, "WAPSI_AGENT_MAX_TOOL_CALLS", cls.max_tool_calls))),
             max_llm_calls=max(2, int(_number(e, "WAPSI_AGENT_MAX_LLM_CALLS", cls.max_llm_calls))),
             min_interval_s=max(0.0, _number(e, "WAPSI_AGENT_MIN_INTERVAL_S", cls.min_interval_s)),
-            label=_text(e, "WAPSI_AGENT_PROVIDER_LABEL") or "",
-            fallback_models=tuple(m.strip() for m in (e.get("WAPSI_AGENT_FALLBACK_MODELS") or "").split(",")
-                                  if m.strip()),
+            label=_text(e, "WAPSI_AGENT_PROVIDER_LABEL", "WAPSI_LLM_PROVIDER") or _declared_label(url, e),
+            fallback_models=_shared_fallbacks(
+                e, _text(e, "WAPSI_AGENT_MODEL", "WAPSI_LLM_MODEL") or (model or "").strip() or DEFAULT_AGENT_MODEL,
+                same_endpoint=not _text(e, "WAPSI_AGENT_BASE_URL")
+                or _text(e, "WAPSI_AGENT_BASE_URL") == _text(e, "WAPSI_LLM_BASE_URL")),
             extra_body=extra,
         )
 

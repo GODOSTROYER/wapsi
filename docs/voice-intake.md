@@ -115,10 +115,10 @@ The text model (translation and fields):
 | `WAPSI_LLM_BASE_URL` | unset | OpenAI-compatible base URL, for example `https://developer.amd.com.cn/radeon/api/v1` (AMD Token Factory) or `http://llm:8000/v1` (vLLM-ROCm) |
 | `WAPSI_LLM_API_KEY` | unset | Bearer token. Read from the environment only; never printed, logged or stored |
 | `WAPSI_LLM_MODEL` | `Gemma-4-31B-IT` on the Token Factory | The first model to try; `WAPSI_VOICE_LLM_MODEL` overrides it for voice only |
-| `WAPSI_LLM_MODELS` | Token Factory: `Gemma-4-31B-IT, DeepSeek-V4-Flash, Qwen3.8-27B, MiniCPM-V-4.7-35B-A3B` | The chain, in order (`WAPSI_VOICE_LLM_MODELS` for voice only). An own vLLM serves one model: no chain |
+| `WAPSI_LLM_MODELS` | Token Factory: `Gemma-4-31B-IT, DeepSeek-V4-Flash, Qwen3.8-27B, MiniCPM-V-4.7-35B-A3B` | The chain, in order (`WAPSI_VOICE_LLM_MODELS` for voice only; `WAPSI_LLM_FALLBACK_MODELS`, the kickoff model plan's name for the list, is read too). The drafts' prose and the officer's agent fail over along the same list. An own vLLM serves one model: no chain |
 | `WAPSI_LLM_COOLDOWN_S` / `WAPSI_LLM_HEALTH_TTL_S` | `600` / `300` | How long a bad model is skipped; how long a passed health probe is trusted |
 | `WAPSI_VOICE_JSON_MODE` | `auto` | See the table above |
-| `WAPSI_LLM_ON_AMD` | unset | `1` = you state that this endpoint runs on AMD hardware. The Token Factory host is recognised by itself |
+| `WAPSI_LLM_ON_AMD` | unset | `1` = you state that this endpoint runs on AMD hardware (`WAPSI_LLM_PLATFORM=AMD`, the label the draft chip uses, says the same). The Token Factory host is recognised by itself |
 
 The recogniser:
 

@@ -9,7 +9,7 @@
 # PROFILE=paid: billing upgraded. Gemini on Agent Platform (Vertex AI), Model Armor on by default, the intake
 #   bucket, 50 USD budget; the optional Gemma GPU tier is deployed separately (gemma_vllm_service.sh).
 #
-#   export PROJECT_ID=wapsi-aibc REGION=asia-south1          # PROFILE defaults to free
+#   export PROJECT_ID=wapsi-demo REGION=asia-south1          # PROFILE defaults to free
 #   bash editions/gcp/deploy/cloudrun.sh bootstrap   # APIs, service accounts, IAM, data stores, budget alert
 #   bash editions/gcp/deploy/cloudrun.sh gemini-key  # prints the command YOU run to store the Gemini API key
 #   bash editions/gcp/deploy/cloudrun.sh data        # BigQuery tables + load the synthetic demo world
@@ -353,7 +353,7 @@ deploy() {
     --cpu 2 --memory 2Gi --concurrency 20 --timeout 300 --cpu-boost --execution-environment gen2 \
     --startup-probe "httpGet.path=/healthz,httpGet.port=8080,periodSeconds=5,failureThreshold=24,timeoutSeconds=3" \
     --liveness-probe "httpGet.path=/healthz,httpGet.port=8080,periodSeconds=30,failureThreshold=3,timeoutSeconds=5" \
-    --labels app=wapsi,component=api,event=aibc ${volume[@]+"${volume[@]}"} ${auth_api}
+    --labels app=wapsi,component=api,edition=gcp ${volume[@]+"${volume[@]}"} ${auth_api}
 
   log "UI service ${UI_SERVICE} (Streamlit on the same case store), min-instances ${MIN_INSTANCES}"
   gc beta run deploy "${UI_SERVICE}" --image "${image}" --region "${REGION}" \
@@ -363,7 +363,7 @@ deploy() {
     --min-instances "${MIN_INSTANCES}" --max-instances "${MAX_INSTANCES}" \
     --cpu 1 --memory 2Gi --concurrency 40 --timeout 3600 --session-affinity --cpu-boost \
     --startup-probe "httpGet.path=/_stcore/health,httpGet.port=8080,periodSeconds=5,failureThreshold=24,timeoutSeconds=3" \
-    --labels app=wapsi,component=ui,event=aibc ${volume[@]+"${volume[@]}"} ${auth_ui}
+    --labels app=wapsi,component=ui,edition=gcp ${volume[@]+"${volume[@]}"} ${auth_ui}
   rm -f "${envs}"
 
   if [[ -n "${GEMMA_URL}" ]]; then

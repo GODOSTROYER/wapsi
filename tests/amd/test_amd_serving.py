@@ -170,7 +170,8 @@ def test_shell_scripts_are_lf_and_strict(amd_dir):
         assert b"\r\n" not in raw, f"{p.name} has CRLF line endings"
         text = raw.decode("utf-8")
         assert text.startswith("#!/usr/bin/env bash"), p.name
-        head = [ln.strip() for ln in text.splitlines()[:40] if ln.strip() and not ln.lstrip().startswith("#")]
+        # the first line that is not a comment, however long the usage header above it is
+        head = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
         assert head and head[0] == "set -euo pipefail", f"{p.name}: set -euo pipefail must be the first command"
 
 

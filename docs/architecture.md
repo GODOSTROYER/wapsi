@@ -746,7 +746,9 @@ returns.
 
 Count the tests yourself with `uv run pytest --co -q | tail -1`. On 2026-10-07, after the voice-intake,
 agent-trace and Firestore audit-seal work was merged, it collected 1,765 tests and the full suite passed with 0
-failures; 291 of the tests are in the edition suites `tests/gcp` (178) and `tests/amd` (113).
+failures; 291 of the tests were in the edition suites `tests/gcp` (178) and `tests/amd` (113). On 2026-10-14, after
+the five event-week branches were merged, it collected 2,212 tests and the full suite passed with 0 failures; 509 of
+them are in `tests/gcp` (233) and `tests/amd` (276).
 
 ## Limitations
 

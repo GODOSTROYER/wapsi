@@ -23,7 +23,7 @@ Status as of 2026-10-14, checked against the repository.
 | | AMD (the entry) | Optional managed-cloud adapters |
 |---|---|---|
 | Purpose | lablab.ai AMD Developer Hackathon ACT III, Track 3 | not a hackathon entry; adapters for a managed cloud |
-| Folder | [`editions/amd`](../editions/amd/README.md), plus the ADK agent app in `editions/gcp/app` | [`editions/gcp`](../editions/gcp/README.md) (`deploy/`, and the adapters in `src/wapsi/adapters`) |
+| Folder | [`editions/amd`](../editions/amd/README.md), the ADK agent in `editions/shared`, the public demo in `deploy/` | [`editions/gcp`](../editions/gcp/README.md) (`deploy/`, and the adapters in `src/wapsi/adapters`) |
 | Prose and extraction model | Gemma 4 31B served on AMD GPUs, through `OpenAICompatLLM` | `GeminiLLM`, or Gemma through `OpenAICompatLLM` |
 | Agent | Google ADK agent with Gemma 4 on AMD as its model (LiteLLM connector) | the same ADK agent with a hosted model |
 | Speech to text | Whisper (open weights), local by default | the hosted model reads the audio |
@@ -31,7 +31,7 @@ Status as of 2026-10-14, checked against the repository.
 | Ledger | `ParquetLedger` | `BigQueryLedger`, or `ParquetLedger` |
 | Case store and audit chain | `FileCaseStore`: JSON files with atomic writes, chained on write | `FirestoreCaseStore`: one transaction per audit event, anchor in `audit_anchors/{case_id}` |
 | Guard | `RulesGuard`, plus an LLM judge when a second model is configured | `RulesGuard`, plus `ModelArmorGuard` when a template is configured |
-| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode is wired; AMD measurements are published only from committed results files. No MI300X run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
+| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode ran live on 2026-10-14 (the agent and voice-note extraction on Gemma 4 through the AMD Token Factory); AMD measurements are published only from committed results files. No MI300X run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
 
 ## AMD: what runs where
 
@@ -95,29 +95,89 @@ about 55% of GPU memory for Gemma 4 31B in BF16 and its KV cache, about 15% for 
 the GNN and headroom. Steps: [`RUNBOOK.md`](../editions/amd/RUNBOOK.md). A LoRA fine-tune of the open model for
 the prose fields is prepared in `editions/amd/lora/` and is optional.
 
-### Two features built during the event
+### Built during the event
 
-Both are being built in their own branches during the event window. This page describes them at the level that
-is settled; **exact commands: see the README section after integration.**
+Five pieces were built in their own branches during the event window and merged on 2026-10-14
+([originality.md](originality.md) has the commits). Each runs offline against a stand-in and live against the
+endpoint with the same three settings.
 
-**Open-model voice intake.** A victim's Hinglish, Hindi or English voice note is transcribed by a Whisper-class
-open speech model, and Gemma 4 on AMD extracts the complaint fields and the English translation from the
-transcript in `json_object` mode. Everything after that is the existing shared code, unchanged: schema
-validation, phone masking in code, guard screening, and the reconciliation of every claimed amount, UTR, date
-and account digit with the ledger. Only a ledger match opens a case. The speech model is local by default
-because the shared endpoint serves no audio; an OpenAI-compatible transcription endpoint is an option, and a
-chat-audio adapter is probed at run time so that it switches on if the endpoint starts accepting audio. Details:
-[Voice intake](voice-intake.md).
+**Open-model voice intake.** A victim's Hinglish, Hindi or English voice note is transcribed by Whisper (open
+weights), and Gemma 4 on AMD extracts the complaint fields and the English translation from the transcript in
+`json_object` mode. Everything after that is the existing shared code, unchanged: schema validation, phone
+masking in code, guard screening, and the reconciliation of every claimed amount, UTR, date and account digit
+with the ledger. Only a ledger match opens a case. The speech model is local by default because the shared
+endpoint serves no audio; an OpenAI-compatible transcription endpoint is an option
+(`editions/amd/asr/server.py` serves Whisper on a GPU box), and a chat-audio adapter is probed at run time so
+that it switches on if the endpoint starts accepting audio. Details and settings: [Voice intake](voice-intake.md).
 
-**The ADK agent on Gemma 4 served on AMD.** The officer's agent keeps its ten pipeline tools, its intake
-sub-agent and its guard and trace plugins. Its model becomes Gemma 4 on the AMD endpoint, reached through ADK's
-LiteLLM connector as an OpenAI-compatible provider. Gemma 4 calls the tools natively; a small JSON-protocol
-fallback, in which the model names the tool in one JSON object, is kept as a safety net. Every run is recorded by
-the existing agent trace (redacted arguments, result summaries taken from the tools' own results, guard and
-verifier verdicts, reply grounding) and sealed into each case's audit chain
+```bash
+uv run python -m editions.amd.bench.voice_bench --fake                 # offline: fake recogniser and text model
+WAPSI_VOICE_BACKEND=open WAPSI_ASR_BACKEND=local uv run streamlit run ui/app.py     # Voice Intake page, live
+uv run python -m editions.amd.bench.voice_bench --asr scripts          # the text model alone (6 requests)
+```
+
+**The ADK agent on Gemma 4 served on AMD.** The officer's agent keeps its ten pipeline tools and its guard and
+trace plugins (now in `editions/shared/`, imported by both layers). Its model is Gemma 4 on the AMD endpoint,
+reached through ADK's LiteLLM connector as an OpenAI-compatible provider. A capability probe decides how tools
+are called: natively when the endpoint returns tool calls (it does for Gemma 4 on the Token Factory), otherwise
+through a strict JSON tool protocol in which the model names one tool per turn. A reply that states a rupee
+amount or an account number no tool returned is not shown; a summary built from the tool results replaces it.
+Every run is recorded by the agent trace (redacted arguments, result summaries taken from the tools' own results,
+guard and verifier verdicts, reply grounding) and sealed into each case's audit chain
 ([User guide](user-guide.md#agent-trace-tab), [Trust and safety](trust-and-safety.md#agent-traces)). Before the
-event the agent already had a LiteLLM path to an OpenAI-compatible server (`build_model` in
-`editions/gcp/app/agent.py`) and ran offline with a scripted model.
+event the agent already had a LiteLLM path to an OpenAI-compatible server and ran offline with a scripted model.
+Measured runs and every setting: [`editions/amd/AGENT.md`](../editions/amd/AGENT.md).
+
+```bash
+uv run python -m editions.amd.app.agent_demo --case 31009260000101 --demo   # offline, a fake OpenAI-compatible endpoint
+uv run python -m editions.amd.app.agent_demo --case 31009260000101 --live   # Gemma 4 on AMD: the tool-by-tool trace
+uv run streamlit run editions/amd/app/ui_app.py                             # "Ask the agent" in the Case Room
+```
+
+**The public demo.** One container runs the officer app for judges (`deploy/demo/`): with the three settings it
+writes prose with the live endpoint and a chip on every draft names the model and the endpoint host that served
+it; without them every page says "Recorded run" and replays prose recorded from an open model served on AMD
+(`data/recordings/demo_prose.json`). Each visitor works on a private copy. Hosting without a credit card:
+[`deploy/DEMO_HOSTING.md`](../deploy/DEMO_HOSTING.md).
+
+```bash
+uv run streamlit run deploy/demo/app.py                    # recorded run, or live when the endpoint is set
+uv run python scripts/make_space.py --check                # the Hugging Face Space folder: sources and a key scan
+```
+
+**The evidence run.** `editions/amd/kickoff/run_all.sh` runs the same twelve stages in whichever way the machine
+allows (`--mode endpoint | notebook | droplet`) and writes one dated bundle, `evidence.json` and `evidence.md`,
+that says where it ran. `fill_pitch.py` then fills the open slots of the pitch from a valid bundle and nothing
+else. Steps: [`RUNBOOK.md`](../editions/amd/RUNBOOK.md).
+
+```bash
+bash editions/amd/kickoff/run_all.sh --mode endpoint --dry-run   # prints every command, runs nothing
+bash editions/amd/kickoff/run_all.sh --rehearsal                 # the whole pipeline on CPU with stub models; never a result
+```
+
+**The evaluation on the endpoint.** `uv run python -m evals.harness --world demo --llm openai-compat` scores
+the golden set with the configured endpoint writing every prose field, behind a rate limiter, 429 retries and a
+per-host response cache ([Eval report format](eval-report.md)).
+
+### One set of settings
+
+Every piece reads the same names. A key is only ever in the shell or in a private file outside the repository.
+
+| Setting | Read by | Meaning |
+|---|---|---|
+| `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL` | the pipeline's prose, the eval harness, the agent, voice-note extraction, the demo container, the kickoff scripts | the OpenAI-compatible endpoint, its bearer token and the served model name |
+| `WAPSI_LLM_JSON_MODE` | prose and extraction | `json_object` by default for any endpoint that is not your own server; `json_schema` for your own vLLM with guided decoding |
+| `WAPSI_LLM_MODELS` | the drafts' prose (the app, the demo, the eval harness), voice intake, the agent, the kickoff model plan | an ordered, comma-separated list to fail over along when a model is withdrawn or answers in garbage (`WAPSI_LLM_FALLBACK_MODELS` is read as the same list). Each draft, voice note and agent run names the model that answered, and the harness report counts prose per model (`prose_by_model`). The kickoff run uses it only with `WAPSI_ALLOW_MODEL_FALLBACK=1`: a measurement is never credited to a model that did not produce it |
+| `WAPSI_LLM_PLATFORM` (or `WAPSI_LLM_ON_AMD=1`) | the draft chip, voice intake, the agent's label | the deployer's statement that an endpoint which is not AMD's own host runs on AMD hardware. Never guessed. The kickoff evidence wants the hardware itself: `WAPSI_ENDPOINT_HARDWARE` |
+| `WAPSI_LLM_RPM`, `WAPSI_LLM_MIN_INTERVAL_S`, `WAPSI_LLM_MAX_CONCURRENCY` | the eval harness, the demo, the kickoff client, the benchmarks | pacing below a shared key's limits |
+| `WAPSI_AGENT_*` | the agent | agent-only overrides (another model or endpoint, tool mode, limits); see `editions/amd/AGENT.md` |
+| `WAPSI_VOICE_BACKEND` | Voice Intake, the agent's intake tool, the AMD API | `auto`, `open` (Whisper plus the endpoint above), `gemini` or `fake` |
+| `WAPSI_ASR_BACKEND`, `WAPSI_ASR_BASE_URL`, `WAPSI_ASR_API_KEY`, `WAPSI_ASR_MODEL`, `WAPSI_ASR_LANGUAGE`, `WAPSI_ASR_DEVICE`, `WAPSI_ASR_ON_AMD` | the speech recogniser | local Whisper or an OpenAI-compatible transcription endpoint; see [Voice intake](voice-intake.md) |
+| `WAPSI_UI_LLM` | the officer app | `fake` (the local default), `auto` (the demo launcher: the live endpoint, else the recorded run) |
+| `WAPSI_DEMO_MODE` | the AMD app and API | `1` = offline stand-ins for the model, the agent's endpoint and the scorer |
+
+Example files: `deploy/demo/.env.example` (the demo container), `editions/amd/kickoff/endpoint.env.example`
+(endpoint mode), `editions/amd/.env.example` (the droplet's compose stack).
 
 ### Status, honestly
 

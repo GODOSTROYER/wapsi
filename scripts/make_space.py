@@ -266,6 +266,7 @@ Next (you run these; nothing was uploaded):
        secret    WAPSI_LLM_API_KEY    your AMD Token Factory key
        variable  WAPSI_LLM_BASE_URL   https://developer.amd.com.cn/radeon/api/v1
        variable  WAPSI_LLM_MODEL      Gemma-4-31B-IT
+       variable  WAPSI_LLM_MODELS     Gemma-4-31B-IT,DeepSeek-V4-Flash   (fail over while one answers in garbage)
      Without them the Space runs in recorded mode and says so.
   4. Judged URL: https://<user>-<space>.hf.space/?page=case-room&case=CASE-31009260000101
 """

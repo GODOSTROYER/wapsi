@@ -101,6 +101,8 @@ accepted, the drafter rejects it if it contains:
 | `citation_token` | `[SOP-9-1]`-style tokens (the template adds citations, not the model) |
 | `untrusted_copy` | a complaint sentence of four or more words, or any run of seven consecutive complaint words, repeated in the answer |
 | `empty` | an empty answer |
+| `not_prose` | an answer that is not language at all: a run of one symbol, an unbroken string of more than sixty characters, mostly symbols, or one that opens with JSON or a code fence. A shared model endpoint returned exactly this with HTTP 200 on 2026-10-14; such an answer is never cached, recorded or shown |
+| `freeze_wording` | a sentence that tells someone to freeze or block an account or funds, to suspend digital banking or to seize an account (the verifier's own wording rule, applied to the prose alone). Negated and comparative mentions pass ("no account is frozen", "a whole-account freeze would have locked ..."). A real model wrote "requests to other banks to freeze the outbound funds" on 2026-10-14 |
 
 If the answer fails, the drafter retries once and tells the model which rules it broke (`max_attempts=2`). A
 model call that raises an error counts as a failed attempt. If the second attempt also fails, the drafter writes

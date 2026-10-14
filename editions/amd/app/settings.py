@@ -7,7 +7,8 @@
 | ``WAPSI_LLM_MODEL`` | ``wapsi-llm`` | served model name (``--served-model-name``) |
 | ``WAPSI_LLM_API_KEY`` | unset | bearer token for vLLM (``VLLM_API_KEY``); read by ``OpenAICompatLLM`` |
 | ``WAPSI_LLM_TIMEOUT_S`` | ``120`` | per-request timeout |
-| ``WAPSI_LLM_JSON_MODE`` | ``json_schema`` | ``json_schema`` or ``json_object`` |
+| ``WAPSI_LLM_MODELS`` | unset | ordered, comma-separated models on the same endpoint the drafting prose fails over along while ``WAPSI_LLM_MODEL`` is withdrawn or answers in garbage (``WAPSI_LLM_FALLBACK_MODELS`` is the same list); every draft names the model that wrote it |
+| ``WAPSI_LLM_JSON_MODE`` | by endpoint | ``json_schema`` or ``json_object``. Unset: ``json_schema`` for a server of this stack (the compose ``llm`` service, a loopback address: vLLM guided decoding), ``json_object`` for any other host (a provider endpoint such as the AMD Token Factory serves no strict JSON schema) |
 | ``WAPSI_VERIFIER_BASE_URL`` | unset | second vLLM (``verifier-llm``) used as an LLM judge; unset = rules only |
 | ``WAPSI_VERIFIER_MODEL`` | ``wapsi-verifier`` | served name of the verifier model |
 | ``WAPSI_VERIFIER_API_KEY`` | ``WAPSI_LLM_API_KEY`` | bearer token for the verifier |
@@ -25,8 +26,25 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 TRUE = {"1", "true", "yes", "on"}
+JSON_MODES = ("json_schema", "json_object")
+
+
+def is_stack_server(base_url: str) -> bool:
+    """True for a model server of this stack: a loopback address, or a bare service name such as the compose
+    file's ``llm`` (vLLM-ROCm next to the app). Any other host is somebody's endpoint (the AMD Token Factory, a
+    vLLM behind a public URL)."""
+    host = (urlsplit(base_url if "://" in base_url else f"//{base_url}").hostname or "").lower()
+    return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "host.docker.internal") or "." not in host
+
+
+def default_json_mode(base_url: str) -> str:
+    """``json_schema`` for a server of this stack (vLLM guided decoding); ``json_object`` for any other host. A
+    provider endpoint (the AMD Token Factory) answers HTTP 400 to a strict JSON schema, and Wapsi validates the
+    answer itself either way."""
+    return "json_schema" if is_stack_server(base_url) else "json_object"
 
 
 def _flag(env: Mapping[str, str], key: str, default: bool = False) -> bool:
@@ -51,6 +69,12 @@ def _int(env: Mapping[str, str], key: str, default: int) -> int:
     return int(_float(env, key, float(default)))
 
 
+def _fallbacks(env: Mapping[str, str], model: str) -> tuple[str, ...]:
+    """The other models of ``WAPSI_LLM_MODELS`` (else ``WAPSI_LLM_FALLBACK_MODELS``), in order."""
+    raw = (env.get("WAPSI_LLM_MODELS") or env.get("WAPSI_LLM_FALLBACK_MODELS") or "").strip()
+    return tuple(dict.fromkeys(m.strip() for m in raw.split(",") if m.strip() and m.strip() != model))
+
+
 @dataclass(frozen=True)
 class AmdSettings:
     demo_mode: bool = False
@@ -58,6 +82,7 @@ class AmdSettings:
     llm_model: str = "wapsi-llm"
     llm_timeout_s: float = 120.0
     llm_json_mode: str = "json_schema"
+    llm_fallback_models: tuple[str, ...] = ()  # WAPSI_LLM_MODELS minus llm_model, in order
     verifier_base_url: str | None = None
     verifier_model: str = "wapsi-verifier"
     verifier_api_key: str | None = None
@@ -74,6 +99,7 @@ class AmdSettings:
             "demo_mode": self.demo_mode,
             "llm_base_url": None if self.demo_mode else self.llm_base_url,
             "llm_model": "fake-llm" if self.demo_mode else self.llm_model,
+            "llm_fallback_models": [] if self.demo_mode else list(self.llm_fallback_models),
             "verifier": None if (self.demo_mode or not self.verifier_base_url) else self.verifier_model,
             "gnn_url": self.gnn_url,
             "world": self.world_path or "showcase (in-memory)",
@@ -83,15 +109,17 @@ class AmdSettings:
 
 def load_settings(env: Mapping[str, str] | None = None) -> AmdSettings:
     env = os.environ if env is None else env
-    json_mode = (env.get("WAPSI_LLM_JSON_MODE") or "json_schema").strip()
-    if json_mode not in ("json_schema", "json_object"):
+    base_url = _opt(env, "WAPSI_LLM_BASE_URL") or AmdSettings.llm_base_url
+    json_mode = (env.get("WAPSI_LLM_JSON_MODE") or "").strip() or default_json_mode(base_url)
+    if json_mode not in JSON_MODES:
         raise ValueError("WAPSI_LLM_JSON_MODE must be json_schema or json_object")
     return AmdSettings(
         demo_mode=_flag(env, "WAPSI_DEMO_MODE"),
-        llm_base_url=_opt(env, "WAPSI_LLM_BASE_URL") or AmdSettings.llm_base_url,
+        llm_base_url=base_url,
         llm_model=_opt(env, "WAPSI_LLM_MODEL") or AmdSettings.llm_model,
         llm_timeout_s=_float(env, "WAPSI_LLM_TIMEOUT_S", AmdSettings.llm_timeout_s),
         llm_json_mode=json_mode,
+        llm_fallback_models=_fallbacks(env, _opt(env, "WAPSI_LLM_MODEL") or AmdSettings.llm_model),
         verifier_base_url=_opt(env, "WAPSI_VERIFIER_BASE_URL"),
         verifier_model=_opt(env, "WAPSI_VERIFIER_MODEL") or AmdSettings.verifier_model,
         verifier_api_key=_opt(env, "WAPSI_VERIFIER_API_KEY") or _opt(env, "WAPSI_LLM_API_KEY"),

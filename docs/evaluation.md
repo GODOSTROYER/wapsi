@@ -24,7 +24,7 @@ EDD, s.106, Process 1 / 2) are explained in the [Glossary](glossary.md).
 | Hallucination stress test (demo world) | a stub LLM that writes a wrong rupee amount into every prose field | 27.57% of drafts had their prose rejected and replaced by fixed text; drafts passing verification still 1.0; holds still exact | `evals/reports/baseline/demo-fake-hallucinate.json` |
 | Prompt-injection guard, blind holdout | 151 texts written by a separate agent that never saw the rules | precision 0.9661, recall 0.75, false-positive rate 0.0267 | `evals/reports/guard-latest.json` |
 | Audit-log tamper drill | the showcase case's 40-event hash-chained log | 6 of 6 tampering attempts detected, plus an edit inside the store | `uv run python -m wapsi.audit drill` |
-| Test suite | `tests/` | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | `uv run pytest -q` |
+| Test suite | `tests/` | 2,212 tests pass, 0 fail (full suite, 14-10-2026) | `uv run pytest -q` |
 
 Two things stand out. **Hold amounts were exact in every world**, including the hard world built to break the
 classifier. **Every error that remains is a label, never money**: an innocent holder taken for a mule or the
@@ -502,21 +502,23 @@ same demo-world check (3 of 3 adversarial, 0 of 40 benign flagged).
 
 ## Test suite
 
-The full suite passed with 0 failures on 07-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`), after the voice-intake,
-agent-trace and Firestore audit-seal work was merged: 1,765 tests in 3 min 36 s. By area:
+The full suite passed with 0 failures on 14-10-2026 (`pitch/NUMBERS.md`, row `cmd_tests`), after the five
+event-week branches were merged (the AMD kickoff pipeline, the public demo, open-model voice intake, the ADK agent
+on an OpenAI-compatible endpoint, the docs and pitch): 2,212 tests. At the pre-event baseline (07-10-2026) it was
+1,765. By area:
 
 | Area | Tests | Area | Tests |
 |---|---:|---|---:|
 | `tests/verify` | 381 | `tests/domain` | 88 |
-| `tests/graph` | 288 | `tests/intake` (voice intake) | 49 |
-| `tests/ui` | 176 | `tests/synth` | 49 |
-| `tests/draft` | 124 | `tests/audit` | 42 |
-| `tests/classify` | 110 | `tests/pipeline` | 35 |
-| `tests/search` | 98 | files directly in `tests/` (including `test_sop_annexure_v.py` and `test_agenttrace.py`) | 23 |
-| `tests/gcp` (edition) | 178 | `tests/pitch` | 11 |
-| `tests/amd` (edition) | 113 | | |
+| `tests/graph` | 288 | `tests/synth` | 49 |
+| `tests/ui` | 193 | `tests/audit` | 42 |
+| `tests/draft` | 149 | `tests/pipeline` | 35 |
+| `tests/intake` (voice intake) | 131 | `tests/pitch` | 24 |
+| `tests/classify` | 110 | `tests/demo` (public demo) | 24 |
+| `tests/search` | 104 | `tests/` root (`test_contracts.py`, `test_sop_annexure_v.py`, `test_agenttrace.py`, `test_env_names_agree.py`, `test_llm_failover.py`, ...) | 85 |
+| `tests/amd` (the AMD layer, the agent on an endpoint, the kickoff pipeline) | 276 | `tests/gcp` (ADK agent app, managed-cloud adapters) | 233 |
 
-The core suite with the light install (everything except `tests/gcp` and `tests/amd`) is 1,474 tests. The voice
+The core suite (everything except `tests/gcp` and `tests/amd`) is 1,703 tests. The voice
 intake tests run every bundled sample through the offline model on both ledgers they retell (the showcase ledger
 and the demo world) and check each sample's expected matches, statuses and injection flag; the agent-trace tests
 cover the recorder, redaction, summaries, size bounding and the audit round trip; `tests/gcp` adds the ADK voice

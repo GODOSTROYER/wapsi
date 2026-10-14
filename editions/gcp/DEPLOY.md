@@ -1,4 +1,4 @@
-# Deploy Wapsi to Cloud Run with one command (AI Builder Cup)
+# Deploy Wapsi to Cloud Run with one command
 
 From a Google Cloud project id to a warm, public, seeded demo in `asia-south1`, with one command. The judged URL
 opens on the showcase case with no login. Gemini writes the prose through the Gemini API free tier, and the
@@ -17,7 +17,7 @@ numbers still come from data. Everything runs on a free trial. All data is synth
    ```
 2. **Free trial, project and billing** (console, once):
    - Start the [free trial](https://console.cloud.google.com/freetrial) ($300 credit).
-   - Create a project, for example `wapsi-aibc-1234`.
+   - Create a project, for example `wapsi-demo-1234`.
    - Link the free-trial billing account to the project. You can do this in the console, or with
      `gcloud billing accounts list` and then
      `gcloud billing projects link <PROJECT_ID> --billing-account=<ACCOUNT_ID>`.

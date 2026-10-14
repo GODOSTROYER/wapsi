@@ -69,6 +69,7 @@ name (the committed `showcase.json` and `demo.json` were written that way). Opti
                           "paid_tier_equivalent": 0.0, "saved_by_cache_paid_equivalent": 0.0,
                           "price_per_1m_tokens": {"input": 0.3, "output": 2.5}, "basis": "assumed list price ..."}
   },
+  "prose_by_model": {"Gemma-4-31B-IT on AMD @ developer.amd.com.cn": 83},   // drafts whose prose a model wrote, by the model that wrote it
   "ab_test": {                               // real models only: the same model with and without Wapsi's slot binding
     "llm_only": {"cases": 39, "summaries_with_wrong_amounts": 0, "hallucination_rate": 0.0},
     "wapsi_bound": {"drafts": 300, "drafts_with_numeric_errors": 0, "hallucination_rate": 0.0},
@@ -88,7 +89,11 @@ the same endpoint). Retries honour the server's `Retry-After`, and the cache is 
 the endpoint prices its own answers (`usage.cost`), `cost_estimate_usd.this_run` is that figure and
 `paid_tier_equivalent` is `null`; otherwise the cost block is n/a for a self-served model. An evaluation scores the
 model as it answers: degenerate output is rejected by the prose validator and shows up in
-`llm_prose_fallback_rate`. Label every number from such a run with the endpoint that served it and the date, and
+`llm_prose_fallback_rate`. With `WAPSI_LLM_MODELS` set (and no model named in `--llm`), the run fails over to the
+next model of the list while one answers in garbage or is withdrawn: `config.llm` then names the list, the `llm`
+block adds `answers_by_model`, `rejected_by_model`, `errors_by_model`, `failovers` and one report per model
+(`members`), and `prose_by_model` says which model wrote each draft's prose. A figure is credited to a model only
+for the drafts it wrote. Label every number from such a run with the endpoint that served it and the date, and
 never present it as a benchmark of hardware it was not measured on.
 
 The `classification` and `by_scorer` examples above are the values in the committed `evals/reports/hard.json`.

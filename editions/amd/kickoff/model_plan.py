@@ -15,7 +15,8 @@ Two roles, both set by environment variables, nothing hard-wired:
   ``WAPSI_VERIFIER_MODEL_ID`` (Hugging Face id) overrides it; ``WAPSI_JUDGE_MODEL=none`` switches the judge off.
 
 Fallback lists (first one the platform can run wins; ``WAPSI_LLM_FALLBACK_MODELS`` / ``WAPSI_JUDGE_FALLBACK_MODELS``
-replace them with a comma list):
+replace them with a comma list; ``WAPSI_LLM_MODELS``, the ordered list voice intake and the agent fail over along,
+is read for the drafting list when ``WAPSI_LLM_FALLBACK_MODELS`` is not set):
 
 | Platform | Drafting, in order | Judge, in order |
 |---|---|---|
@@ -115,7 +116,9 @@ def plan_endpoint(served: Sequence[str] | None, env: Mapping[str, str] | None = 
     """Models for endpoint mode. ``served``: ids from ``GET /models`` (``None`` = not probed: nothing is checked)."""
     env = os.environ if env is None else env
     warnings: list[str] = []
-    drafts = _split(env.get("WAPSI_LLM_FALLBACK_MODELS")) or list(ENDPOINT_DRAFT)
+    # WAPSI_LLM_MODELS is the same ordered list as voice intake and the agent read (one list for every surface)
+    drafts = (_split(env.get("WAPSI_LLM_FALLBACK_MODELS")) or _split(env.get("WAPSI_LLM_MODELS"))
+              or list(ENDPOINT_DRAFT))
     explicit = (env.get("WAPSI_LLM_MODEL") or "").strip()
     allow = (env.get("WAPSI_ALLOW_MODEL_FALLBACK") or "").strip() == "1"
     first_served = None if served is None else next((m for c in drafts if (m := _match(c, served))), None)

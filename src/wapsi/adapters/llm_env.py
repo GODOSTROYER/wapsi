@@ -10,7 +10,8 @@ Three variables point every LLM-side call at one endpoint:
 | ``WAPSI_LLM_JSON_MODE`` | ``json_object`` (default: the Token Factory has no strict ``json_schema`` mode), ``json_schema`` or ``none`` (send no ``response_format``; the prompt asks for JSON) |
 | ``WAPSI_LLM_EXTRA_BODY`` | a JSON object merged into every request, e.g. ``{"reasoning_effort": "low"}`` for a thinking model |
 | ``WAPSI_LLM_TIMEOUT_S`` | per-request timeout (default 60) |
-| ``WAPSI_LLM_PLATFORM`` | where the endpoint's GPUs are, as the deployer states it (e.g. ``AMD`` for a vLLM server on AMD Developer Cloud). Inferred as ``AMD`` for ``*.amd.com`` / ``*.amd.com.cn`` hosts; never guessed otherwise |
+| ``WAPSI_LLM_PLATFORM`` | where the endpoint's GPUs are, as the deployer states it (e.g. ``AMD`` for a vLLM server on AMD Developer Cloud). Inferred as ``AMD`` for ``*.amd.com`` / ``*.amd.com.cn`` hosts; never guessed otherwise. ``WAPSI_LLM_ON_AMD=1`` (the switch voice intake and the AMD compose file use) states the same thing and reads as ``AMD`` here |
+| ``WAPSI_LLM_MODELS`` | ordered, comma-separated models on the same endpoint to fail over along while ``WAPSI_LLM_MODEL`` is withdrawn or answers in garbage (``chain_models``; ``WAPSI_LLM_FALLBACK_MODELS`` is the same list). Unset: no substitute, a failed answer becomes the fixed paragraph |
 
 The endpoint counts as configured when the base URL and the model are set.
 
@@ -25,7 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,9 @@ JSON_MODE_ENV = "WAPSI_LLM_JSON_MODE"
 TIMEOUT_ENV = "WAPSI_LLM_TIMEOUT_S"
 EXTRA_BODY_ENV = "WAPSI_LLM_EXTRA_BODY"
 PLATFORM_ENV = "WAPSI_LLM_PLATFORM"
+ON_AMD_ENV = "WAPSI_LLM_ON_AMD"
+MODELS_ENV = "WAPSI_LLM_MODELS"  # the ordered failover list (voice intake, the agent and the kickoff plan read it)
+FALLBACK_MODELS_ENV = "WAPSI_LLM_FALLBACK_MODELS"  # the kickoff model plan's spelling of the same list
 ENDPOINT_ENVS = (BASE_URL_ENV, API_KEY_ENV, MODEL_ENV)
 DEFAULT_JSON_MODE = "json_object"
 DEFAULT_TIMEOUT_S = 60.0
@@ -55,6 +59,24 @@ SETUP_MESSAGE = (
 
 class EndpointNotConfigured(ValueError):
     """``WAPSI_LLM_BASE_URL`` / ``WAPSI_LLM_MODEL`` are not set."""
+
+
+def declared_platform(env: Mapping[str, str] | None = None) -> str | None:
+    """Where the deployer says the endpoint's GPUs are: ``WAPSI_LLM_PLATFORM`` (a label), else ``AMD`` when
+    ``WAPSI_LLM_ON_AMD`` is switched on, else ``None``. One statement, two spellings: every surface (draft chip,
+    voice intake, the agent's label) reads it through here, so they cannot disagree."""
+    env = os.environ if env is None else env
+    label = (env.get(PLATFORM_ENV) or "").strip()
+    if label:
+        return label
+    return "AMD" if (env.get(ON_AMD_ENV) or "").strip().lower() in ("1", "true", "yes", "on") else None
+
+
+def on_amd(base_url: str | None, env: Mapping[str, str] | None = None) -> bool:
+    """True when the endpoint is known to run on AMD hardware: AMD's own host (the Token Factory), or the
+    deployer's statement (``declared_platform``) names AMD. Never guessed from anything else."""
+    host = endpoint_host(base_url) if base_url else None
+    return "amd" in (platform_for(host, declared_platform(env)) or "").lower()
 
 
 def platform_for(host: str | None, declared: str | None = None) -> str | None:
@@ -136,8 +158,19 @@ def endpoint_config(env: Mapping[str, str] | None = None) -> EndpointConfig:
     base_url = opt(BASE_URL_ENV)
     host = endpoint_host(base_url) if base_url else None
     return EndpointConfig(base_url=base_url, model=opt(MODEL_ENV), has_key=bool(opt(API_KEY_ENV)),
-                          json_mode=json_mode, timeout_s=timeout, platform=platform_for(host, opt(PLATFORM_ENV)),
+                          json_mode=json_mode, timeout_s=timeout, platform=platform_for(host, declared_platform(env)),
                           extra_body=extra)
+
+
+def chain_models(cfg: EndpointConfig | None = None, env: Mapping[str, str] | None = None) -> list[str]:
+    """The models to fail over along, in order: ``WAPSI_LLM_MODEL`` first, then the others of ``WAPSI_LLM_MODELS``
+    (else ``WAPSI_LLM_FALLBACK_MODELS``). Only the configured model when no list is set: a named model is never
+    swapped for another unless the deployer lists the substitutes, and every draft names the model that wrote it."""
+    env = os.environ if env is None else env
+    cfg = cfg or endpoint_config(env)
+    raw = (env.get(MODELS_ENV) or env.get(FALLBACK_MODELS_ENV) or "").strip()
+    names = ([cfg.model] if cfg.model else []) + [n.strip() for n in raw.split(",") if n.strip()]
+    return list(dict.fromkeys(names))
 
 
 def make_endpoint_llm(cfg: EndpointConfig | None = None, *, env: Mapping[str, str] | None = None,
@@ -159,17 +192,38 @@ def make_endpoint_llm(cfg: EndpointConfig | None = None, *, env: Mapping[str, st
 
 def resilient_endpoint_llm(cfg: EndpointConfig | None = None, *, env: Mapping[str, str] | None = None,
                            cache_dir: str | Path | None = None, rpm: int | None = None, rpd: int | None = 0,
-                           inner: Any | None = None, **kwargs: Any):
+                           inner: Any | None = None, failover: bool = False,
+                           make_inner: Callable[[EndpointConfig], Any] | None = None, **kwargs: Any):
     """The configured endpoint behind ``ResilientLLM``: prompt-hash cache (kept apart per endpoint host), RPM
     limiting, 429 / 503 retries that honour ``Retry-After``, token and cost accounting. ``rpd=0``: the endpoint
-    enforces its own daily cap. ``inner`` replaces the adapter (tests); ``kwargs`` go to ``ResilientLLM``."""
+    enforces its own daily cap. ``inner`` replaces the adapter (tests); ``kwargs`` go to ``ResilientLLM``.
+
+    ``failover=True`` with a model list (``chain_models``: ``WAPSI_LLM_MODELS``): one ``ResilientLLM`` per model, all
+    sharing one rate limiter (the endpoint's limit is per account), behind ``wapsi.adapters.llm_failover.FailoverLLM``:
+    a model that answers in garbage or is withdrawn is skipped for a while and the next one answers. ``make_inner``
+    builds the adapter of each further model (tests); default ``make_endpoint_llm``."""
+    from dataclasses import replace
+
     from wapsi.adapters.llm_resilience import ResilientLLM
 
     cfg = cfg or endpoint_config(env)
     inner = inner if inner is not None else make_endpoint_llm(cfg, env=env)
     kwargs.setdefault("name", cfg.served_name)
-    return ResilientLLM(inner, model_id=cfg.model, backend=BACKEND, rpm=rpm, rpd=rpd, cache_dir=cache_dir,
-                        cache_namespace=cfg.host, **kwargs)
+    first = ResilientLLM(inner, model_id=cfg.model, backend=BACKEND, rpm=rpm, rpd=rpd, cache_dir=cache_dir,
+                         cache_namespace=cfg.host, **kwargs)
+    models = chain_models(cfg, env) if failover else [cfg.model]
+    if len(models) <= 1:
+        return first
+    from wapsi.adapters.llm_failover import FailoverLLM
+
+    members = [first]
+    for model in models[1:]:
+        other = replace(cfg, model=model)
+        adapter = make_inner(other) if make_inner is not None else make_endpoint_llm(other, env=env)
+        members.append(ResilientLLM(adapter, model_id=model, backend=BACKEND, rpm=rpm, rpd=rpd, cache_dir=cache_dir,
+                                    cache_namespace=cfg.host,
+                                    **{**kwargs, "name": other.served_name, "limiter": first.limiter}))
+    return FailoverLLM(members)
 
 
 # --------------------------------------------------------------------------- who wrote the prose

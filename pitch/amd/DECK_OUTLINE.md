@@ -158,8 +158,12 @@ every agent tool call comes from an open model served on AMD GPUs.
 - **Agent trace:** every tool call is recorded with its guard and verifier verdicts, redacted and sealed into the
   case's audit log. In the recorded offline run: 5 tool calls behind "Open case 31009260000101", Verifier · 17/17
   passed, Reply grounding · 23/23 values traced to tools; an analyst's attempt to approve is refused.
-- **Live on AMD:** TBD(adk_tool_calls) tool calls and reply grounding TBD(adk_grounding) with Gemma 4 driving
-  the same agent.
+- **Live on AMD (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14):** 5 tool calls behind "Open case
+  31009260000101", Gemma 4 driving the same agent through native tool calls; the run ended with 16 of 16 drafts
+  verified. Reply grounding of a live run: TBD(adk_grounding).
+- **Voice-note fields, live on AMD:** Gemma 4 answered for all 6 sample transcripts in a median of 7.5 s per
+  note, and 98.3% of the extracted values agree with the expected answers (the samples' scripts stood in for the
+  recogniser; a smoke run on synthetic notes).
 
 ## 10. Why a bank can trust it
 

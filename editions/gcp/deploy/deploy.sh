@@ -373,13 +373,13 @@ step_deploy() {
   run_masked "${f}" "<env.yaml>" gcloud run deploy "${API}" "--image=${IMAGE}" "--region=${REGION}" \
     "--service-account=${API_SA}" "--env-vars-file=${f}" "--set-secrets=${secrets}" \
     "--min-instances=${MIN_INSTANCES}" --max-instances=1 --cpu=2 --memory=2Gi --concurrency=20 --timeout=300 \
-    --cpu-boost --execution-environment=gen2 --labels=app=wapsi,component=api,event=aibc "${auth_api}" "${G[@]}"
+    --cpu-boost --execution-environment=gen2 --labels=app=wapsi,component=api,edition=gcp "${auth_api}" "${G[@]}"
   # UI: the case room judges open (Streamlit on the same Firestore case store)
   run_masked "${f}" "<env.yaml>" gcloud run deploy "${UI}" "--image=${IMAGE}" "--region=${REGION}" \
     "--service-account=${UI_SA}" "--env-vars-file=${f}" "--set-secrets=${secrets}" --command=streamlit \
     "--args=run,editions/gcp/ui_app.py,--server.port=8080,--server.address=0.0.0.0,--server.headless=true" \
     "--min-instances=${MIN_INSTANCES}" --max-instances=2 --cpu=1 --memory=2Gi --concurrency=40 --timeout=3600 \
-    --session-affinity --cpu-boost --labels=app=wapsi,component=ui,event=aibc --allow-unauthenticated "${G[@]}"
+    --session-affinity --cpu-boost --labels=app=wapsi,component=ui,edition=gcp --allow-unauthenticated "${G[@]}"
   rm -f "${f}"
   service_urls
 }
@@ -445,7 +445,7 @@ elif [[ -s "${LAST_IMAGE_FILE}" && "$(head -n 1 "${LAST_IMAGE_FILE}")" == "${IMA
 else
   die "the build step is skipped and no image was built from here before: pass --tag <tag of an existing image>"
 fi
-say "Wapsi one-command deploy (Google Cloud, AI Builder Cup)"
+say "Wapsi one-command deploy (Google Cloud)"
 say "  project   ${PROJECT_ID}"
 say "  region    ${REGION}"
 say "  gemini    ${GEMINI_BACKEND}, model ${MODEL}"

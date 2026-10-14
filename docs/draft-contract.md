@@ -125,8 +125,11 @@ full-width `０-９`, ...), full-width ASCII, dashes and non-ASCII spaces to ASC
     (`accounts`, `layers`, `victims`, `days`, `hours`, `minutes`, `transfers`, `complaints`, `transactions`, …;
     `wapsi.money.COUNT_NOUNS`). Hinglish words that are also English words or names (`do`, `das`, `teen`,
     `char`, …) count only inside a longer number or next to a currency word (`number_words`);
-  - money mentions, account numbers and UTRs (any spelling) that do not match an offered placeholder value.
-  The verifier's money check applies to whatever gets through.
+  - money mentions, account numbers and UTRs (any spelling) that do not match an offered placeholder value;
+  - an answer that is not language at all (`not_prose`), and a sentence that instructs a whole-account or debit
+    freeze, a block, the suspension of digital banking or a seizure (`freeze_wording`: the verifier's policy
+    wording rule, applied to the prose before it is accepted).
+  The verifier's money and policy checks apply to whatever gets through.
 
 ## Draft kinds per decision
 | Decision / condition | Drafts |

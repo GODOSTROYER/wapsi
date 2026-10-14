@@ -35,8 +35,9 @@ caches good responses on disk so a repeat costs nothing. It sends synthetic data
 
 Every reply is checked for being language at all. If the health probe or any later reply is truncated or
 degenerate, the run exits with status 3 and writes nothing (`--keep-unhealthy` writes a file whose name ends in
-`-UNHEALTHY.json` and whose label says not to cite it). This matters because Wapsi's verifier checks numbers,
-citations and policy, not prose quality: without the gate, a run on a degraded endpoint could look like a pass.
+`-UNHEALTHY.json` and whose label says not to cite it). This matters because a degenerate answer is replaced by
+the fixed paragraph inside the pipeline (the prose validator's `not_prose` check): without the gate, a run on a
+degraded endpoint would look like a pass while measuring the fallback text, not the model.
 
 **Status on 2026-10-14:** no results file is committed yet. The runs made that day met a degraded Gemma 4 model
 on the shared endpoint and recorded nothing, as designed. The figures this run produces are open slots in

@@ -1,4 +1,4 @@
-"""Fill the measured-number slots (TBD) of the AMD pitch from an evidence bundle (standard library only).
+"""Fill the open AMD measurement slots of the pitch from an evidence bundle (standard library only).
 
     python3 editions/amd/kickoff/fill_pitch.py --evidence editions/amd/evidence/endpoint/2026-10-14/evidence.json  # diff
     python3 editions/amd/kickoff/fill_pitch.py --evidence editions/amd/evidence/2026-10-15/evidence.json --write
@@ -7,19 +7,25 @@
 Default is a dry run: it prints a unified diff of the pitch files and ``pitch/NUMBERS.md`` and changes nothing.
 ``--write`` applies it.
 
-- A slot is a place in the pitch. It is found either by the literal text around it (``before`` / ``placeholder`` /
-  ``after`` in ``SLOTS``: the benchmark and A/B tables of ``pitch/amd/DECK_OUTLINE.md`` and
-  ``pitch/amd/VIDEO_SCRIPT.md``) or by a bare marker ``<!-- slot:ID -->TBD<!-- /slot -->`` that the author puts
-  anywhere in a ``pitch/**/*.md`` file. A filled value stays wrapped in the marker, so a later run with newer
-  evidence replaces it in place. Endpoint-run slots (``ep_*``) exist only as markers: place the ones you want.
+- A slot is a figure the pitch wants and does not have yet. The pitch writes it ``TBD(slot_id)`` (anywhere in a
+  ``pitch/**/*.md`` file, as often as it is needed) and lists the id in the "AMD measurement slots" table of
+  ``pitch/NUMBERS.md``; ``pitch/check_numbers.py`` fails on a bare TBD and on an id that is not listed. This script
+  does the rest of that page's "Filling an AMD measurement slot" steps: it replaces every ``TBD(slot_id)`` it has
+  a measured value for with ``<!-- slot:slot_id -->value<!-- /slot -->`` (the marker stays, so a later run with
+  newer evidence replaces the value in place), adds the rows that back the value to a generated section of
+  ``NUMBERS.md``, and deletes the slot's row from the open-slots table once no ``TBD(slot_id)`` is left.
+- ``SLOTS`` are the ids the pitch uses today. ``EXTRA_SLOTS`` are further figures a bundle carries (TTFT, cost per
+  case, the LoRA comparison, the endpoint's request latency ...): to use one, add its row to the open-slots table
+  and write ``TBD(id)`` where the number belongs. Slots that no bundle can fill (the agent run, the voice run, the
+  Evolus blocks, a harness report) stay with their own results files and are filled by hand.
 - Every value comes from ``evidence.json`` ``headline`` (built by ``collect_evidence.py`` from the run's result
-  files). For each number it writes a row in a generated ``NUMBERS.md`` section whose locator re-reads that field in
-  the bundle named in the row's Source, so ``pitch/check_numbers.py`` keeps verifying the pitch against the evidence.
-  A value the run did not measure keeps its TBD, or the value an earlier bundle filled.
+  files). For each number it writes a row in the generated ``NUMBERS.md`` section whose locator re-reads that field
+  in the bundle named in the row's Source, so ``pitch/check_numbers.py`` keeps verifying the pitch against the
+  evidence. A value the run did not measure keeps its TBD, or the value an earlier bundle filled.
 - The words follow the run. ``{where}`` in a slot is the bundle's ``compute.short``: ``MI300X`` for a droplet run,
-  ``AMD Token Factory (<model> on AMD GPUs)`` for an endpoint run, the named GPU for a notebook. A slot whose
-  surrounding text says "MI300X" is filled only from a bundle whose GPU is an MI300X, and one whose text says
-  "Gemma" only when the drafting model is a Gemma model; anything else is reported as skipped, never worded wrong.
+  ``AMD Token Factory (<model> on AMD GPUs)`` for an endpoint run, the named GPU for a notebook. A slot the pitch
+  words as an MI300X figure is filled only from a bundle whose GPU is an MI300X, and one it words as a Gemma 4
+  figure only when the drafting model is a Gemma model; anything else is reported as skipped, never worded wrong.
 - Several bundles (later-week re-runs, an endpoint run and a droplet run): the generated rows are merged, not
   regenerated. A newer bundle replaces the rows of the values it measured; the rows of slots it did not refill stay,
   with their own Source. When an older value of a key is still shown in a slot the newer bundle could not refill,
@@ -112,200 +118,187 @@ COUNT = Fmt(lambda v: f"{int(v):,}", lambda v: f"{int(v)}")
 
 @dataclass(frozen=True)
 class Slot:
-    sid: str
-    file: str  # relative to the pitch folder; "" = marker-only: any pitch/**/*.md that carries the marker
-    before: str
-    placeholder: str
-    after: str
+    sid: str  # the id the pitch writes as TBD(sid) and lists in the open-slots table of NUMBERS.md
     keys: tuple[tuple[str, Fmt, str], ...]  # (headline key, format, what it is: used in NUMBERS.md 'Pitched as')
     template: str  # str.format over k0, k1, ... (formatted texts), {date} and {where}
     date_keys: tuple[str, ...] = ()  # date-only slots: {date} = the dates of the bundles these keys' values come from
     modes: tuple[str, ...] = OWN_GPU  # the kinds of run whose bundle may fill it
-    mi300x: bool = False  # the text around it says "MI300X": only a bundle whose GPU is an MI300X fills it
-    gemma: bool = False  # the text around it says "Gemma": only a bundle whose drafting model is a Gemma model
+    mi300x: bool = False  # the pitch words it as an MI300X figure: only a bundle whose GPU is an MI300X fills it
+    gemma: bool = False  # the pitch words it as a Gemma 4 figure: only a bundle whose drafting model is a Gemma model
     shows: str = ""  # what the slot shows (--slots)
-
-    @property
-    def marker_only(self) -> bool:
-        return not self.file
 
 
 def _k(key: str, fmt: Fmt, what: str) -> tuple[str, Fmt, str]:
     return (key, fmt, what)
 
 
-DECK, VIDEO = "amd/DECK_OUTLINE.md", "amd/VIDEO_SCRIPT.md"
-SLIDE7_KEYS = ("llm_tok_s_c1", "llm_tok_s_c4", "llm_tok_s_c16", "llm_tok_s_c64", "llm_ttft_p50_s_c16",
-               "llm_ttft_p95_s_c16", "verifier_tok_s_c1", "verifier_tok_s_c4", "verifier_tok_s_c16",
-               "e2e_cases_per_hour_c1", "e2e_cases_per_hour_c8", "e2e_cases_per_hour_c16", "e2e_best_usd_per_case",
-               "e2e_best_inr_per_case", "vram_llm_gb", "vram_verifier_gb", "vram_gnn_gb", "gnn_epoch_s", "gnn_val_auc",
-               "lora_base_prose_verifier_pass_rate", "lora_tuned_prose_verifier_pass_rate", "lora_base_fallback_rate",
-               "lora_tuned_fallback_rate")
-AB_KEYS = ("ab_raw_docs", "ab_raw_docs_with_wrong_amount", "ab_bound_str_docs", "ab_bound_str_docs_with_wrong_amount")
-VIDEO_BENCH_KEYS = ("llm_tok_s_c16", "llm_ttft_p95_s_c16", "e2e_best_cases_per_hour", "e2e_best_usd_per_case")
+GPU_KEYS = ("llm_tok_s_c1", "llm_tok_s_c4", "llm_tok_s_c16", "llm_tok_s_c64", "llm_ttft_p50_s_c16",
+            "llm_ttft_p95_s_c16", "verifier_tok_s_c1", "verifier_tok_s_c4", "verifier_tok_s_c16",
+            "e2e_cases_per_hour_c1", "e2e_cases_per_hour_c8", "e2e_cases_per_hour_c16", "e2e_best_cases_per_hour",
+            "e2e_best_usd_per_case", "e2e_best_inr_per_case", "vram_llm_gb", "vram_verifier_gb", "vram_gnn_gb",
+            "gnn_epoch_s", "gnn_val_auc", "gnn_hard_mule_auc", "lora_base_prose_verifier_pass_rate",
+            "lora_tuned_prose_verifier_pass_rate", "lora_base_fallback_rate", "lora_tuned_fallback_rate")
 EP_KEYS = ("llm_tok_s_c1", "llm_e2e_p50_s_c1", "wapsi_prompts_e2e_p50_s_c1", "e2e_best_cases_per_hour",
            "e2e_best_drafts_per_hour", "e2e_best_api_usd_per_case", "e2e_best_llm_seconds_per_case_p50",
-           "golden_cases", "golden_draft_numeric_accuracy", "golden_false_freeze_count",
-           "golden_llm_only_hallucination_rate", "ab_raw_docs")
-M = {"mi300x": True}  # slide 7 and the "Measured on this MI300X" narration: MI300X droplet numbers only
+           "golden_cases", "golden_draft_numeric_accuracy", "golden_draft_verification_pass_rate",
+           "golden_false_freeze_count", "golden_llm_only_hallucination_rate", "ab_raw_docs")
+TF = {"modes": ("endpoint",), "gemma": True}  # "Measured with Gemma 4 on AMD (Token Factory)": an endpoint run of Gemma
+M = {"mi300x": True}  # "Measured on the droplet": MI300X numbers only
+EP = {"modes": ("endpoint",)}
+
+# The ids of pitch/NUMBERS.md "AMD measurement slots" that an evidence bundle can fill. The sentence around each
+# TBD(id) is the pitch's; the value is written so that it reads inside that sentence.
 SLOTS: tuple[Slot, ...] = (
-    Slot("deck_slide7_heading", DECK, "## 7. Benchmarks on MI300X ", "(all TBD, 12 to 18 Oct)", "\n", (),
-         "(measured {date}, AMD Developer Cloud)", SLIDE7_KEYS, **M),
-    Slot("deck_llm_tps", DECK, "| Drafting model throughput, tokens/s at concurrency 1 / 4 / 16 / 64 | ", "**TBD**",
-         " |", (_k("llm_tok_s_c1", TOK, "drafting model output tokens/s at concurrency 1"),
-                _k("llm_tok_s_c4", TOK, "drafting model output tokens/s at concurrency 4"),
-                _k("llm_tok_s_c16", TOK, "drafting model output tokens/s at concurrency 16"),
-                _k("llm_tok_s_c64", TOK, "drafting model output tokens/s at concurrency 64")),
-         "**{k0} / {k1} / {k2} / {k3}**", **M),
-    Slot("deck_ttft", DECK, "| Time to first token p50 / p95 at concurrency 16 | ", "**TBD**", " |",
-         (_k("llm_ttft_p50_s_c16", SEC, "TTFT p50 at concurrency 16"),
-          _k("llm_ttft_p95_s_c16", SEC, "TTFT p95 at concurrency 16")), "**{k0} / {k1}**", **M),
-    Slot("deck_verifier_tps", DECK, "| Verifier throughput, tokens/s at concurrency 1 / 4 / 16 | ", "**TBD**", " |",
-         (_k("verifier_tok_s_c1", TOK, "verifier output tokens/s at concurrency 1"),
-          _k("verifier_tok_s_c4", TOK, "verifier output tokens/s at concurrency 4"),
-          _k("verifier_tok_s_c16", TOK, "verifier output tokens/s at concurrency 16")), "**{k0} / {k1} / {k2}**", **M),
-    Slot("deck_cases_hour", DECK, "| End-to-end cases per hour, demo world, concurrency 1 / 8 / 16 | ", "**TBD**", " |",
-         (_k("e2e_cases_per_hour_c1", TOK, "cases per hour at concurrency 1"),
-          _k("e2e_cases_per_hour_c8", TOK, "cases per hour at concurrency 8"),
-          _k("e2e_cases_per_hour_c16", TOK, "cases per hour at concurrency 16")), "**{k0} / {k1} / {k2}**", **M),
-    Slot("deck_cost", DECK, "| Cost per case at $1.99 per GPU-hour (and ₹ at the day's rate) | ", "**TBD**", " |",
-         (_k("e2e_best_usd_per_case", USD, "cost per case at $1.99 per GPU-hour (best concurrency)"),
-          _k("e2e_best_inr_per_case", INR, "cost per case in rupees at the day's rate (best concurrency)")),
-         "**{k0} ({k1})**", **M),
-    Slot("deck_vram", DECK, "| VRAM per container (llm, verifier, gnn) | ", "**TBD**", " |",
-         (_k("vram_llm_gb", GB, "peak VRAM of the drafting model container"),
-          _k("vram_verifier_gb", GB, "peak VRAM of the verifier container"),
-          _k("vram_gnn_gb", GB, "peak VRAM of the GNN container")), "**{k0} / {k1} / {k2}**", **M),
-    Slot("deck_gnn", DECK, "| GNN training on MI300X: time per epoch, validation AUC | ", "**TBD**", " |",
-         (_k("gnn_epoch_s", SEC, "GNN seconds per epoch on MI300X"), _k("gnn_val_auc", RATE, "GNN validation AUC")),
-         "**{k0}, AUC {k1}**", **M),
-    Slot("deck_lora", DECK, "| LoRA: base vs tuned, verifier pass rate and prose fallback rate | ", "**TBD**", " |",
-         (_k("lora_base_prose_verifier_pass_rate", RATE, "verifier pass rate, base model"),
-          _k("lora_tuned_prose_verifier_pass_rate", RATE, "verifier pass rate, tuned model"),
-          _k("lora_base_fallback_rate", RATE, "prose fallback rate, base model"),
-          _k("lora_tuned_fallback_rate", RATE, "prose fallback rate, tuned model")),
-         "**pass {k0} → {k1}, fallback {k2} → {k3}**", **M),
-    Slot("deck_slide5_vram", DECK, 'replaces the "Memory" column: ', "**[TBD Oct 12 to 18]**", ".",
-         (_k("vram_llm_gb", GB, "peak VRAM of the drafting model container"),
-          _k("vram_verifier_gb", GB, "peak VRAM of the verifier container"),
-          _k("vram_gnn_gb", GB, "peak VRAM of the GNN container"),
-          _k("vram_peak_gb", GB, "peak VRAM of the whole device")),
-         "**llm {k0}, verifier {k1}, gnn {k2}; device peak {k3} (amd-smi, {date})**", **M),
-    # A/B, like with like: the raw arm writes one STR per case, so the bound column counts the bound arm's STRs
-    # (ab_bound_str_*); every bound draft (~10 per case) is given alongside, never instead. Any run of the Gemma
-    # drafting model may fill these (the table says "Gemma"); {where} names where it was measured.
-    Slot("deck_ab_heading", DECK, "**Slot 1, drafting ", "(TBD on MI300X)", ":**", (), "(measured on {where}, {date})",
-         AB_KEYS, modes=ANY_RUN, gemma=True),
-    Slot("deck_ab_wrong", DECK, "| Drafts with a wrong amount | ", "**TBD** | **TBD** (target 0)", " |",
-         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw STRs with a wrong amount"),
-          _k("ab_raw_docs", COUNT, "A/B raw STRs"),
-          _k("ab_bound_str_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound STRs with a wrong amount"),
-          _k("ab_bound_str_docs", COUNT, "A/B Wapsi-bound STRs"),
-          _k("ab_bound_docs_with_wrong_amount", COUNT, "A/B all Wapsi-bound drafts with a wrong amount"),
-          _k("ab_bound_docs", COUNT, "A/B all Wapsi-bound drafts")),
-         "**{k0} of {k1}** STRs | **{k2} of {k3}** STRs (target 0; all {k5} bound drafts: {k4})",
-         modes=ANY_RUN, gemma=True),
-    Slot("deck_ab_accounts", DECK, "| Invented account numbers | ", "**TBD** | **TBD**", " |",
-         (_k("ab_raw_invented_accounts", COUNT, "A/B raw invented account numbers"),
-          _k("ab_bound_str_invented_accounts", COUNT, "A/B Wapsi-bound STRs: invented account numbers")),
-         "**{k0}** | **{k1}**", modes=ANY_RUN, gemma=True),
-    Slot("deck_ab_citations", DECK, "| Unknown or repealed citations | ", "**TBD** | **TBD**", " |",
-         (_k("ab_raw_unknown_citations", COUNT, "A/B raw unknown or repealed citations"),
-          _k("ab_bound_str_unknown_citations", COUNT, "A/B Wapsi-bound STRs: unknown or repealed citations")),
-         "**{k0}** | **{k1}**", modes=ANY_RUN, gemma=True),
-    Slot("deck_ab_pass", DECK, "| Drafts passing the verifier | ", "**TBD** | **TBD**", " |",
-         (_k("ab_raw_verifier_pass_rate", RATE, "A/B raw STRs passing the audit"),
-          _k("ab_bound_str_verifier_pass_rate", RATE, "A/B Wapsi-bound STRs passing the verifier")),
-         "**{k0}** | **{k1}**", modes=ANY_RUN, gemma=True),
-    Slot("deck_gnn_hard", DECK, "The MI300X-trained GNN replaces that column: ", "**TBD**", ".",
-         (_k("gnn_hard_disposition", RATE, "MI300X GNN dispositions on the hard world"),
-          _k("gnn_hard_mule_auc", RATE, "MI300X GNN mule ROC-AUC on the hard world"),
-          _k("gnn_hard_ih_recall", RATE, "MI300X GNN innocent-holder recall on the hard world")),
-         "**dispositions {k0}, mule ROC-AUC {k1}, innocent-holder recall {k2}**", **M),
-    Slot("deck_unit_cost", DECK, "÷ cases per hour\n  (", "**TBD**", " from slide 7)",
-         (_k("e2e_best_usd_per_case", USD, "cost per case at $1.99 per GPU-hour (best concurrency)"),), "**{k0}**", **M),
-    Slot("video_date", VIDEO, "Measured on this MI300X on ", "[date]", ":", (), "{date}", VIDEO_BENCH_KEYS, **M),
-    Slot("video_tps", VIDEO, "", "[TBD]", " tokens per second at concurrency 16",
-         (_k("llm_tok_s_c16", TOK, "drafting model output tokens/s at concurrency 16"),), "{k0}", **M),
-    Slot("video_ttft", VIDEO, "time to first token ", "[TBD]", " at p95",
-         (_k("llm_ttft_p95_s_c16", SECONDS, "TTFT p95 at concurrency 16"),), "{k0}", **M),
-    Slot("video_cases", VIDEO, "", "[TBD]", " complete cases an hour",
-         (_k("e2e_best_cases_per_hour", TOK, "cases per hour (best concurrency)"),), "{k0}", **M),
-    Slot("video_cost", VIDEO, "at ", "[TBD]", " per case at $1.99",
-         (_k("e2e_best_usd_per_case", USD, "cost per case at $1.99 per GPU-hour (best concurrency)"),), "{k0}", **M),
-    Slot("video_gnn", VIDEO, "The GNN trained in ", "[TBD]", " per epoch",
-         (_k("gnn_epoch_s", SECONDS, "GNN seconds per epoch on MI300X"),), "{k0}", **M),
-    Slot("video_lora", VIDEO, "moved the verifier pass rate from ", "[TBD] to [TBD]", ".",
-         (_k("lora_base_prose_verifier_pass_rate", RATE, "verifier pass rate, base model"),
-          _k("lora_tuned_prose_verifier_pass_rate", RATE, "verifier pass rate, tuned model")), "{k0} to {k1}", **M),
-    Slot("video_ab_raw", VIDEO, "Raw Gemma writing free-form reports: ", "[TBD]", " drafts with a wrong amount",
-         (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw STRs with a wrong amount"),
-          _k("ab_raw_docs", COUNT, "A/B raw STRs")), "{k0} of {k1}", modes=ANY_RUN, gemma=True),
-    Slot("video_ab_bound", VIDEO, "Gemma inside Wapsi's slots and verifier: ", "[TBD]", ".",
-         (_k("ab_bound_str_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound STRs with a wrong amount"),
-          _k("ab_bound_str_docs", COUNT, "A/B Wapsi-bound STRs")), "{k0} of {k1}", modes=ANY_RUN, gemma=True),
+    Slot("tf_demo_pass", (_k("golden_draft_verification_pass_rate", RATE, "demo world, real model: drafts passing "
+                                                                         "the verifier"),
+                          _k("golden_cases", COUNT, "golden cases evaluated with the real model")),
+         "{k0} ({k1} cases)", **TF, shows="demo world, drafts passing the verifier with Gemma 4 writing the prose "
+                                         "(and how many golden cases the run covered)"),
+    Slot("tf_demo_fallback", (_k("golden_llm_prose_fallback_rate", RATE, "demo world, real model: share of drafts "
+                                                                        "whose prose was replaced by fixed text"),),
+         "{k0}", **TF, shows="demo world, share of drafts whose model prose was rejected and replaced by fixed text"),
+    Slot("tf_demo_hold_exact", (_k("golden_hold_exact_match_rate", RATE, "demo world, real model in the loop: holds "
+                                                                        "exact"),),
+         "{k0}", **TF, shows="demo world, holds exact with the real model in the loop"),
+    Slot("ab_raw_wrong", (_k("golden_llm_only_hallucination_rate", RATE, "same model without slots: share of cases "
+                                                                         "with an amount not in the case"),),
+         "{k0}", **TF, shows="raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount"),
+    Slot("ab_bound_wrong", (_k("ab_bound_docs_with_wrong_amount", COUNT, "A/B: Wapsi-bound drafts with a wrong amount"),
+                            _k("ab_bound_docs", COUNT, "A/B: Wapsi-bound drafts")),
+         "{k0} (of {k1} drafts)", modes=ANY_RUN, gemma=True,
+         shows="the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0)"),
+    Slot("tf_call_latency", (_k("wapsi_prompts_e2e_p50_s_c1", SEC, "real drafting request latency p50, one request "
+                                                                   "at a time"),),
+         "{k0}", **TF, shows="median seconds per prose request, one request at a time"),
+    Slot("gnn_amd_auc", (_k("gnn_hard_mule_auc", RATE, "AMD-trained GNN: mule ROC-AUC on the hard world"),),
+         "{k0} ({where})", shows="GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC, and the GPU"),
+    Slot("gnn_amd_epoch", (_k("gnn_epoch_s", SEC, "GNN seconds per epoch on the AMD GPU"),), "{k0}",
+         shows="GraphSAGE training time per epoch on an AMD GPU"),
+    Slot("droplet_tokens_s", (_k("llm_tok_s_c1", TOK, "drafting model output tokens/s at concurrency 1"),
+                              _k("llm_tok_s_c4", TOK, "drafting model output tokens/s at concurrency 4"),
+                              _k("llm_tok_s_c16", TOK, "drafting model output tokens/s at concurrency 16")),
+         "{k0} / {k1} / {k2} tokens/s at concurrency 1 / 4 / 16", **M,
+         shows="dedicated vLLM on the MI300X: output tokens per second at concurrency 1 / 4 / 16"),
+    Slot("droplet_cases_hour", (_k("e2e_best_cases_per_hour", TOK, "cases per hour (best concurrency)"),), "{k0}",
+         **M, shows="complete cases per hour through the pipeline on the MI300X"),
+    Slot("droplet_vram", (_k("vram_llm_gb", GB, "peak VRAM of the drafting model container"),
+                          _k("vram_verifier_gb", GB, "peak VRAM of the verifier container"),
+                          _k("vram_gnn_gb", GB, "peak VRAM of the GNN container")),
+         "{k0} / {k1} / {k2} (drafting model / verifier / GNN)", **M,
+         shows="measured GPU memory per container (drafting model, verifier, GNN)"),
 )
-# Endpoint-run slots: no anchor text in the pitch. Place <!-- slot:ID -->TBD<!-- /slot --> in any pitch/**/*.md and
-# an endpoint bundle fills it; the sentence around it is the author's (say "through the shared trial API").
-EP = {"file": "", "before": "", "placeholder": "", "after": "", "modes": ("endpoint",)}
-EP_SLOTS: tuple[Slot, ...] = (
-    Slot("ep_where", keys=(), template="{where}, {date}", date_keys=EP_KEYS, **EP,
+# Further figures a bundle carries. Not in the pitch today: add the id to the open-slots table of NUMBERS.md and write
+# TBD(id) where the number belongs (the sentence around it is the author's: say "through the shared trial API" for an
+# endpoint figure).
+EXTRA_SLOTS: tuple[Slot, ...] = (
+    Slot("gpu_where", (), "{where}, {date}", GPU_KEYS,
+         shows="where and when the GPU-box numbers were measured, e.g. MI300X, 2026-10-16"),
+    Slot("gpu_ttft", (_k("llm_ttft_p50_s_c16", SEC, "TTFT p50 at concurrency 16"),
+                      _k("llm_ttft_p95_s_c16", SEC, "TTFT p95 at concurrency 16")), "{k0} / {k1}", **M,
+         shows="time to first token p50 / p95 at concurrency 16"),
+    Slot("gpu_verifier_tps", (_k("verifier_tok_s_c1", TOK, "verifier output tokens/s at concurrency 1"),
+                              _k("verifier_tok_s_c4", TOK, "verifier output tokens/s at concurrency 4"),
+                              _k("verifier_tok_s_c16", TOK, "verifier output tokens/s at concurrency 16")),
+         "{k0} / {k1} / {k2}", **M, shows="verifier model output tokens/s at concurrency 1 / 4 / 16"),
+    Slot("gpu_vram_peak", (_k("vram_llm_gb", GB, "peak VRAM of the drafting model container"),
+                           _k("vram_verifier_gb", GB, "peak VRAM of the verifier container"),
+                           _k("vram_gnn_gb", GB, "peak VRAM of the GNN container"),
+                           _k("vram_peak_gb", GB, "peak VRAM of the whole device")),
+         "drafting model {k0}, verifier {k1}, GNN {k2}; device peak {k3} (amd-smi, {date})", **M,
+         shows="GPU memory per container next to the device peak, with the date"),
+    Slot("gpu_cost_case", (_k("e2e_best_usd_per_case", USD, "cost per case at $1.99 per GPU-hour (best concurrency)"),
+                           _k("e2e_best_inr_per_case", INR, "cost per case in rupees at the day's rate (best "
+                                                            "concurrency)")),
+         "{k0} ({k1})", **M, shows="cost per case at $1.99 per GPU-hour (and rupees at the day's rate)"),
+    Slot("gpu_gnn_hard", (_k("gnn_hard_disposition", RATE, "AMD-trained GNN dispositions on the hard world"),
+                          _k("gnn_hard_mule_auc", RATE, "AMD-trained GNN: mule ROC-AUC on the hard world"),
+                          _k("gnn_hard_ih_recall", RATE, "AMD-trained GNN innocent-holder recall on the hard world")),
+         "dispositions {k0}, mule ROC-AUC {k1}, innocent-holder recall {k2}",
+         shows="the AMD-trained GNN on the hard world: dispositions, mule ROC-AUC, innocent-holder recall"),
+    Slot("gpu_lora", (_k("lora_base_prose_verifier_pass_rate", RATE, "verifier pass rate, base model"),
+                      _k("lora_tuned_prose_verifier_pass_rate", RATE, "verifier pass rate, tuned model"),
+                      _k("lora_base_fallback_rate", RATE, "prose fallback rate, base model"),
+                      _k("lora_tuned_fallback_rate", RATE, "prose fallback rate, tuned model")),
+         "pass {k0} to {k1}, fallback {k2} to {k3}",
+         shows="LoRA: base vs tuned, verifier pass rate and prose fallback rate"),
+    # A/B, like with like: the raw arm writes one STR per case, so the bound side counts the bound arm's STRs.
+    Slot("ab_str_wrong", (_k("ab_raw_docs_with_wrong_amount", COUNT, "A/B raw STRs with a wrong amount"),
+                          _k("ab_raw_docs", COUNT, "A/B raw STRs"),
+                          _k("ab_bound_str_docs_with_wrong_amount", COUNT, "A/B Wapsi-bound STRs with a wrong amount"),
+                          _k("ab_bound_str_docs", COUNT, "A/B Wapsi-bound STRs")),
+         "{k0} of {k1} raw STRs, {k2} of {k3} Wapsi-bound STRs", modes=ANY_RUN, gemma=True,
+         shows="the A/B, STR against STR: raw Gemma 4 vs Gemma 4 inside Wapsi, documents with a wrong amount"),
+    Slot("ab_where", (), "{where}, {date}", ("ab_raw_docs", "ab_bound_docs"), modes=ANY_RUN, gemma=True,
+         shows="where and when the A/B was measured"),
+    Slot("ep_where", (), "{where}, {date}", EP_KEYS, **EP,
          shows="where and when the endpoint numbers were measured, e.g. AMD Token Factory (Gemma-4-31B-IT on AMD "
                "GPUs), 2026-10-14"),
-    Slot("ep_llm_latency", keys=(_k("llm_e2e_p50_s_c1", SEC, "request latency p50, one request at a time"),
-                                 _k("llm_e2e_p95_s_c1", SEC, "request latency p95, one request at a time")),
-         template="{k0} / {k1}", **EP, shows="request latency p50 / p95 at concurrency 1 (synthetic prompt)"),
-    Slot("ep_llm_tps", keys=(_k("llm_tok_s_c1", TOK, "output tokens/s at concurrency 1"),
-                             _k("llm_tok_s_c4", TOK, "output tokens/s at concurrency 4"),
-                             _k("llm_tok_s_c8", TOK, "output tokens/s at concurrency 8")),
-         template="{k0} / {k1} / {k2}", **EP, shows="output tokens/s at concurrency 1 / 4 / 8"),
-    Slot("ep_draft_latency", keys=(_k("wapsi_prompts_e2e_p50_s_c1", SEC, "real drafting request latency p50"),
-                                   _k("wapsi_prompts_e2e_p95_s_c1", SEC, "real drafting request latency p95")),
-         template="{k0} / {k1}", **EP, shows="latency p50 / p95 of a real Wapsi drafting request"),
-    Slot("ep_cases_hour", keys=(_k("e2e_best_cases_per_hour", TOK, "cases per hour through the pipeline, at the "
-                                                                    "trial key's request cap"),),
-         template="{k0}", **EP, shows="complete cases per hour (bounded by the request cap of the trial key)"),
-    Slot("ep_drafts_hour", keys=(_k("e2e_best_drafts_per_hour", TOK, "verified drafts per hour, at the trial key's "
-                                                                      "request cap"),),
-         template="{k0}", **EP, shows="verified drafts per hour (bounded by the request cap of the trial key)"),
-    Slot("ep_llm_s_case", keys=(_k("e2e_best_llm_seconds_per_case_p50", SEC, "LLM seconds per case, p50"),),
-         template="{k0}", **EP, shows="seconds of model time per case, p50"),
-    Slot("ep_cost_case", keys=(_k("e2e_best_api_usd_per_case", USD, "API-reported cost per case (relative usage "
-                                                                    "cost; the trial is not billed)"),),
-         template="{k0}", **EP, shows="API-reported cost per case in dollars"),
-    Slot("ep_golden", keys=(_k("golden_draft_numeric_accuracy", RATE, "golden set: draft numeric accuracy"),
-                            _k("golden_citation_validity", RATE, "golden set: citation validity"),
-                            _k("golden_draft_verification_pass_rate", RATE, "golden set: drafts passing the verifier")),
-         template="{k0} / {k1} / {k2}", **EP,
+    Slot("ep_llm_latency", (_k("llm_e2e_p50_s_c1", SEC, "request latency p50, one request at a time"),
+                            _k("llm_e2e_p95_s_c1", SEC, "request latency p95, one request at a time")),
+         "{k0} / {k1}", **EP, shows="request latency p50 / p95 at concurrency 1 (synthetic prompt)"),
+    Slot("ep_llm_tps", (_k("llm_tok_s_c1", TOK, "output tokens/s at concurrency 1"),
+                        _k("llm_tok_s_c4", TOK, "output tokens/s at concurrency 4"),
+                        _k("llm_tok_s_c8", TOK, "output tokens/s at concurrency 8")),
+         "{k0} / {k1} / {k2}", **EP, shows="output tokens/s at concurrency 1 / 4 / 8"),
+    Slot("ep_draft_latency", (_k("wapsi_prompts_e2e_p50_s_c1", SEC, "real drafting request latency p50, one request "
+                                                                    "at a time"),
+                              _k("wapsi_prompts_e2e_p95_s_c1", SEC, "real drafting request latency p95")),
+         "{k0} / {k1}", **EP, shows="latency p50 / p95 of a real Wapsi drafting request"),
+    Slot("ep_cases_hour", (_k("e2e_best_cases_per_hour", TOK, "cases per hour through the pipeline, at the trial "
+                                                              "key's request cap"),),
+         "{k0}", **EP, shows="complete cases per hour (bounded by the request cap of the trial key)"),
+    Slot("ep_drafts_hour", (_k("e2e_best_drafts_per_hour", TOK, "verified drafts per hour, at the trial key's "
+                                                                "request cap"),),
+         "{k0}", **EP, shows="verified drafts per hour (bounded by the request cap of the trial key)"),
+    Slot("ep_llm_s_case", (_k("e2e_best_llm_seconds_per_case_p50", SEC, "LLM seconds per case, p50"),),
+         "{k0}", **EP, shows="seconds of model time per case, p50"),
+    Slot("ep_cost_case", (_k("e2e_best_api_usd_per_case", USD, "API-reported cost per case (relative usage cost; "
+                                                               "the trial is not billed)"),),
+         "{k0}", **EP, shows="API-reported cost per case in dollars"),
+    Slot("ep_golden", (_k("golden_draft_numeric_accuracy", RATE, "golden set: draft numeric accuracy"),
+                       _k("golden_citation_validity", RATE, "golden set: citation validity"),
+                       _k("golden_draft_verification_pass_rate", RATE, "demo world, real model: drafts passing the "
+                                                                       "verifier")),
+         "{k0} / {k1} / {k2}", **EP,
          shows="golden set with the real model: draft numeric accuracy / citation validity / verifier pass rate"),
-    Slot("ep_golden_cases", keys=(_k("golden_cases", COUNT, "golden cases evaluated with the real model"),),
-         template="{k0}", **EP, shows="number of golden cases evaluated with the real model"),
-    Slot("ep_false_freezes", keys=(_k("golden_false_freeze_count", COUNT, "false freezes on the golden set"),),
-         template="{k0}", **EP, shows="false freezes on the golden set (the scorer and the rules, not the LLM)"),
-    Slot("ep_llm_only", keys=(_k("golden_llm_only_hallucination_rate", RATE, "same model without slots: share of "
-                                                                             "cases with an amount not in the case"),),
-         template="{k0}", **EP, shows="LLM-only baseline: share of cases where the raw model states a wrong amount"),
+    Slot("ep_golden_cases", (_k("golden_cases", COUNT, "golden cases evaluated with the real model"),),
+         "{k0}", **EP, shows="number of golden cases evaluated with the real model"),
+    Slot("ep_false_freezes", (_k("golden_false_freeze_count", COUNT, "false freezes on the golden set"),),
+         "{k0}", **EP, shows="false freezes on the golden set (the scorer and the rules, not the LLM)"),
 )
-ALL_SLOTS: tuple[Slot, ...] = SLOTS + EP_SLOTS
+ALL_SLOTS: tuple[Slot, ...] = SLOTS + EXTRA_SLOTS
+# Open slots of the pitch that no evidence bundle fills: each has its own results file and is filled by hand
+# (pitch/README.md, "Filling an AMD measurement slot").
+MANUAL_SLOTS: dict[str, str] = {
+    "tf_showcase_pass": "evals.harness --world showcase --llm openai-compat (the harness report)",
+    "tf_demo_p95": "evals.harness --world demo --llm openai-compat (metrics.p95_total_s of the harness report)",
+    "tf_tokens_case": "pitch/amd/evidence/token_factory_smoke.py (its evidence file)",
+    "adk_tool_calls": "editions.amd.app.agent_demo --live --json (the agent trace; editions/amd/AGENT.md)",
+    "adk_grounding": "the same agent run's reply-grounding check",
+    "voice_asr_samples": "editions.amd.bench.voice_bench --asr local (voice_bench.json)",
+    "voice_asr_seconds": "the same voice benchmark (asr_s of the 31-second note)",
+    "evolus_blocks": "pitch/EVOLUS_TRACK.md evidence table",
+}
 SKIP_MARKER_FILES = ("NUMBERS.md",)
 
 
 def _marker(sid: str) -> re.Pattern[str]:
+    """A filled slot: ``<!-- slot:ID -->value<!-- /slot -->``."""
     return re.compile(rf"<!-- slot:{re.escape(sid)} -->(?P<v>.*?)<!-- /slot -->", re.S)
 
 
-def _anchor(slot: Slot) -> re.Pattern[str]:
-    """The slot by the literal text around it: the placeholder, or an earlier fill, between ``before`` and
-    ``after``. A marker-only slot has no such text: this is then its bare marker."""
-    if slot.marker_only:
-        return _marker(slot.sid)
-    filled = rf"<!-- slot:{re.escape(slot.sid)} -->.*?<!-- /slot -->"
-    return re.compile(re.escape(slot.before) + rf"(?P<v>{re.escape(slot.placeholder)}|{filled})" + re.escape(slot.after))
+def _open(sid: str) -> re.Pattern[str]:
+    """An open slot: ``TBD(ID)``."""
+    return re.compile(rf"\bTBD\({re.escape(sid)}\)")
+
+
+def open_form(sid: str) -> str:
+    return f"TBD({sid})"
 
 
 @dataclass
 class Found:
-    """One place of a slot in one file: the span to replace and whether it still shows its placeholder."""
+    """One place of a slot in one file: the span to replace and whether it is still open (``TBD(id)``)."""
 
     file: str
     start: int
@@ -314,20 +307,20 @@ class Found:
 
 
 def find(slot: Slot, texts: dict[str, str]) -> list[Found]:
-    """Where the slot is. By its anchor text in its file; failing that (the author reworded the page), or for a
-    marker-only slot, by its bare marker in any of ``texts``."""
+    """Every place of the slot in the pitch: an open ``TBD(id)`` or a marker an earlier run filled. A marker that
+    still wraps a ``TBD(id)`` counts once, as open."""
     out: list[Found] = []
-    if not slot.marker_only and slot.file in texts:
-        for m in _anchor(slot).finditer(texts[slot.file]):
-            out.append(Found(slot.file, m.start("v"), m.end("v"), m.group("v") == slot.placeholder))
-        if out:
-            return out
     for rel, text in texts.items():
         if Path(rel).name in SKIP_MARKER_FILES:
             continue
+        taken: list[tuple[int, int]] = []
         for m in _marker(slot.sid).finditer(text):
             inner = m.group("v").strip()
-            out.append(Found(rel, m.start(), m.end(), inner == "" or "TBD" in inner or inner == slot.placeholder))
+            taken.append(m.span())
+            out.append(Found(rel, m.start(), m.end(), inner == "" or bool(_open(slot.sid).search(inner))))
+        for m in _open(slot.sid).finditer(text):
+            if not any(a <= m.start() < b for a, b in taken):
+                out.append(Found(rel, m.start(), m.end(), True))
     return out
 
 
@@ -466,11 +459,12 @@ class Plan:
     rows: dict[str, tuple[str, set[str], str]]  # key -> (what, formatted texts, value) from this bundle
     filled: list[str]
     missing_values: list[str]
-    missing_anchors: list[str]
+    missing_anchors: list[str]  # ids the pitch still has open that are filled by hand (MANUAL_SLOTS)
     still_shown: set[str] = field(default_factory=set)  # keys of filled slots this bundle did not refill
     merged: list[NumRow] = field(default_factory=list)  # the NUMBERS.md rows after the merge
     skipped: list[str] = field(default_factory=list)  # slots this kind of run may not fill, with the reason
-    not_placed: list[str] = field(default_factory=list)  # marker-only slots with a value but no marker in the pitch
+    not_placed: list[str] = field(default_factory=list)  # slots with a value that the pitch does not use (no TBD(id))
+    unknown: list[str] = field(default_factory=list)  # TBD(id) in the pitch for an id nobody knows how to fill
 
 
 def _put(text: str, found: Found, slot: Slot, value: str) -> str:
@@ -484,12 +478,9 @@ def _fill(texts: dict[str, str], slot: Slot, value: str) -> None:
 
 
 def pitch_texts(pitch_dir: Path) -> dict[str, str]:
-    """Every Markdown file of the pitch folder (relative posix path -> text), plus the two the slots anchor in."""
-    texts = {p.relative_to(pitch_dir).as_posix(): p.read_text(encoding="utf-8")
-             for p in sorted(pitch_dir.rglob("*.md")) if p.name not in SKIP_MARKER_FILES}
-    for rel in (DECK, VIDEO):
-        texts.setdefault(rel, "")
-    return texts
+    """Every Markdown file of the pitch folder except NUMBERS.md (relative posix path -> text)."""
+    return {p.relative_to(pitch_dir).as_posix(): p.read_text(encoding="utf-8")
+            for p in sorted(pitch_dir.rglob("*.md")) if p.name not in SKIP_MARKER_FILES}
 
 
 def plan(head: dict[str, Any], date: str, pitch_dir: Path, source: str = "", numbers_text: str = "",
@@ -502,24 +493,20 @@ def plan(head: dict[str, Any], date: str, pitch_dir: Path, source: str = "", num
         _BUNDLES[source] = ev
     texts = pitch_texts(pitch_dir)
     rows: dict[str, tuple[str, set[str], str]] = {}
-    filled, missing_values, missing_anchors, skipped, not_placed = [], [], [], [], []
+    filled, missing_values, skipped, not_placed = [], [], [], []
     still_shown: set[str] = set()
     date_only: list[Slot] = []
     for slot in ALL_SLOTS:
         places = find(slot, texts)
         keys = {k for k, _, _ in slot.keys}
-        if not slot.marker_only and len(places) != 1:
-            missing_anchors.append(f"{slot.sid} ({slot.file}: {len(places)} matches)")
-            still_shown |= keys  # state unknown: keep the rows that may back it
-            continue
         shown_before = any(not f.empty for f in places)
         why = None
         if mode not in slot.modes:
             why = f"a {mode} run does not fill it"
         elif slot.mi300x and not is_mi300x(ev):
-            why = f"its text says MI300X and this run was measured on {where}"
+            why = f"the pitch words it as an MI300X figure and this run was measured on {where}"
         elif slot.gemma and not is_gemma(ev):
-            why = f"its text says Gemma and the drafting model is {', '.join(drafting_models(ev))}"
+            why = f"the pitch words it as a Gemma 4 figure and the drafting model is {', '.join(drafting_models(ev))}"
         if why:
             if places and (slot.keys or slot.date_keys) and (render(slot, head, date, where)[0] is not None
                                                              if slot.keys else False):
@@ -558,7 +545,12 @@ def plan(head: dict[str, Any], date: str, pitch_dir: Path, source: str = "", num
         places_named = list(dict.fromkeys(where_of(_bundle(s)) if _bundle(s) else where for s in sources))
         _fill(texts, slot, slot.template.format(date=when, where=_join(places_named)))
         filled.append(slot.sid)
-    return Plan(texts, rows, filled, missing_values, missing_anchors, still_shown, merged, skipped, not_placed)
+    known = {s.sid for s in ALL_SLOTS}
+    still_open = open_slot_ids(texts) - {"slot_id"}  # "TBD(slot_id)" is the notation itself, explained in prose
+    missing_anchors = sorted(sid for sid in still_open if sid in MANUAL_SLOTS)
+    unknown = sorted(sid for sid in still_open if sid not in known and sid not in MANUAL_SLOTS)
+    return Plan(texts, rows, filled, missing_values, missing_anchors, still_shown, merged, skipped, not_placed,
+                unknown)
 
 
 def numbers_section(rows: list[NumRow], gpu: str | None = None) -> str:
@@ -577,6 +569,33 @@ def numbers_section(rows: list[NumRow], gpu: str | None = None) -> str:
     lines += [r.line() for r in rows]
     lines.append(END)
     return "\n".join(lines)
+
+
+def open_slot_ids(texts: dict[str, str]) -> set[str]:
+    """Every id the pitch still writes as ``TBD(id)``."""
+    found: set[str] = set()
+    for rel, text in texts.items():
+        if Path(rel).name not in SKIP_MARKER_FILES:
+            found.update(re.findall(r"\bTBD\(([a-z0-9_]+)\)", text))
+    return found
+
+
+def without_closed_slots(numbers_text: str, filled: list[str], still_open: set[str]) -> str:
+    """NUMBERS.md without the open-slots rows of the slots this run filled everywhere (pitch/README.md, step 4:
+    "delete the slot's row"). A slot that is still ``TBD(id)`` somewhere keeps its row."""
+    closed = {sid for sid in filled if sid not in still_open}
+    if not closed:
+        return numbers_text
+    out, in_table = [], False
+    for line in numbers_text.splitlines(keepends=True):
+        if line.startswith("| Slot |"):
+            in_table = True
+        elif in_table and not line.startswith("|"):
+            in_table = False
+        if in_table and line.startswith("|") and line.strip().strip("|").split("|")[0].strip() in closed:
+            continue
+        out.append(line)
+    return "".join(out)
 
 
 def with_numbers(text: str, section: str) -> str:
@@ -609,13 +628,16 @@ def refuse_reason(ev: dict[str, Any], pitch_dir: Path, allow_fixture: bool) -> s
 
 
 def slots_table() -> str:
-    lines = ["| Slot | Shows | Filled from | Found by |", "|---|---|---|---|"]
+    lines = ["| Slot | Shows | Filled from | In the pitch |", "|---|---|---|---|"]
+    listed = {s.sid for s in SLOTS}
     for s in ALL_SLOTS:
         shows = s.shows or "; ".join(what for _, _, what in s.keys) or "the dates (and place) of the values it introduces"
-        by = ("marker only: put `<!-- slot:" + s.sid + " -->TBD<!-- /slot -->` in any pitch/**/*.md" if s.marker_only
-              else f"its text in pitch/{s.file}, or the marker")
         who = " / ".join(s.modes) + (" (MI300X only)" if s.mi300x else "") + (" (Gemma only)" if s.gemma else "")
-        lines.append(f"| `{s.sid}` | {shows} | {who} | {by} |")
+        how = (f"write `{open_form(s.sid)}`; listed in pitch/NUMBERS.md" if s.sid in listed
+               else f"optional: add `{s.sid}` to the open-slots table of pitch/NUMBERS.md, then write `{open_form(s.sid)}`")
+        lines.append(f"| `{s.sid}` | {shows} | {who} | {how} |")
+    for sid, source in MANUAL_SLOTS.items():
+        lines.append(f"| `{sid}` | (no evidence bundle carries it) | by hand, from {source} | write `{open_form(sid)}` |")
     return "\n".join(lines)
 
 
@@ -628,7 +650,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write", action="store_true", help="apply the changes (default: print the diff only)")
     ap.add_argument("--pitch-dir", default=str(PITCH), help="pitch folder (tests use a copy)")
     ap.add_argument("--allow-fixture", action="store_true", help="tests only: accept a synthetic fixture bundle")
-    ap.add_argument("--strict", action="store_true", help="exit 1 when a slot's anchor text is not found")
+    ap.add_argument("--strict", action="store_true",
+                    help="exit 1 when the pitch has a TBD(id) that is neither a slot of this script nor a known "
+                         "hand-filled one")
     ap.add_argument("--slots", action="store_true", help="list every slot (id, what it shows, who fills it) and exit")
     args = ap.parse_args(argv)
     if args.slots:
@@ -655,8 +679,12 @@ def main(argv: list[str] | None = None) -> int:
     old_numbers = numbers_path.read_text(encoding="utf-8") if numbers_path.exists() else ""
     p = plan(head, date, pitch_dir, source, old_numbers, ev)
     changes = dict(p.texts)
+    numbers = old_numbers
     if p.merged:
-        changes["NUMBERS.md"] = with_numbers(old_numbers, numbers_section(p.merged, head.get("gpu_name")))
+        numbers = with_numbers(numbers, numbers_section(p.merged, head.get("gpu_name")))
+    numbers = without_closed_slots(numbers, p.filled, open_slot_ids(p.texts))
+    if numbers != old_numbers:
+        changes["NUMBERS.md"] = numbers
 
     changed = 0
     for rel, new in changes.items():
@@ -680,15 +708,17 @@ def main(argv: list[str] | None = None) -> int:
     if p.skipped:
         print(f"  measured but not filled (the page's words do not fit this run): {'; '.join(p.skipped)}")
     if p.not_placed:
-        print(f"  measured, no marker in the pitch yet (add <!-- slot:ID -->TBD<!-- /slot --> where the number "
-              f"belongs; --slots lists them): {', '.join(p.not_placed)}")
+        print(f"  measured, not in the pitch (to use one: add its id to the open-slots table of NUMBERS.md and write "
+              f"TBD(id) where the number belongs; --slots lists them): {', '.join(p.not_placed)}")
     for w in ev.get("warnings") or []:
         print(f"  evidence warning: {w}")
     if p.missing_anchors:
-        print(f"  anchor text not found (pitch edited?): {', '.join(p.missing_anchors)}")
+        print(f"  open in the pitch, filled by hand from their own results files: {', '.join(p.missing_anchors)}")
+    if p.unknown:
+        print(f"  TBD(id) in the pitch that no slot defines (a typo, or add it to fill_pitch.py): {', '.join(p.unknown)}")
     if args.write and changed:
         print("  next: uv run python pitch/check_numbers.py  (must print PASS), then commit pitch/ with the evidence")
-    return 1 if (args.strict and p.missing_anchors) else 0
+    return 1 if (args.strict and p.unknown) else 0
 
 
 if __name__ == "__main__":

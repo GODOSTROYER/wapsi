@@ -14,8 +14,9 @@ models on the same endpoint were fine. A voice note must still be read, so the o
 - **records which model actually answered** and what happened to the others (``Attempt``), so the page and the
   benchmark can say "Gemma-4-31B-IT returned unusable output, rejected; DeepSeek-V4-Flash answered".
 
-The chain is ``WAPSI_VOICE_LLM_MODELS`` (else ``WAPSI_LLM_MODELS``), comma separated, tried in order; on the AMD
-Token Factory the default is ``DEFAULT_TOKEN_FACTORY_CHAIN`` with the configured model first. Health is kept per
+The chain is ``WAPSI_VOICE_LLM_MODELS`` (else ``WAPSI_LLM_MODELS``, else ``WAPSI_LLM_FALLBACK_MODELS``: the same
+list as the kickoff model plan and the agent read), comma separated, tried in order; on the AMD Token Factory the
+default is ``DEFAULT_TOKEN_FACTORY_CHAIN`` with the configured model first. Health is kept per
 (endpoint, model) for the whole process, so every extractor benefits from what one of them learnt.
 """
 
@@ -32,6 +33,7 @@ from wapsi.adapters.llm_openai_compat import LLMError
 
 VOICE_MODELS_ENV = "WAPSI_VOICE_LLM_MODELS"
 MODELS_ENV = "WAPSI_LLM_MODELS"
+FALLBACK_MODELS_ENV = "WAPSI_LLM_FALLBACK_MODELS"  # the kickoff model plan's spelling of the same list
 COOLDOWN_ENV = "WAPSI_LLM_COOLDOWN_S"
 HEALTH_TTL_ENV = "WAPSI_LLM_HEALTH_TTL_S"
 PROBE_ENV = "WAPSI_LLM_HEALTH_PROBE"
@@ -65,7 +67,7 @@ def is_degenerate(text: str) -> bool:
 def model_names(env: Mapping[str, str], primary: str = "", *, token_factory: bool = False) -> list[str]:
     """The chain to try, in order: the env list if set, else ``primary`` (plus the Token Factory defaults when the
     endpoint is the Token Factory). Duplicates are dropped; ``primary`` leads unless the env list says otherwise."""
-    raw = (env.get(VOICE_MODELS_ENV) or env.get(MODELS_ENV) or "").strip()
+    raw = (env.get(VOICE_MODELS_ENV) or env.get(MODELS_ENV) or env.get(FALLBACK_MODELS_ENV) or "").strip()
     names = [n.strip() for n in raw.split(",") if n.strip()]
     if not names:
         names = [primary] if primary else []

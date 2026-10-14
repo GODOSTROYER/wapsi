@@ -10,7 +10,7 @@ Each item names the file or test that shows it. Answers to common questions are 
 
 | Part | Status today |
 |---|---|
-| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 1,765 tests passed on 2026-10-07 (`uv run pytest -q`); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
+| Tracing, pro-rata taint, hold plan, drafts, verifier, clocks, maker-checker, account-level exceptions, LEA request checks, hash-chained audit log | Working code, covered by tests. The full suite of 2,212 tests passed on 2026-10-14 (`uv run pytest -q`; 1,765 at the pre-event baseline); on a heavily loaded machine a wall-clock test can fail ([7.6](#l-scale)). |
 | Legal corpus (SOP, BNSS, PML Rules, FIU-IND FAQ, RBI Fraud Risk Management Directions 2026) and regulatory radar | Real public texts, downloaded at build time. 121 of 121 checks pass (`wapsi.search.check_citations`, 2026-09-29): 32 citation quotes, 33 facts and 52 radar quotes are found word for word, and 3 judgments are cited by URL only. |
 | Bank data: customers, accounts, transactions, complaints | **Synthetic** (`wapsi.synth`, `wapsi.fixtures.showcase`) |
 | Other banks' transactions ("CFCFRMS responses") | **Simulated** (`Ledger.consortium_transactions`); Wapsi is a simulated CFCFRMS interface and labels every CFCFRMS action so |
@@ -111,12 +111,20 @@ model, but a figure is then reported under that model's name.
 
 **Today:** no amount, account number, date or citation depends on the model. A request that fails, times out or
 is rejected by the prose checks is replaced by a fixed paragraph, so a case always completes and its numbers are
-the same either way. **Known gap:** the prose checks look for digits, number words, unregistered citations and
-copied complaint text. They do not yet check that an answer is language. A degenerate answer that happens to
-carry no digits can therefore be accepted as prose and reach a draft, and the verifier, which checks numbers,
-citations and policy, will pass it. A supervisor would see it, but it should not get that far.
-**Plan:** reject an answer that is not the expected JSON object or that was cut off by the token limit, add a
-plain-language check to the prose validator, and surface the endpoint's finish reason in the client.
+the same either way. The prose checks look for digits, number words, unregistered citations and copied complaint
+text, and first of all for whether the answer is language at all (`wapsi.draft.prose.not_prose_reason`: a run of
+one symbol, an unbroken string of more than sixty characters, an answer that is mostly symbols, or one that opens
+with JSON or a code fence). A degenerate answer is rejected with the code `not_prose`, is never cached, recorded
+or shown, and counts in `llm_prose_fallback_rate`. With an ordered model list (`WAPSI_LLM_MODELS`), the drafts'
+prose, voice intake and the officer's agent fail over to the next model while one answers in garbage or is
+withdrawn, and name the model that answered (`wapsi.adapters.llm_failover.FailoverLLM`; the harness report
+counts prose per model in `prose_by_model`). A model that wrote garbage rests for ten minutes; the account's own
+limits (HTTP 429, a bad key) are never "fixed" by switching models. The evidence run refuses a bundle whose prose
+was mostly the fixed paragraph (`collect_evidence.model_health`), because such a run measured the fallback text.
+**Known gap:** without a list there is no substitute: with a degraded model every prose field becomes the fixed
+paragraph until the model recovers. An answer that is fluent but was cut off by the token limit is caught only if
+it breaks another rule.
+**Plan:** surface the endpoint's finish reason in the client and reject a prose answer cut off by the limit.
 
 ---
 

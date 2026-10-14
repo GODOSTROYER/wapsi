@@ -18,7 +18,7 @@
 
 .EXAMPLE
   $env:GEMINI_API_KEY = Read-Host 'Gemini API key'    # paste; nothing is stored in the repository
-  .\editions\gcp\deploy\deploy.ps1 -ProjectId wapsi-aibc-1234
+  .\editions\gcp\deploy\deploy.ps1 -ProjectId wapsi-demo-1234
 #>
 [CmdletBinding()]
 param(
@@ -423,13 +423,13 @@ function Step-Deploy {
         Run-Masked $f '<env.yaml>' gcloud run deploy $Api "--image=$Image" "--region=$Region" `
             "--service-account=$ApiSa" "--env-vars-file=$f" "--set-secrets=$secrets" `
             "--min-instances=$MinInstances" --max-instances=1 --cpu=2 --memory=2Gi --concurrency=20 --timeout=300 `
-            --cpu-boost --execution-environment=gen2 '--labels=app=wapsi,component=api,event=aibc' $authApi @G
+            --cpu-boost --execution-environment=gen2 '--labels=app=wapsi,component=api,edition=gcp' $authApi @G
         # UI: the case room judges open (Streamlit on the same Firestore case store)
         Run-Masked $f '<env.yaml>' gcloud run deploy $Ui "--image=$Image" "--region=$Region" `
             "--service-account=$UiSa" "--env-vars-file=$f" "--set-secrets=$secrets" --command=streamlit `
             '--args=run,editions/gcp/ui_app.py,--server.port=8080,--server.address=0.0.0.0,--server.headless=true' `
             "--min-instances=$MinInstances" --max-instances=2 --cpu=1 --memory=2Gi --concurrency=40 --timeout=3600 `
-            --session-affinity --cpu-boost '--labels=app=wapsi,component=ui,event=aibc' --allow-unauthenticated @G
+            --session-affinity --cpu-boost '--labels=app=wapsi,component=ui,edition=gcp' --allow-unauthenticated @G
     } finally {
         Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
     }
@@ -501,7 +501,7 @@ try {
         Die 'the build step is skipped and no image was built from here before: pass -Tag <tag of an existing image>'
     }
 
-    Say 'Wapsi one-command deploy (Google Cloud, AI Builder Cup)'
+    Say 'Wapsi one-command deploy (Google Cloud)'
     Say "  project   $ProjectId"
     Say "  region    $Region"
     Say "  gemini    $GeminiBackend, model $Model"

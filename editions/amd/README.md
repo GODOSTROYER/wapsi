@@ -137,11 +137,15 @@ During the event, follow [RUNBOOK.md](RUNBOOK.md).
 
 Everything is set through environment variables.
 
-- **The model endpoint** (the app, the benchmarks and the kickoff pipeline alike): `WAPSI_LLM_BASE_URL`,
-  `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`, `WAPSI_LLM_JSON_MODE` (`json_object` for an endpoint without a strict
-  JSON schema, `json_schema` for your own vLLM). Endpoint mode adds `WAPSI_JUDGE_MODEL`, `WAPSI_LLM_RPM`,
+- **The model endpoint** (the app, the agent, voice-note extraction, the benchmarks and the kickoff pipeline
+  alike): `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`, `WAPSI_LLM_JSON_MODE` (unset: `json_object`
+  for an endpoint that is not this stack's own server, because the AMD Token Factory accepts no strict JSON
+  schema, and `json_schema` for the compose `llm` service or a loopback vLLM). `WAPSI_LLM_MODELS` is the ordered
+  list the drafts' prose, voice intake and the agent fail over along. Endpoint mode adds `WAPSI_JUDGE_MODEL`, `WAPSI_LLM_RPM`,
   `WAPSI_LLM_MAX_CONCURRENCY`, `WAPSI_LLM_CACHE_DIR`, `WAPSI_ALLOW_MODEL_FALLBACK`; the names are in
-  [`kickoff/endpoint.env.example`](kickoff/endpoint.env.example).
+  [`kickoff/endpoint.env.example`](kickoff/endpoint.env.example). A draft records what really served its prose:
+  `Gemma-4-31B-IT on AMD @ developer.amd.com.cn` through the Token Factory, `vllm-rocm:<model>` only for this
+  stack's own vLLM-ROCm server.
 - **Voice intake**: `WAPSI_VOICE_BACKEND` (`auto`, `open`, `gemini`, `fake`), `WAPSI_ASR_BASE_URL`,
   `WAPSI_ASR_API_KEY`, `WAPSI_ASR_MODEL` (an OpenAI-compatible transcription endpoint; without one the open path
   uses local Whisper through transformers). Field extraction and translation go to the model endpoint above. See

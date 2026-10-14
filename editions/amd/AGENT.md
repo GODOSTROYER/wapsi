@@ -87,7 +87,7 @@ draft prose stays on the offline `FakeLLM`: one endpoint request per model turn,
 | `WAPSI_AGENT_BASE_URL` / `WAPSI_AGENT_API_KEY` / `WAPSI_AGENT_MODEL` | the three above | a different endpoint or model for the agent only |
 | `WAPSI_AGENT_TOOL_MODE` | `auto` | `auto` = capability probe; `native`; `json` |
 | `WAPSI_AGENT_TOOL_RESULT_ROLE` | `auto` | `auto` = what the probe found; `tool`; `tool_responses` |
-| `WAPSI_AGENT_FALLBACK_MODELS` | unset | other model ids on the same endpoint, used in order while the configured model is not served or returns unusable output; runs are labelled with the model that answered |
+| `WAPSI_AGENT_FALLBACK_MODELS` | the other models of `WAPSI_LLM_MODELS` | other model ids on the same endpoint, used in order while the configured model is not served or returns unusable output; runs are labelled with the model that answered. Unset: the list voice intake fails over along (`WAPSI_LLM_MODELS`, else `WAPSI_LLM_FALLBACK_MODELS`) when the agent runs on the drafting endpoint; with none of the three set there is no fallback |
 | `WAPSI_AGENT_MAX_TOOL_CALLS` / `WAPSI_AGENT_MAX_LLM_CALLS` | `12` / `24` | bounds per officer message |
 | `WAPSI_AGENT_MIN_INTERVAL_S` | `0` | pause between model calls (shared rate limits) |
 | `WAPSI_AGENT_TIMEOUT_S`, `WAPSI_AGENT_MAX_TOKENS`, `WAPSI_AGENT_TEMPERATURE`, `WAPSI_AGENT_RETRIES`, `WAPSI_AGENT_PARALLEL_TOOLS`, `WAPSI_AGENT_JSON_OBJECT`, `WAPSI_AGENT_EXTRA_BODY`, `WAPSI_AGENT_PROVIDER_LABEL` | see `editions/shared/endpoint.py` | request shape |

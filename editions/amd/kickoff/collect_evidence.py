@@ -30,7 +30,10 @@ thing the pitch may claim:
 ``results_valid`` is true only for a run of one of those modes whose identity checks pass and whose every stage
 started inside the event window (2026-10-12 15:00 UTC .. 2026-10-18 14:00 UTC). ``gpu_results_valid`` is the same
 for the two modes that have a GPU of their own (always false for an endpoint run). A ``rehearsal`` bundle is always
-labelled "CPU rehearsal" and is never valid.
+labelled "CPU rehearsal" and is never valid. A run whose prose was mostly the fixed paragraph (prose fallback rate
+above ``MAX_HEALTHY_FALLBACK_RATE`` in the golden eval or the end-to-end bench) is not valid either: the model was
+not answering in language (a degraded shared deployment answers HTTP 200 with garbage, which the prose validator
+rejects), so what the run measured is the fallback text, not the model.
 """
 
 from __future__ import annotations
@@ -561,6 +564,23 @@ def compute(mode: str, hw: dict[str, Any], ep: dict[str, Any] | None) -> dict[st
             "label": "laptop CPU rehearsal (no GPU, stub models)"}
 
 
+MAX_HEALTHY_FALLBACK_RATE = 0.5  # Gemma 4 on the Token Factory, healthy: ~0.24 on the showcase; garbage: 1.0
+FALLBACK_KEYS = ("golden_llm_prose_fallback_rate", "e2e_best_prose_fallback_rate")
+
+
+def model_health(head: dict[str, Any], mode: str = "endpoint") -> list[str]:
+    """Reasons a run's real-model figures cannot be used: the prose was mostly the fixed paragraph. The golden eval
+    counts in every mode; the end-to-end bench only in endpoint mode (on an own GPU its throughput stands apart
+    from the quality of a base model's prose, which the LoRA comparison reports)."""
+    reasons = []
+    for key in FALLBACK_KEYS if mode == "endpoint" else FALLBACK_KEYS[:1]:
+        rate = head.get(key)
+        if isinstance(rate, int | float) and not isinstance(rate, bool) and rate > MAX_HEALTHY_FALLBACK_RATE:
+            reasons.append(f"{key} = {rate}: the model's prose was rejected for most drafts (a degraded endpoint "
+                           "answering in garbage?); the run measured the fixed paragraph, not the model")
+    return reasons
+
+
 def validity(mode: str, hw: dict[str, Any], stage_rows: list[dict[str, Any]],
              ep: dict[str, Any] | None = None) -> tuple[bool, list[str]]:
     reasons = []
@@ -625,6 +645,10 @@ def build(evid: Path, mode: str) -> dict[str, Any]:
         warn.append(f"result files name another endpoint host than endpoint.json: {head['endpoint_host_mismatch']} "
                     "(re-run the stages against one endpoint)")
     valid, reasons = validity(mode, hw, stage_rows, ep)
+    if mode != "rehearsal":
+        unhealthy = model_health(head, mode)
+        reasons += unhealthy
+        valid = valid and not unhealthy
     where = compute(mode, hw, ep)
     budget = next((s.get("budget") for s in reversed([_load(p) or {} for p in sorted((evid / "stages").glob("*.json"))])
                    if s.get("budget")), None)
