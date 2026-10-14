@@ -1,0 +1,4 @@
+# CPU rehearsal bundles are plumbing checks, never GPU results: they stay local.
+cpu-rehearsal/
+# run_all.sh's pointer to the unfinished run
+.active

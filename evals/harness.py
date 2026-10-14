@@ -190,7 +190,10 @@ def evaluate(
     scorer: str = "heuristic",
     world_dir: Path | None = None,
     ledger=None,
+    llm=None,
 ) -> dict:
+    """``llm``: a ready ``LLM`` to draft with instead of ``make_llm(llm_kind)`` (e.g. a metered endpoint client);
+    ``llm_kind`` then only names it (a name starting with ``fake`` skips the LLM-only baseline)."""
     from wapsi.pipeline.run import process_case
     from wapsi.verify.injection import RulesGuard
     from wapsi.verify.report import label_of
@@ -200,7 +203,7 @@ def evaluate(
     model = make_scorer(scorer, ledger)
     if limit:
         golden = golden[:limit]
-    llm = make_llm(llm_kind)
+    llm = llm if llm is not None else make_llm(llm_kind)
     # the LLM-only number-hallucination baseline needs a real model; the offline FakeLLM only writes placeholders
     baseline_llm = None if llm_kind.startswith("fake") else llm
     search = None

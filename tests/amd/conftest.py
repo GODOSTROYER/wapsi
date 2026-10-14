@@ -17,6 +17,14 @@ AMD = ROOT / "editions" / "amd"
 BENCH_FIXTURES = AMD / "bench" / "fixtures"
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "rehearsal: runs editions/amd/kickoff/run_all.sh --rehearsal stages on CPU (deselect with -m 'not rehearsal'; "
+        "WAPSI_FULL_REHEARSAL=1 runs every stage)",
+    )
+
+
 @pytest.fixture()
 def amd_dir() -> Path:
     return AMD
