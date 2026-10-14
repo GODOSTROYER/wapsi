@@ -28,6 +28,9 @@ amd = [
     "safetensors>=0.6",
 ]
 amd-app = ["fastapi>=0.115", "uvicorn>=0.30"]
+# local speech-to-text for voice intake: Whisper through transformers (ROCm GPU on AMD, CPU fallback);
+# soundfile decodes OGG / Opus (WhatsApp), MP3 and FLAC without ffmpeg
+asr = ["torch>=2.9", "transformers>=4.56", "soundfile>=0.12"]
 gcp = [
     "google-adk>=2.9",
     "google-cloud-bigquery>=3.25",

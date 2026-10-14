@@ -5,9 +5,10 @@ the ledger.
 Flow (``intake_voice_note``):
 
 1. sniff the audio (WAV / MP3 / M4A / OGG / WebM by magic bytes, not by file name) and enforce the size limit;
-2. one multimodal call with a response schema (``VOICE_SCHEMA``): Gemini when a key / project is configured
-   (``GeminiLLM.extract_media``), ``FakeLLM.extract_media`` offline (canned results for the bundled samples,
-   keyed by the audio's SHA-256);
+2. read it into ``VOICE_SCHEMA`` with the configured voice model (``wapsi.intake.backends``,
+   ``WAPSI_VOICE_BACKEND``): the open path (``wapsi.intake.open_voice``: a speech recogniser such as Whisper, then
+   an open text LLM such as Gemma 4 on AMD), one Gemini multimodal call (``GeminiLLM.extract_media``), or
+   ``FakeLLM.extract_media`` offline (canned results for the bundled samples, keyed by the audio's SHA-256);
 3. validate the model output against the schema (``validate_extraction``; a malformed answer is an error, never
    half-used);
 4. mask the phone number (in the fields *and* the transcript) in code, never trusting the model to do it;
@@ -33,6 +34,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from wapsi.intake.asr import AsrSegment, VoicePipelineInfo
 from wapsi.intake.reconcile import ReconRow, parse_claimed_dt, reconcile
 from wapsi.models import GuardResult
 from wapsi.ports import Guard, Ledger
@@ -40,6 +42,7 @@ from wapsi.timeutil import IST, ensure_utc, fmt_ist, utcnow
 
 MAX_AUDIO_BYTES = 15 * 1024 * 1024  # Gemini inline requests are capped at 20 MB in total
 MAX_TRANSCRIPT_CHARS = 20_000
+MAX_SEGMENTS = 400  # timed speech-to-text segments kept on a result
 # transcript + translation + fields for a 1-2 minute note, with room for a thinking model's reasoning tokens
 # (Gemini counts those against max_output_tokens; a truncated answer is invalid JSON and is retried)
 MAX_OUTPUT_TOKENS = 8192
@@ -387,13 +390,133 @@ def mask_phone(raw: str) -> str:
     return digits[:2] + "X" * (len(digits) - 4) + digits[-2:]
 
 
-def _mask_in_text(text: str, raw_phone: str) -> str:
+# Digits as a speech recogniser writes them when a number is read out one by one: "nine eight one two",
+# "nau aath ek do", "नौ आठ एक दो", "double five". Used only to find the caller's own number for masking.
+_DIGIT_WORDS: dict[str, str] = {
+    "zero": "0", "oh": "0", "shunya": "0", "sunya": "0", "sifar": "0", "शून्य": "0",
+    "one": "1", "ek": "1", "एक": "1",
+    "two": "2", "do": "2", "दो": "2",
+    "three": "3", "teen": "3", "tin": "3", "तीन": "3",
+    "four": "4", "char": "4", "chaar": "4", "चार": "4",
+    "five": "5", "paanch": "5", "panch": "5", "पांच": "5", "पाँच": "5",
+    "six": "6", "chhe": "6", "chhah": "6", "chah": "6", "che": "6", "छह": "6", "छः": "6", "छे": "6",
+    "seven": "7", "saat": "7", "सात": "7",
+    "eight": "8", "aath": "8", "aat": "8", "आठ": "8",
+    "nine": "9", "nau": "9", "नौ": "9",
+}  # fmt: skip
+_WORDISH = r"\wऀ-ॿ"  # Devanagari vowel signs are not \w, so word edges are spelled out
+_DIGIT_TOKEN = re.compile(
+    rf"(?:(?<![{_WORDISH}])(?P<rep>double|triple)\s+)?"
+    rf"(?:(?P<d>[0-9०-९])|(?<![{_WORDISH}])(?P<w>"
+    + "|".join(sorted(map(re.escape, _DIGIT_WORDS), key=len, reverse=True))
+    + rf")(?![{_WORDISH}]))",
+    re.IGNORECASE,
+)
+_DIGIT_GAP = re.compile(r"[\s\-.,]{0,3}")
+_RUN_GAP = re.compile(r"[\s\-,]{0,3}")  # inside one spoken number; a full stop ends it
+
+
+def _digit_tokens(text: str) -> list[tuple[int, int, str, bool]]:
+    """(start, end, digits, spoken) for every digit character and digit word in ``text``."""
+    toks: list[tuple[int, int, str, bool]] = []
+    for m in _DIGIT_TOKEN.finditer(text or ""):
+        if m.group("d"):
+            digit = str(int(m.group("d")))  # int() reads Devanagari digits too
+        else:
+            digit = _DIGIT_WORDS[m.group("w").lower()]
+        toks.append((m.start(), m.end(), digit * {"double": 2, "triple": 3}.get((m.group("rep") or "").lower(), 1),
+                     not m.group("d") or bool(m.group("rep"))))  # fmt: skip
+    return toks
+
+
+def spoken_digit_runs(text: str, min_len: int = 4) -> list[tuple[int, int, str]]:
+    """Numbers as they stand in a transcript: ``(start, end, digits)`` for each run of digits or digit words
+    separated only by spaces, commas or hyphens ("six two two two, two zero zero zero" -> "62222000"; "4253 1000
+    0001" -> "425310000001"). What the speaker said, read without a model."""
+    runs: list[tuple[int, int, str]] = []
+    toks = _digit_tokens(text)
+    i = 0
+    while i < len(toks):
+        j = i
+        while j + 1 < len(toks) and _RUN_GAP.fullmatch(text[toks[j][1] : toks[j + 1][0]]):
+            j += 1
+        digits = "".join(t[2] for t in toks[i : j + 1])
+        if len(digits) >= min_len:
+            runs.append((toks[i][0], toks[j][1], digits))
+        i = j + 1
+    return runs
+
+
+def _phone_spans(text: str, raw_phone: str) -> list[tuple[int, int]]:
+    """Where the caller's number appears in ``text``: as digits (optionally grouped: '98123 45621') or read out
+    digit by digit in English, Roman Hindi or Devanagari. Spans are sorted and do not overlap."""
     digits = re.sub(r"\D", "", raw_phone or "")
-    if len(digits) < 6:
+    if len(digits) < 6 or not text:
+        return []
+    target = digits[-10:]
+    pattern = re.compile(r"(?<!\d)" + r"[\s\-.,]{0,3}".join(re.escape(d) for d in target) + r"(?!\d)")
+    spans = [m.span() for m in pattern.finditer(text)]
+    toks = _digit_tokens(text)
+    i = 0
+    while i < len(toks):
+        said, spoken = "", False
+        for j in range(i, len(toks)):
+            if j > i and not _DIGIT_GAP.fullmatch(text[toks[j - 1][1] : toks[j][0]]):
+                break
+            said += toks[j][2]
+            spoken = spoken or toks[j][3]
+            if not target.startswith(said):
+                break
+            if said == target:
+                a, b = toks[i][0], toks[j][1]
+                clear = not (a > 0 and text[a - 1].isdigit()) and not (b < len(text) and text[b].isdigit())
+                if spoken and clear and not any(a < e and s < b for s, e in spans):
+                    spans.append((a, b))
+                    i = j
+                break
+        i += 1
+    return sorted(spans)
+
+
+def _mask_in_text(text: str, raw_phone: str) -> str:
+    spans = _phone_spans(text, raw_phone)
+    if not spans:
         return text
-    masked = mask_phone(digits)
-    pattern = re.compile(r"(?<!\d)" + r"[\s\-.,]{0,3}".join(re.escape(d) for d in digits[-10:]) + r"(?!\d)")
-    return pattern.sub(masked, text)
+    masked, out, at = mask_phone(re.sub(r"\D", "", raw_phone)), [], 0
+    for a, b in spans:
+        out += [text[at:a], masked]
+        at = b
+    return "".join(out) + text[at:]
+
+
+def mask_phone_in_text(text: str, raw_phone: str) -> str:
+    """``text`` with the caller's number replaced by its mask (``98XXXXXX21``), whether it is written as digits
+    or read out digit by digit ("nine eight one two three, four five six two one")."""
+    return _mask_in_text(text, raw_phone)
+
+
+def mask_segments(segments: list[AsrSegment], raw_phone: str) -> list[AsrSegment]:
+    """Timed segments with the caller's number masked like the transcript. The number is searched across
+    segment boundaries, so a number split over two segments is masked too (the mask goes where it starts)."""
+    if not segments:
+        return []
+    pieces: list[str] = []
+    bounds: list[tuple[int, int]] = []
+    for seg in segments:
+        start = len(pieces)
+        pieces.extend(seg.text)
+        bounds.append((start, len(pieces)))
+        pieces.append(" ")
+    spans = _phone_spans("".join(pieces), raw_phone)
+    if not spans:
+        return list(segments)
+    masked = mask_phone(re.sub(r"\D", "", raw_phone))
+    for a, b in spans:
+        pieces[a:b] = [masked] + [""] * (b - a - 1)
+    return [
+        AsrSegment(start=seg.start, end=seg.end, text="".join(pieces[a:b]))
+        for seg, (a, b) in zip(segments, bounds, strict=True)
+    ]
 
 
 _ACRONYMS = {"kyc", "upi", "imps", "neft", "rtgs", "otp", "sim", "atm", "qr"}
@@ -452,6 +575,9 @@ class VoiceIntakeResult(BaseModel):
     empty: bool = (
         False  # the model heard nothing usable (e.g. the offline model does not know this recording)
     )
+    # the open path only: timed speech-to-text segments (phone masked) and which models did what, how fast
+    segments: list[AsrSegment] = Field(default_factory=list)
+    pipeline: VoicePipelineInfo | None = None
 
     @property
     def injection_flagged(self) -> bool:
@@ -581,16 +707,24 @@ def intake_voice_note(
             f"{getattr(llm, 'name', type(llm).__name__)} cannot read audio", "NO_AUDIO_MODEL"
         )
     received = ensure_utc(received_at or utcnow())
+    request: dict[str, Any] = {
+        "system": SYSTEM,
+        "prompt": build_prompt(received),
+        "json_schema": VOICE_SCHEMA,
+        "temperature": 0.0,
+        "max_tokens": MAX_OUTPUT_TOKENS,
+    }
     t0 = time.perf_counter()
-    raw = llm.extract_media(
-        audio,
-        mime,
-        system=SYSTEM,
-        prompt=build_prompt(received),
-        json_schema=VOICE_SCHEMA,
-        temperature=0.0,
-        max_tokens=MAX_OUTPUT_TOKENS,
-    )
+    pipeline: VoicePipelineInfo | None = None
+    segments: list[AsrSegment] = []
+    extracted_by = str(getattr(llm, "name", type(llm).__name__))
+    detailed = getattr(llm, "extract_voice", None)
+    if callable(detailed):  # the open path also reports its models, timings and timed segments
+        raw, run = detailed(audio, mime, **request)
+        pipeline, segments = run.info, list(run.segments)
+        extracted_by = run.name or extracted_by  # names the text model that actually answered
+    else:
+        raw = llm.extract_media(audio, mime, **request)
     ext = validate_extraction(raw)
     elapsed = int((time.perf_counter() - t0) * 1000)
 
@@ -614,14 +748,17 @@ def intake_voice_note(
     flagged_spans = _dedupe(guard_result.quoted_spans + instruction_like)
 
     rows, matched = reconcile(ledger, fields={f.key: f.value for f in fields}, amounts=amounts, refs=refs)
+    duration = wav_duration_s(audio) if mime == "audio/wav" else None
+    if duration is None and pipeline is not None:
+        duration = pipeline.audio_s  # the recogniser decoded it (OGG / MP3 / M4A / WebM)
     return VoiceIntakeResult(
         filename=filename,
         sample_id=sample_id,
         audio_sha256=sha256_hex(audio),
         mime_type=mime,
         size_bytes=len(audio),
-        duration_s=wav_duration_s(audio) if mime == "audio/wav" else None,
-        extracted_by=getattr(llm, "name", type(llm).__name__),
+        duration_s=duration,
+        extracted_by=extracted_by,
         elapsed_ms=elapsed,
         received_at=received,
         transcript=transcript,
@@ -637,4 +774,6 @@ def intake_voice_note(
         matched_ncrp_ids=matched,
         verdict=_verdict(matched, rows, bool(flagged_spans) or guard_result.flagged),
         empty=not transcript.strip() and not fields and not amounts and not refs,
+        segments=mask_segments(segments[:MAX_SEGMENTS], raw_phone),
+        pipeline=pipeline,
     )

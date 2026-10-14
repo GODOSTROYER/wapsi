@@ -60,7 +60,8 @@ flowchart LR
 | `serving/pull_and_pin.sh` | Pulls each image and writes `VAR=repo@sha256:…` into `.env`. Refuses `:latest`. |
 | `serving/smoke_test.py` | Checks `/v1/models` and one completion, then runs one showcase case through the pipeline against the endpoint and prints the verification summary. |
 | `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at vLLM, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
-| `bench/` | `llm_bench.py` (streaming TTFT, ITL, tokens/s, concurrency sweep), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case), `report.py` (writes `AMD_RESULTS.md`). |
+| `bench/` | `llm_bench.py` (streaming TTFT, ITL, tokens/s, concurrency sweep), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case), `voice_bench.py` (voice intake: speech-to-text real-time factor, extraction latency per model, samples reconciled as documented), `report.py` (writes `AMD_RESULTS.md`). |
+| `asr/` | `server.py`: Whisper on the AMD GPU behind an OpenAI-compatible `POST /v1/audio/transcriptions` (transformers on torch-ROCm; runs on the droplet host or in a GPU notebook, no Docker needed). Voice intake then runs on open models end to end: Whisper transcribes, the `llm` service translates and extracts the fields. See `docs/voice-intake.md`. |
 | `RUNBOOK.md` | Event-week steps: credits, droplet, firewall, serving, training, benchmarks, video capture, teardown, budget. |
 | `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. These are separate work streams with their own READMEs. |
 
@@ -100,7 +101,8 @@ On the MI300X, follow [RUNBOOK.md](RUNBOOK.md).
 Everything is set through environment variables; see `.env.example` and `app/settings.py`. The main ones:
 `WAPSI_LLM_PROFILE` and `WAPSI_LLM_MODEL` choose the model and checkpoint. `VLLM_GPU_UTIL` and `VERIFIER_GPU_UTIL`
 set the memory split. `WAPSI_VERIFIER_BASE_URL` switches on the judge. `WAPSI_GNN_URL` switches on the GNN.
-`WAPSI_WORLD_DIR` picks the synthetic world. `*_BIND` controls network exposure. Secrets (`HF_TOKEN`,
+`WAPSI_WORLD_DIR` picks the synthetic world. `WAPSI_VOICE_BACKEND` and `WAPSI_ASR_BASE_URL` choose the voice-intake
+models (`docs/voice-intake.md`). `*_BIND` controls network exposure. Secrets (`HF_TOKEN`,
 `VLLM_API_KEY`, `WAPSI_API_TOKEN`) come only from the shell environment on the droplet. They are never in `.env`
 or git.
 

@@ -2,6 +2,9 @@
 structured NCRP complaint. Transcript and English translation side by side, extracted fields with confidence,
 every claimed number reconciled against the ledger, instruction-like text quoted (never followed), and "Open
 case" runs the normal pipeline for the matched NCRP ids (whose amounts come from the ledger, not the recording).
+
+The models come from ``WAPSI_VOICE_BACKEND`` (``wapsi.intake.backends``): the open path (Whisper + Gemma 4 on AMD),
+Gemini, or the offline demo model. The page shows which models transcribed and extracted, and how fast.
 """
 
 from __future__ import annotations
@@ -87,7 +90,7 @@ def _ledger_ncrp_ids(ds: Any) -> frozenset[str] | None:
         return None
 
 
-# what the browser's <audio> element is told (Gemini gets the sniffed type itself)
+# what the browser's <audio> element is told (the voice model gets the sniffed type itself)
 _PLAYBACK = {"audio/mp3": "audio/mpeg"}
 
 
@@ -110,11 +113,75 @@ def _playback_mime(data: bytes, filename: str) -> tuple[str | None, str]:
     return _PLAYBACK.get(mime, mime), ""
 
 
+def _voice_model(ds: Any = None) -> Any:
+    """The edition's own voice model when its data source provides one (the AMD edition does), else the one
+    ``WAPSI_VOICE_BACKEND`` selects."""
+    own = getattr(ds, "voice_model", None)
+    if callable(own):
+        try:
+            model = own()
+            if model is not None:
+                return model
+        except Exception:  # noqa: BLE001 - an edition's model is optional; the shared one always builds
+            log.warning("the data source's voice model is unavailable", exc_info=True)
+    return voice_llm()
+
+
+def _describe(llm: Any) -> dict[str, Any]:
+    from wapsi.intake.backends import describe_voice_model
+
+    return describe_voice_model(llm)
+
+
 def _model_label(llm: Any) -> tuple[str, str]:
-    name = str(getattr(llm, "name", type(llm).__name__))
-    if name.startswith(("gemini-api:", "vertex:")):
-        return f"Gemini · {getattr(llm, 'model', name.split(':', 1)[-1])}", "accent"
-    return "Offline demo model · knows the bundled samples", "gray"
+    d = _describe(llm)
+    return str(d["label"]), str(d["tone"])
+
+
+def _clock(seconds: float) -> str:
+    return f"{int(seconds // 60):02d}:{seconds % 60:04.1f}"
+
+
+def _secs(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value * 1000:.0f} ms" if value < 1 else f"{value:.1f} s"
+
+
+def _pipeline_pairs(p: Any) -> list[tuple[str, str]]:
+    """How the open path read the note: which model did what, where it ran and how long it took."""
+    where = {
+        "local": "in this app",
+        "endpoint": "transcription endpoint",
+        "chat-audio": "chat endpoint",
+        "fake": "offline stand-in",
+    }.get(p.asr_backend, p.asr_backend)
+    asr = f"{p.transcribed_by} · {where}" + (f" · {p.asr_device}" if p.asr_device not in ("", "remote") else "")
+    pairs = [("Speech-to-text", asr + (" · on AMD" if p.asr_on_amd else ""))]
+    if p.audio_s and p.asr_s is not None:
+        speed = f" · real-time factor {p.rtf:.2f}" if p.rtf is not None else ""
+        pairs.append(("Transcription time", f"{_secs(p.asr_s)} for {p.audio_s:.0f} s of audio{speed}"))
+    served = f" · {p.served_by}" if p.served_by else ""
+    pairs.append(("Translation and fields", f"{p.structured_by}{served}" + (" · on AMD" if p.llm_on_amd else "")))
+    took = _secs(p.extract_s)
+    if p.prompt_tokens is not None and p.completion_tokens is not None:
+        took += f" · {p.prompt_tokens:,} prompt + {p.completion_tokens:,} output tokens"
+    pairs.append(("Extraction time", took))
+    checks = f"JSON mode {p.json_mode or 'n/a'} · schema validated"
+    if p.attempts > 1:
+        checks += f" · {p.attempts} attempts"
+    if p.repaired:
+        checks += " · answer repaired before validation"
+    pairs.append(("Structured output", checks))
+    if p.failover or len(p.models_tried) > 1:  # a model was skipped or rejected: say which, and who answered
+        pairs.append(("Model chain", "; ".join(p.models_tried)))
+    if p.fixes:
+        pairs.append(("Checked against the transcript", "; ".join(p.fixes[:4])))
+    if p.withheld:
+        pairs.append(
+            ("Withheld from the text model", f"{p.withheld} instruction-like passage(s): quoted to you, never read by it")
+        )
+    return pairs
 
 
 def _audio_input(viewer: Any, ctx_ds: Any = None) -> tuple[bytes, str, str | None] | None:
@@ -166,7 +233,11 @@ def _audio_input(viewer: Any, ctx_ds: Any = None) -> tuple[bytes, str, str | Non
         note = f"{s.duration_s:.0f} s · " if s.duration_s else ""
         md(f'<div class="wp-note">{h.esc(note)}{h.esc(viewer.text(s.notes, names(sid)))}</div>')
         with st.expander("What the recording says (synthetic script)"):
-            md(h.quote(viewer.text(s.script, names(sid)), "Romanised Hinglish read by text-to-speech"))
+            from wapsi.intake.voice import mask_phone_in_text
+
+            said_phone = ((s.expected.get("fields") or {}).get("phone") or {}).get("value") or ""
+            script = mask_phone_in_text(s.script, said_phone)  # masked here like everywhere else on the page
+            md(h.quote(viewer.text(script, names(sid)), "Romanised Hinglish read by text-to-speech"))
         return s.read_bytes(), s.filename, s.sample_id
     if source == SOURCES[1]:
         up = st.file_uploader(
@@ -196,7 +267,7 @@ def _run(ctx: Ctx, data: bytes, filename: str, sample_id: str | None) -> None:
     from wapsi.verify.injection import RulesGuard
 
     st.session_state.pop(K_ERROR, None)
-    llm = voice_llm()
+    llm = _voice_model(ctx.ds)
     try:
         with st.spinner("Listening, transcribing and checking every number against the ledger…"):
             result = intake_voice_note(
@@ -237,6 +308,7 @@ def _run(ctx: Ctx, data: bytes, filename: str, sample_id: str | None) -> None:
             object_id=result.audio_sha256[:16],
             details={
                 "extracted_by": result.extracted_by,
+                "voice_backend": result.pipeline.backend if result.pipeline else "",
                 "matched_ncrp_ids": result.matched_ncrp_ids,
                 "claims_matched": counts["MATCHED"],
                 "claims_mismatched": counts["MISMATCH"],
@@ -287,10 +359,18 @@ def _results(ctx: Ctx, r: Any) -> None:
                 ),
                 h.Tile("Mismatched", str(counts["MISMATCH"]), "ledger value is used"),
                 h.Tile("Not in ledger", str(counts["NOT_FOUND"]), "verify before acting"),
-                h.Tile("Language", langs, f"read by {r.extracted_by} in {_took(r.elapsed_ms)}"),
+                h.Tile(
+                    "Language",
+                    langs,
+                    f"read by {r.pipeline.label if r.pipeline and r.pipeline.label else r.extracted_by} "
+                    f"in {_took(r.elapsed_ms)}",
+                ),
             ]
         )
     )
+    if r.pipeline is not None and r.pipeline.backend == "open":
+        md(h.section("How it was read"))
+        md(h.kv(_pipeline_pairs(r.pipeline)))
 
     if r.injection_flagged:
         md(
@@ -313,6 +393,24 @@ def _results(ctx: Ctx, r: Any) -> None:
     with c2:
         md(h.section("English translation"))
         md(h.document(mask(r.translation_en) or "(nothing translated)", r.flagged_spans))
+    if r.segments:
+        with st.expander(f"Timed transcript · {len(r.segments)} speech-to-text segments"):
+            md(
+                h.table(
+                    [("From", False), ("To", False), ("Heard", False)],
+                    [
+                        h.Row(
+                            [
+                                h.Cell(_clock(s.start), nowrap=True),
+                                h.Cell(_clock(s.end), nowrap=True),
+                                h.Cell(mask(s.text)),
+                            ]
+                        )
+                        for s in r.segments[:200]
+                    ],
+                    caption="Timestamps come from the speech recogniser; the caller's number is masked in code.",
+                )
+            )
 
     md(h.section("Extracted complaint fields"))
     rows: list[h.Row] = []
@@ -454,6 +552,7 @@ def _results(ctx: Ctx, r: Any) -> None:
                 "extracted_by",
                 "audio_sha256",
                 "elapsed_ms",
+                "pipeline",
             },
         )
         if v.masked:
@@ -469,19 +568,21 @@ def render(ctx: Ctx) -> None:
         "Voice intake",
         "A victim's voice note in Hinglish, Hindi or English becomes a structured NCRP complaint in seconds. "
         "Every number is checked against the ledger.",
-        eyebrow="Complaint intake · multimodal",
+        eyebrow="Complaint intake · voice",
     )
     from wapsi.intake.voice import VoiceIntakeResult, sha256_hex
 
-    label, tone = _model_label(voice_llm())
+    about = _describe(_voice_model(ctx.ds))
     md(
         h.chips(
             [
-                h.chip(label, tone, title="Set GEMINI_API_KEY to transcribe any recording with Gemini"),
+                h.chip(str(about["label"]), str(about["tone"]), title=str(about.get("hint") or "")),
                 h.chip("Synthetic voices and data", "gray"),
             ]
         )
     )
+    if about["backend"] == "unconfigured":
+        st.warning(f"The voice model is not configured: {about.get('hint')}")
 
     picked = _audio_input(ctx.viewer, ctx.ds)
     if picked is None:
@@ -497,8 +598,13 @@ def render(ctx: Ctx) -> None:
         "Transcribe and check",
         key="voice_run",
         type="primary",
-        help="One multimodal call returns transcript, translation and fields; Wapsi then checks each "
-        "claim against the ledger.",
+        help=(
+            "A speech recogniser transcribes; an open text model translates and extracts the fields; Wapsi "
+            "then checks each claim against the ledger."
+            if about["backend"] == "open"
+            else "One multimodal call returns transcript, translation and fields; Wapsi then checks each "
+            "claim against the ledger."
+        ),
         **optional(st.button, icon=":material/graphic_eq:"),
     ):
         _run(ctx, data, filename, sample_id)
@@ -513,9 +619,16 @@ def render(ctx: Ctx) -> None:
         return
     result = VoiceIntakeResult.model_validate(stored)
     if result.empty:
-        st.info(
-            "The offline demo model only recognises the bundled sample voice notes. Set GEMINI_API_KEY to "
-            "transcribe your own recording with Gemini."
-        )
+        if result.pipeline is not None and result.pipeline.backend == "open":
+            st.info(
+                f"No speech was recognised in this recording ({result.pipeline.transcribed_by}). Check the "
+                "recording, or the language hint WAPSI_ASR_LANGUAGE."
+            )
+        else:
+            st.info(
+                "The offline demo model only recognises the bundled sample voice notes. To transcribe your own "
+                "recording on open models set WAPSI_LLM_BASE_URL (Gemma 4 on AMD) and WAPSI_ASR_BASE_URL or "
+                "WAPSI_ASR_BACKEND=local (Whisper); or set GEMINI_API_KEY to use Gemini."
+            )
         return
     _results(ctx, result)

@@ -178,6 +178,16 @@ services:
       WAPSI_STATE_DIR: /state
       WAPSI_API_TOKEN: ${WAPSI_API_TOKEN:-}
       WAPSI_UI_SEED_LIMIT: ${WAPSI_UI_SEED_LIMIT:-3}
+      # Voice intake on open models: Whisper at WAPSI_ASR_BASE_URL (editions/amd/asr/server.py or vLLM) transcribes,
+      # the llm service above translates and extracts. The llm service runs on the MI300X through ROCm, hence 1.
+      WAPSI_LLM_ON_AMD: ${WAPSI_LLM_ON_AMD:-1}
+      WAPSI_VOICE_BACKEND: ${WAPSI_VOICE_BACKEND:-auto}
+      WAPSI_ASR_BASE_URL: ${WAPSI_ASR_BASE_URL:-}
+      WAPSI_ASR_MODEL: ${WAPSI_ASR_MODEL:-openai/whisper-large-v3-turbo}
+      WAPSI_ASR_LANGUAGE: ${WAPSI_ASR_LANGUAGE:-hi}
+      WAPSI_ASR_ON_AMD: ${WAPSI_ASR_ON_AMD:-0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # an ASR server started on the droplet host is reachable by this name
     volumes:
       - ${WAPSI_WORLD_DIR:-../../data/generated/demo}:/data/world:ro
       - ../../data/golden:/app/data/golden:ro

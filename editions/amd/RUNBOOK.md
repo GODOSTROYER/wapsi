@@ -205,6 +205,9 @@ for C in 1 8 16; do
     --gpu-hour-usd 1.99 --inr-per-usd <RATE_ON_THE_DAY> --name e2e_c$C --out $OUT
 done
 
+# voice intake: Whisper on the GPU (ROCm) transcribes, the llm service extracts (docs/voice-intake.md)
+WAPSI_LLM_BASE_URL=http://127.0.0.1:8000/v1 WAPSI_LLM_MODEL=wapsi-llm WAPSI_LLM_API_KEY=$VLLM_API_KEY WAPSI_LLM_ON_AMD=1 \n  WAPSI_ASR_DEVICE=cuda uv run python -m editions.amd.bench.voice_bench --asr local --repeat 3 --min-interval 0 --out $OUT
+
 kill -INT $TPID; wait $TPID                                              # writes telemetry_summary.json
 uv run python -m editions.amd.bench.report --results-dir $OUT --out editions/amd/AMD_RESULTS.md
 git add editions/amd/bench/results/$STAMP editions/amd/AMD_RESULTS.md && git commit -m "AMD: MI300X benchmark run $STAMP" && git push

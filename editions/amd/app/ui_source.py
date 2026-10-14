@@ -13,7 +13,7 @@ from wapsi.audit.chain import append_event, chain_extend
 from wapsi.models import ApprovalDecision, AuditEvent, CaseBundle
 from wapsi.timeutil import utcnow
 
-from .services import Services, process, seed_store
+from .services import Services, process, seed_store, voice_model
 
 log = logging.getLogger("wapsi.amd.ui")
 SOURCE_CASE_STORE = "case_store"
@@ -38,6 +38,11 @@ class AmdDataSource(ShowcaseDataSource):
     def list_cases(self) -> list[Any]:
         self.refresh()
         return super().list_cases()
+
+    def voice_model(self) -> Any:
+        """The edition's voice-intake model (the Voice Intake page asks the data source first): Whisper plus this
+        edition's LLM on the open path, the offline model in demo mode. Built once, kept loaded."""
+        return voice_model(self.services)
 
     def _persist(self, bundle: CaseBundle | None) -> None:
         if bundle is None:
