@@ -1,0 +1,39 @@
+{
+  "schema": "wapsi-amd-stage/1",
+  "stage": "env",
+  "index": 1,
+  "mode": "notebook",
+  "label": "AMD ROCm notebook run",
+  "status": "ok",
+  "exit_code": 0,
+  "started_at": "2026-10-14T13:23:33Z",
+  "ended_at": "2026-10-14T13:25:19Z",
+  "duration_s": 106.0,
+  "window": "inside",
+  "log": "logs/01-env.log",
+  "amd_smi_before": "amd_smi/01-env-before.json",
+  "amd_smi_after": "amd_smi/01-env-after.json",
+  "notes": {
+    "git_commit": "483b111d6b24126dbda494ce1449be4ea9e6e3ed",
+    "amd_baseline": "1d500f6876ea7e0a97eebcb0328d9f779cc16f97",
+    "docs_index": "built"
+  },
+  "budget": {
+    "billed": true,
+    "metered": true,
+    "mode": "notebook",
+    "label": "AMD ROCm notebook, credits at WAPSI_GPU_HOUR_USD per hour",
+    "gpu_hour_usd": 1.99,
+    "budget_usd": 100.0,
+    "spent_before_usd": 0.0,
+    "droplet_started_at": "2026-10-02T14:42:31Z",
+    "started_source": "boot time (/proc/stat btime)",
+    "hours": 286.714,
+    "droplet_usd": 570.56,
+    "total_usd": 570.56,
+    "pct": 570.6,
+    "warn_pct": 75.0,
+    "stop_pct": 90.0,
+    "state": "stop"
+  }
+}

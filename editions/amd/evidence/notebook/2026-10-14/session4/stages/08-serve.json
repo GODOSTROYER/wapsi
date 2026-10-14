@@ -1,0 +1,38 @@
+{
+  "schema": "wapsi-amd-stage/1",
+  "stage": "serve",
+  "index": 8,
+  "mode": "notebook",
+  "label": "AMD ROCm notebook run",
+  "status": "failed",
+  "exit_code": 143,
+  "started_at": "2026-10-14T13:26:19Z",
+  "ended_at": "2026-10-14T13:34:58Z",
+  "duration_s": 519.0,
+  "window": "inside",
+  "log": "logs/08-serve.log",
+  "amd_smi_before": "amd_smi/08-serve-before.json",
+  "amd_smi_after": "amd_smi/08-serve-after.json",
+  "notes": {
+    "served_profile": "gemma4-base",
+    "serving_stack": "vLLM (python -m vllm.entrypoints.openai.api_server)"
+  },
+  "budget": {
+    "billed": true,
+    "metered": true,
+    "mode": "notebook",
+    "label": "AMD ROCm notebook, credits at WAPSI_GPU_HOUR_USD per hour",
+    "gpu_hour_usd": 1.99,
+    "budget_usd": 100.0,
+    "spent_before_usd": 0.0,
+    "droplet_started_at": "2026-10-02T14:42:31Z",
+    "started_source": "boot time (/proc/stat btime)",
+    "hours": 286.874,
+    "droplet_usd": 570.88,
+    "total_usd": 570.88,
+    "pct": 570.9,
+    "warn_pct": 75.0,
+    "stop_pct": 90.0,
+    "state": "stop"
+  }
+}

@@ -83,15 +83,19 @@ The guard is a warning layer. The defence is structural: the hold plan, not the 
 labelled with where it ran:
 
 - **Gemma 4 31B served by vLLM on an AMD Instinct MI300X** (AMD AI Notebook, ROCm 7.14, 14-10-2026;
-  [`editions/amd/evidence/notebook/2026-10-14/`](../editions/amd/evidence/notebook/2026-10-14/evidence.md)). Demo
+  [`editions/amd/evidence/notebook/2026-10-14/`](../editions/amd/evidence/notebook/2026-10-14/evidence.md); two
+  one-hour sessions, each on its own MI300X: the golden set in the first, the rest in the second). Demo
   world, 39 cases, Gemma 4 writing the prose: holds exact 1.0, false freezes 0, drafts passing the verifier 1.0,
-  numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text 0.0332, p95 11.12 s
-  per case to verified drafts. Asked for the plan in free text, raw Gemma 4 wrote a wrong amount in 19 of 39 cases
-  (0.4872), while 0 of the same run's 301 Wapsi drafts had a numeric error; in a separate A/B, 4 of 20 free-form
-  STRs had a wrong amount against 0 of 17 Wapsi-bound STRs (0 of all 155 bound drafts). Throughput: 55 / 181 /
-  474 / 699 output tokens/s at concurrency 1 / 4 / 16 / 64; 414 / 1,410 / 1,590 complete cases per hour at
-  concurrency 1 / 8 / 16; $0.0013 per case ($1.25 per 1,000 cases) at the $1.99 per GPU-hour list price. The GNN
-  trained there: mule ROC-AUC 0.9202 on the hard world. Whisper there: the 31-second note in 0.92 s.
+  numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text in 0.0332 of all 301
+  drafts, p95 11.12 s per case to verified drafts. Asked for the plan in free text, raw Gemma 4 wrote a wrong
+  amount in 19 of 39 cases (0.4872), while 0 of the same run's 301 Wapsi drafts had a numeric error; in a
+  separate A/B, 4 of 20 free-form STRs had a wrong amount against 0 of 17 Wapsi-bound STRs (0 of all 155 bound
+  drafts). Throughput: 55 / 181 / 474 / 699 output tokens/s at concurrency 1 / 4 / 16 / 64; 414 / 1,410 / 1,590 complete cases per hour at
+  concurrency 1 / 8 / 16 (at concurrency 16, 9 of 83 model-written prose fields were replaced by fixed text, 0.1084,
+  and every draft still passed the verifier); $0.0013 per case ($1.25 per 1,000 cases) at the $1.99 per GPU-hour
+  list price. The GNN trained there, on the hard world: mule ROC-AUC 0.9202 against the default heuristic's 0.9411,
+  innocent-holder recall 0.875 against 0.6875; the heuristic stays the default. Whisper there: the 31-second note
+  in 0.92 s.
 - **Gemma 4 through the AMD Token Factory** (AMD-served through AMD's API, not an MI300X benchmark; 14-10-2026):
   the agent's live session ended VERIFIED with 16 of 16 drafts verified and Gemma 4 writing the draft prose too;
   the showcase world with Gemma 4 writing the prose had drafts passing the verifier 1.0.
@@ -204,8 +208,8 @@ this folder.
   applies it.
 - Draft metrics above use the deterministic stub LLM unless a line names Gemma 4 on AMD; those come from
   committed results files and say where they ran. A result from AMD's shared Token Factory endpoint is never
-  presented as a benchmark of a dedicated MI300X. The MI300X figures come from an AMD AI Notebook (one MI300X,
-  shared as a virtual function), not from a droplet. Whisper on the MI300X was timed, not yet run through the
-  voice-intake reconciliation.
+  presented as a benchmark of a dedicated MI300X. The MI300X figures come from an AMD AI Notebook (two sessions,
+  each with one whole MI300X exposed as a virtual function, a different GPU each time), not from a droplet.
+  Whisper on the MI300X was timed, not yet run through the voice-intake reconciliation.
 - The pre-event core is tagged `amd-baseline`; [`docs/originality.md`](../docs/originality.md) lists what was built
   during 12 to 18 October 2026.

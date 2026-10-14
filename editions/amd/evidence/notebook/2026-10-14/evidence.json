@@ -13,7 +13,7 @@
   "gpu_results_valid": true,
   "invalid_reasons": [],
   "date": "2026-10-14",
-  "generated_at": "2026-10-14T15:36:50Z",
+  "generated_at": "2026-10-14T16:25:32Z",
   "event_window": {
     "start": "2026-10-12T15:00:00Z",
     "end": "2026-10-18T14:00:00Z"
@@ -114,7 +114,7 @@
         "served_profile": "gemma4-base",
         "serving_stack": "vLLM (python -m vllm.entrypoints.openai.api_server)",
         "gnn_service": "not served: no checkpoint",
-        "session": "GPU session 4 (2026-10-14 13:22-14:25 UTC, commit 483b111d6b24126dbda494ce1449be4ea9e6e3ed), same notebook and served model (google/gemma-4-31B-it, profile gemma4-base) as the other stages of this folder, which ran in session 5 (commit fc20109); added to this folder after session 5, see SESSIONS.md"
+        "session": "GPU session 4 (2026-10-14 13:22-14:25 UTC, commit 483b111d6b24126dbda494ce1449be4ea9e6e3ed), same AMD AI Notebook service and served model (google/gemma-4-31B-it, profile gemma4-base) as the other stages of this folder, which ran in session 5 (commit fc20109), on a different MI300X VF (asic_serial 0xD14074DBA91C454A; session 5: 0x8816642CF4E8921A); session 4's hardware records are in session4/; added to this folder after session 5, see SESSIONS.md"
       }
     },
     {

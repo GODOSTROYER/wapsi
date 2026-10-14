@@ -49,7 +49,7 @@ is an optional extra. The status column says what has run on AMD so far.
 | The officer's agent and its tool calls | Gemma 4 31B through Google ADK | the same endpoint | no: figures come from tools | run live |
 | Second opinion on untrusted text (judge) | a small open model, configurable | the same endpoint, or a second model on the same GPU | no: it can add a flag, never clear one | wired, not yet measured |
 | Speech to text | Whisper, open weights | local by default; any GPU is faster | no | timed on an AMD Instinct MI300X (AMD AI Notebook): steady-state real-time factor 0.0312; not yet run through the voice-intake reconciliation |
-| Mule scoring (optional second scorer) | GraphSAGE GNN, pure PyTorch on ROCm | an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic | trained on an AMD Instinct MI300X (AMD AI Notebook): hard-world mule ROC-AUC 0.9202 |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, pure PyTorch on ROCm | an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic | trained on an AMD Instinct MI300X (AMD AI Notebook): on the hard world, mule ROC-AUC 0.9202 against the default heuristic's 0.9411, innocent-holder recall 0.875 against 0.6875, mule recall 0.7415 against 0.966; the heuristic stays the default |
 | Tracing, per-victim split, hold plan, verifier | no model | plain Python, any CPU | yes, all of them | runs everywhere |
 
 ### Three modes, one codebase
@@ -62,7 +62,7 @@ The model endpoint is a setting. Nothing in the core knows which mode it is in.
 | Used for | everything on the language side: prose, extraction, the agent | serving Gemma 4 with vLLM on the notebook, GNN training, benchmarks | serving both models, the GNN and the app on one machine, so no request leaves it |
 | You need | a base URL, a key and a model name | a notebook instance from the AMD portal | a droplet from the AMD Developer Cloud |
 | Role in the entry | **primary**: the demo and the agent run here | the MI300X measurements | secondary |
-| Status (2026-10-14) | run live with synthetic data; the agent, voice-extraction and showcase-world figures are published from committed results files, the demo-world figures through the endpoint are still open slots | run on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM) in two one-hour sessions; evidence in `editions/amd/evidence/notebook/2026-10-14/` | stack, runbook and benchmark harness prepared and tested offline; not run on a droplet |
+| Status (2026-10-14) | run live with synthetic data; the agent, voice-extraction and showcase-world figures are published from committed results files, the demo-world figures through the endpoint are still open slots | run on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM) in two one-hour sessions, each on its own MI300X; evidence in `editions/amd/evidence/notebook/2026-10-14/` | stack, runbook and benchmark harness prepared and tested offline; not run on a droplet |
 
 **Endpoint mode settings.** All of them come from the environment; none is ever committed.
 

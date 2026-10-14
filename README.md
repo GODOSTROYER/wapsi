@@ -58,7 +58,7 @@ column says what has run where.
 | The officer's agent and its tool calls | Gemma 4 31B, driven by Google ADK | the Token Factory endpoint | run live; the Agent trace tab replays that run |
 | Second opinion on untrusted complaint text | a small open model (configurable) | the same endpoint, or a second model on the same GPU | wired, not yet measured |
 | Speech to text for voice notes | **Whisper** large-v3-turbo (open weights) | local by default (a CPU is enough for a short clip), or an AMD GPU | timed on the MI300X: the 31-second note in 0.92 s, steady-state real-time factor 0.0312; not yet run through the voice-intake reconciliation |
-| Mule scoring on the money-trail graph (optional second scorer) | **GraphSAGE GNN**, pure PyTorch on ROCm | an AMD Instinct MI300X | trained on the MI300X: hard-world mule ROC-AUC 0.9202, innocent-holder recall 0.875 (the transparent heuristic stays the default) |
+| Mule scoring on the money-trail graph (optional second scorer) | **GraphSAGE GNN**, pure PyTorch on ROCm | an AMD Instinct MI300X | trained on the MI300X: on the hard world, mule ROC-AUC 0.9202 against the heuristic's 0.9411 and innocent-holder recall 0.875 against 0.6875, but mule recall 0.7415 against 0.966, so the transparent heuristic stays the default |
 
 **What the public demo URL shows.** With a key set as a host secret, the drafts' prose is written live by Gemma 4
 on AMD (a chip names the model and the endpoint). Without one, it replays prose recorded from Gemma 4 on AMD on
@@ -71,7 +71,7 @@ There are three ways to run it, and one codebase. The model endpoint is a settin
 | Mode | What it is | Status on 2026-10-14 |
 |---|---|---|
 | **Endpoint** (default) | `WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL` point at AMD's Token Factory API. No GPU and no Docker needed on your side. | Built and run live on 2026-10-14 with Gemma 4 served on AMD: the ADK agent with live draft prose (`editions/amd/bench/results/agent-tokenfactory-20261014/`), the showcase world through the harness (`evals/reports/amd/`), voice-note field extraction (`editions/amd/bench/results/voice-tokenfactory-20261014/`) and the demo's recorded prose (`data/recordings/demo_prose.json`). A figure is pitched only from a committed results file; the rest are open slots in [pitch/NUMBERS.md](pitch/NUMBERS.md). |
-| **Notebook** | A ROCm JupyterLab on an AMD GPU, without Docker: vLLM serves Gemma 4 on the notebook, the GNN trains, and the benchmarks run. | Run on 2026-10-14 on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14) in two one-hour sessions: Gemma 4 31B served by vLLM, the serving and end-to-end benchmarks, the raw-vs-bound A/B, the golden set, GNN training and a Whisper timing run (`editions/amd/evidence/notebook/2026-10-14/`, `SESSIONS.md` there). |
+| **Notebook** | A ROCm JupyterLab on an AMD GPU, without Docker: vLLM serves Gemma 4 on the notebook, the GNN trains, and the benchmarks run. | Run on 2026-10-14 on AMD Instinct MI300X GPUs (AMD AI Notebook, ROCm 7.14) in two one-hour sessions, each on its own MI300X: Gemma 4 31B served by vLLM, the serving and end-to-end benchmarks, the raw-vs-bound A/B, the golden set, GNN training and a Whisper timing run (`editions/amd/evidence/notebook/2026-10-14/`, `SESSIONS.md` there). |
 | **Droplet** | One AMD Instinct MI300X with Docker Compose: vLLM serves Gemma 4 and a verifier model next to the GNN and the app, so no request leaves the machine. | Stack, runbook and benchmark harness prepared and tested offline (`editions/amd/`). Not run on a droplet; the MI300X figures come from the notebook. |
 
 Why this matters to a bank: the model is open and the endpoint is the bank's choice, so the same build moves from
@@ -87,16 +87,17 @@ the notebook ([evidence](editions/amd/evidence/notebook/2026-10-14/evidence.md))
 |---|---|---|
 | Output tokens per second at concurrency 1 / 4 / 16 / 64 | 55 / 181 / 474 / 699 | `bench/llm_bench.json` |
 | A real drafting request, one at a time | median 3.07 s | `bench/llm_bench_wapsi_prompts.json` |
-| Complete cases per hour through the pipeline, concurrency 1 / 8 / 16 | 414 / 1,410 / 1,590 (39 of 39 cases each run, drafts passing the verifier 1.0) | `bench/e2e_c*.json` |
+| Complete cases per hour through the pipeline, concurrency 1 / 8 / 16 | 414 / 1,410 / 1,590 (39 of 39 cases each run, drafts passing the verifier 1.0); 9 of 83 model-written prose fields were replaced by fixed text at concurrency 16 (0.1084), and every draft still passed the verifier | `bench/e2e_c*.json` |
 | Cost per case at the $1.99 per GPU-hour list price | $0.0013 at concurrency 16 ($1.25 per 1,000 cases) | `bench/e2e_c16.json` (`cost`) |
 | GPU memory while serving | peak 97.0 GB of 191.7 GB | `bench/telemetry_summary.json` |
-| Demo world, 39 cases, Gemma 4 writing the prose | holds exact 1.0, false freezes 0, drafts passing the verifier 1.0, numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text 0.0332, p95 11.12 s per case | `golden_eval.json` |
+| Demo world, 39 cases, Gemma 4 writing the prose | holds exact 1.0, false freezes 0, drafts passing the verifier 1.0, numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text in 0.0332 of all 301 drafts, p95 11.12 s per case | `golden_eval.json` |
 | Raw Gemma 4 against Gemma 4 inside Wapsi | free text: a wrong amount in 19 of 39 cases (0.4872), against 0 of the same run's 301 Wapsi drafts; A/B: 4 of 20 free-form STRs against 0 of 17 Wapsi-bound STRs, 0 of all 155 bound drafts | `golden_eval.json` (`ab_test`), `ab_hallucination.json` |
-| GraphSAGE GNN trained on the MI300X | 0.06 s per epoch; hard world: mule ROC-AUC 0.9202, dispositions 0.9198, innocent-holder recall 0.875 | `gnn_metrics.json`, `gnn_hard_eval.json` |
+| GraphSAGE GNN trained on the MI300X | 0.06 s per epoch; hard world: mule ROC-AUC 0.9202 (heuristic 0.9411), dispositions 0.9198 (the heuristic's too), innocent-holder recall 0.875 (heuristic 0.6875), mule recall 0.7415 (heuristic 0.966); the heuristic stays the default | `gnn_metrics.json`, `gnn_hard_eval.json` |
 | Whisper large-v3-turbo | the 31-second note in 0.92 s; steady-state real-time factor 0.0312 | `editions/amd/bench/results/voice-mi300x-notebook-20261014/` |
 
-The GPU is one MI300X shared with the notebook as an SR-IOV virtual function; the golden set ran in the first of
-the two sessions, everything else in the second (same model, same code).
+Each session had one whole MI300X, exposed to the notebook as a single SR-IOV virtual function. The two sessions got
+different MI300X GPUs (ASIC serials in `amd_smi_static.json` and `session4/amd_smi_static.json`). The golden set ran
+in the first session, everything else in the second (same model, same code).
 
 ## Google technology: Gemma 4 and the Agent Development Kit
 
@@ -305,8 +306,8 @@ were measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM) with 
 | Demo world: where the freeze sits | 96.9% of the freeze baseline sits in the three nodal / pool accounts (SOP 9.1(iii) already rules out freezing them whole; Wapsi holds ₹1,71,334.53 there). Honest merchants and customers: ₹82.99 L would be frozen; Wapsi holds ₹2.50 L, 3.0% of it | `evals/reports/demo-baseline-split.json` (`baseline.by_group`) |
 | Gemma 4 on AMD driving the ADK agent (AMD Token Factory, Gemma-4-31B-IT, 14-10-2026) | 5 tool calls behind "Open case 31009260000101" through native tool calls; that live run ended VERIFIED: 16 of 16 drafts verified, with Gemma 4 on AMD writing the draft prose too; 24 of 24 values in the agent's reply came from a tool; an analyst's approval refused by maker-checker; a median of 3.86 s per model call | `editions/amd/bench/results/agent-tokenfactory-20261014/` |
 | Showcase world with Gemma 4 on AMD writing the prose (AMD Token Factory, 14-10-2026) | drafts passing the verifier 1.0, prose replaced by fixed text on that run 0.0, holds exact 1.0 | `evals/reports/amd/showcase-gemma4-20261014.json` |
-| Demo world with Gemma 4 31B writing the prose, measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026 | holds exact 1.0, false freezes 0, drafts passing the verifier 1.0, numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text 0.0332; raw Gemma 4 in free text: a wrong amount in 19 of 39 cases (0.4872) | `editions/amd/evidence/notebook/2026-10-14/golden_eval.json` |
-| Throughput on that MI300X | 1,590 complete cases per hour at concurrency 16, $0.0013 per case at the $1.99 per GPU-hour list price; 55 / 181 / 474 / 699 output tokens/s at concurrency 1 / 4 / 16 / 64 | `editions/amd/evidence/notebook/2026-10-14/bench/` |
+| Demo world with Gemma 4 31B writing the prose, measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026 | holds exact 1.0, false freezes 0, drafts passing the verifier 1.0, numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text in 0.0332 of all 301 drafts; raw Gemma 4 in free text: a wrong amount in 19 of 39 cases (0.4872) | `editions/amd/evidence/notebook/2026-10-14/golden_eval.json` |
+| Throughput on an AMD Instinct MI300X (AMD AI Notebook, second session) | 1,590 complete cases per hour at concurrency 16, $0.0013 per case at the $1.99 per GPU-hour list price; 55 / 181 / 474 / 699 output tokens/s at concurrency 1 / 4 / 16 / 64 | `editions/amd/evidence/notebook/2026-10-14/bench/` |
 | Demo world: time from complaint to hold plan | p95 0.35 s (laptop; no language model on that path); p95 0.72 s per case to verified drafts with the stub LLM | `evals/reports/demo.json` |
 | **Hard world**: 64 cases, 15 typologies incl. 5 realistic confounders (seed 7) | holds exact 1.0, over-hold ₹0, false freezes 0, drafts passing the verifier 1.0; dispositions 0.9198, mule P / R 0.8987 / 0.966, innocent-holder P / R 0.9429 / 0.6875, merchant P / R 1.0 / 1.0 | `evals/reports/hard.json` |
 | Hard world, held-out seed 101 (62 cases) | holds exact 1.0, over-hold ₹0, false freezes 0; dispositions 0.9139 (heuristic), 0.9569 with XGBoost trained on seed 202 | `evals/reports/hard-101.json` |

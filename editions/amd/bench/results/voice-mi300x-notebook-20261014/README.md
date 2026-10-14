@@ -2,8 +2,9 @@
 
 `whisper_rtf.json` is one pass of `openai/whisper-large-v3-turbo` over the six bundled synthetic voice notes
 (`data/samples/voice/*.wav`, 16 kHz mono, 26 to 31 seconds each), measured on an AMD Instinct MI300X (AMD AI
-Notebook, ROCm 7.14). It ran at 15:25 UTC in GPU session 5, on the same notebook as the rest of
-`editions/amd/evidence/notebook/2026-10-14/` (`SESSIONS.md` there lists the sessions).
+Notebook, ROCm 7.14). It ran at 15:25 UTC in GPU session 5, the session (and MI300X) that produced the rest of
+`editions/amd/evidence/notebook/2026-10-14/` except the golden set, which ran in session 4 on another MI300X
+(`SESSIONS.md` there lists the sessions and both GPUs).
 
 | | Value | Field |
 |---|---|---|

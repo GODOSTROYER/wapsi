@@ -5,7 +5,7 @@
 - Results valid: **yes**
 - Run: 2026-10-14T13:34:59Z .. 2026-10-14T15:23:16Z UTC · commit `fc2010957f8ac923045ea765a9ce0bc3be1911e4` · amd-baseline `1d500f6876ea7e0a97eebcb0328d9f779cc16f97` · served profile gemma4-base
 - Event window: 2026-10-12T15:00:00Z .. 2026-10-18T14:00:00Z
-- Generated 2026-10-14T15:36:50Z by `editions/amd/kickoff/collect_evidence.py` from the files in this folder. Every value is read from a result file (see `sources` in evidence.json).
+- Generated 2026-10-14T16:25:32Z by `editions/amd/kickoff/collect_evidence.py` from the files in this folder. Every value is read from a result file (see `sources` in evidence.json).
 
 ## Hardware (`amd-smi static`)
 
@@ -27,19 +27,19 @@ Models: drafting `google/gemma-4-31B-it` (largest candidate that serves in 192 G
 | Cases per hour at concurrency 1 / 8 / 16 | 413.9 / 1,410 / 1,590.2 |
 | Drafts per hour (best run) | 12,273.5 |
 | LLM calls per case / call latency p50 / p95 (s) / LLM seconds per case p50 | 2.56 / 12.06 / 20.56 / 30.81 |
-| Draft verification pass rate / prose fallback rate | 1 / 0.1084 |
+| Draft verification pass rate / prose fallback rate (of the drafts with model-written prose) | 1 / 0.1084 |
 | Drafts per GPU-hour (best concurrency) | 12,273.5 |
 | $ per case (best concurrency) | 0.00125138 |
 | ₹ per case (best concurrency, the day's rate) | n/a |
 | Peak VRAM: llm / verifier / gnn / device (GB) | n/a / n/a / n/a / 97 |
-| GNN: s per epoch / validation AUC / peak memory (GB) | 0.055 / 1 / 0.39 |
+| GNN: s per epoch / validation AUC (ordinary synthetic worlds; the hard-world row is the real test) / peak memory (GB) | 0.055 / 1 / 0.39 |
 | GNN on the hard world: dispositions / mule AUC / innocent-holder recall | 0.9198 / 0.9202 / 0.875 |
 | LoRA: verifier pass rate base -> tuned | n/a / n/a |
 | LoRA: prose fallback rate base -> tuned | n/a / n/a |
 | LoRA training: tokens/s / peak memory (GB) | n/a / n/a |
 | Golden set with this model: cases / hold exact match / false freezes | 39 / 1 / 0 |
 | Golden set: draft numeric accuracy / citation validity / verifier pass rate | 1 / 1 / 1 |
-| Golden set: prose fallback rate / injection leaks | 0.0332 / 0 |
+| Golden set: prose fallback rate (of all drafts) / injection leaks | 0.0332 / 0 |
 | Same model without slots (LLM-only baseline): cases with an amount not in the case | 0.4872 |
 | A/B like with like, STRs with a wrong amount: raw / bound | 4 / 0 |
 | A/B STRs compared: raw / bound | 20 / 17 |

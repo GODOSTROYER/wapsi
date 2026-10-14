@@ -31,7 +31,7 @@ MI300X. A droplet bundle must have an MI300X in `amd-smi static`.
 
 | Folder | Where it ran | What it holds |
 |---|---|---|
-| `notebook/2026-10-14/` | AMD AI Notebook, one AMD Instinct MI300X (SR-IOV VF), ROCm 7.14, Gemma 4 31B served by vLLM on the notebook | serving and end-to-end benchmarks, the raw-vs-bound A/B, the GNN trained and evaluated, the golden-set eval; two sessions of the same day merged, see its `SESSIONS.md` |
+| `notebook/2026-10-14/` | AMD AI Notebook, one AMD Instinct MI300X (SR-IOV VF) per session, a different GPU in each of the two sessions, ROCm 7.14, Gemma 4 31B served by vLLM on the notebook | serving and end-to-end benchmarks, the raw-vs-bound A/B, the GNN trained and evaluated, the golden-set eval; two sessions of the same day merged, session 4's hardware records in `session4/`, see its `SESSIONS.md` |
 
 Nothing here before kickoff (12 Oct 15:00 UTC) is a result, and nothing from before kickoff may be added.
 `collect_evidence.py` sets `results_valid` only for a run whose identity checks pass and whose every stage started

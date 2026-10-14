@@ -808,8 +808,12 @@ complainant, and it cannot give the innocent label to an account that trips a gu
 
 The graph model itself, an edge-aware GraphSAGE mule scorer in pure PyTorch, belongs to the AMD edition
 (MI300X / ROCm). Its code was prepared before the AMD event; on 14 October 2026 it was trained and evaluated on an
-AMD Instinct MI300X in an AMD AI Notebook (hard world: mule ROC-AUC 0.9202, dispositions 0.9198, innocent-holder
-recall 0.875; `editions/amd/evidence/notebook/2026-10-14/`). See
+AMD Instinct MI300X in an AMD AI Notebook. On the hard world it gets mule ROC-AUC 0.9202 against the default
+heuristic's 0.9411 (and level with the best single feature, 0.9205), dispositions 0.9198 (the heuristic's too),
+innocent-holder recall 0.875 against 0.6875, and mule recall 0.7415 against 0.966, sending 0.185 of accounts to the
+officer as UNKNOWN against 0.035; so the heuristic stays the default. Its validation and held-out AUC of 1.0 come
+from ordinary synthetic worlds like its training worlds, which it saturates; the hard world, built to fool a scorer
+and never used in training, is the real test (`editions/amd/evidence/notebook/2026-10-14/`). See
 [`editions/amd/README.md`](../../editions/amd/README.md) for how it fits into that edition,
 [`editions/amd/gnn/README.md`](../../editions/amd/gnn/README.md) for the model and its training, and
 [the originality and build timeline](../originality.md) for what was built when.

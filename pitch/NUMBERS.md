@@ -354,7 +354,7 @@ benchmarks of a dedicated MI300X. Results files:
 
 ## Measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 2026-10-14
 
-Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook: one AMD Instinct MI300X shared with the notebook as an SR-IOV virtual function, ROCm 7.14. Not the AMD Developer Cloud droplet and not the Token Factory. The golden set ran in GPU session 4, the rest in session 5, same model and code (`editions/amd/evidence/notebook/2026-10-14/SESSIONS.md`). Rows filled by `fill_pitch.py` from the same bundle are in the generated section below; these are the figures the pitch quotes by hand from the result files.
+Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook, ROCm 7.14. Each session had one whole AMD Instinct MI300X, exposed to the notebook as a single SR-IOV virtual function, and the two sessions got different MI300X GPUs (ASIC serials `0xD14074DBA91C454A` and `0x8816642CF4E8921A`, in `session4/amd_smi_static.json` and `amd_smi_static.json`). Not the AMD Developer Cloud droplet and not the Token Factory. The golden set (`nb_golden_*`, `nb_raw_*`, `nb_bound_*`) ran in GPU session 4, the rest in session 5, same model and code (`editions/amd/evidence/notebook/2026-10-14/SESSIONS.md`). Rows filled by `fill_pitch.py` from the same bundle are in the generated section below; these are the figures the pitch quotes by hand from the result files.
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
@@ -364,6 +364,9 @@ Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook: one 
 | nb_cases_hour_c8 | 1,410 complete cases per hour at concurrency 8 | 1410 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c8.json | `json:metrics.cases_per_hour` |
 | nb_e2e_cases_ok | 39 of 39 cases completed in each end-to-end run | 39 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.cases_ok` |
 | nb_e2e_pass | drafts passing the verifier 1.0 in the end-to-end runs | 1.0 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.draft_verification_pass_rate` |
+| nb_e2e_llm_drafts | 83 model-written prose fields per end-to-end run (drafts that ask the model for prose) | 83 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.llm_drafts` |
+| nb_e2e_fallbacks | 9 of 83 model-written prose fields were replaced by fixed text at concurrency 16 | 9 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.prose_fallbacks` |
+| nb_e2e_fallback_rate | 0.1084 of the model-written prose fields replaced by fixed text at concurrency 16 | 0.1084 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.prose_fallback_rate` |
 | nb_usd_per_case | $0.0013 per case at concurrency 16 at the $1.99 per GPU-hour list price | 0.0013 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.usd_per_case` |
 | nb_usd_per_1000 | $1.25 per 1,000 cases | 1.25 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.usd_per_1000_cases` |
 | nb_gpu_hour_usd | the $1.99 per GPU-hour list price the cost per case is computed at | 1.99 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.gpu_hour_usd` |
@@ -376,7 +379,7 @@ Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook: one 
 | nb_golden_numeric | numeric accuracy 1.0 | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.draft_numeric_accuracy` |
 | nb_golden_citations | citation validity 1.0 | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.citation_validity` |
 | nb_golden_leaks | injection leaks 0 | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.injection_leaks` |
-| nb_golden_fallback | prose replaced by fixed text 0.0332 | 0.0332 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_prose_fallback_rate` |
+| nb_golden_fallback | prose replaced by fixed text in 0.0332 of all 301 drafts | 0.0332 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_prose_fallback_rate` |
 | nb_golden_p95 | p95 11.12 s per case to verified drafts | 11.12 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.p95_total_s` |
 | nb_raw_rate | raw Gemma 4 in free text: a wrong amount in 0.4872 of cases | 0.4872 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_only_hallucination_rate` |
 | nb_raw_wrong | 19 of 39 cases | 19 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.llm_only.summaries_with_wrong_amounts` |
@@ -389,6 +392,12 @@ Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook: one 
 | nb_gnn_params | the GNN trained on the MI300X has 410k parameters | 410017 | editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json | `json:parameters` |
 | nb_gnn_hard_disp | MI300X-trained GNN on the hard world: dispositions 0.9198 | 0.9198 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.disposition_accuracy` |
 | nb_gnn_hard_ih | innocent-holder recall 0.875 | 0.875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.INNOCENT_HOLDER` |
+| nb_gnn_hard_mule_recall | its mule recall falls to 0.7415 | 0.7415 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.MULE` |
+| nb_heur_hard_auc | against the default heuristic's mule ROC-AUC 0.9411 (same run) | 0.9411 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.classification.mule_auc` |
+| nb_heur_hard_ih | the heuristic's innocent-holder recall 0.6875 | 0.6875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.role_recall.INNOCENT_HOLDER` |
+| nb_heur_hard_mule_recall | the heuristic's mule recall 0.966 | 0.966 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.role_recall.MULE` |
+| nb_heur_hard_disp | the heuristic's dispositions 0.9198 | 0.9198 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.disposition_accuracy` |
+| nb_best_feature_auc | level with the best single feature (ROC-AUC 0.9205, `hist_credit_turnover_ratio`) | 0.9205 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.classification.best_single_feature_auc` |
 | nb_gnn_hard_unknown | it sends more accounts to the officer as UNKNOWN (0.185 of accounts) | 0.185 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.classification.unknown_rate` |
 | nb_heur_hard_unknown | against the heuristic's 0.035 | 0.035 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.classification.unknown_rate` |
 | nb_whisper_rtf | Whisper large-v3-turbo on the MI300X: steady-state real-time factor 0.0312 (warm-up excluded) | 0.0312 | editions/amd/bench/results/voice-mi300x-notebook-20261014/whisper_rtf.json | `json:steady_state_rtf_excluding_first` |

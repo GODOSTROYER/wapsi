@@ -87,8 +87,8 @@ written.*
 **Screen:** deck slide 8's MI300X results, then slide 10's raw-model comparison. Caption on screen: "Measured on
 an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026".
 
-**VO:** "Measured with Gemma 4 served on one AMD MI300X: on all 39 test cases every draft passes the verifier, and
-every hold is exact. The GPU runs 1,590 complete cases an hour. Asked for the plan in free text, the raw model
+**VO:** "Measured with Gemma 4 served on an AMD MI300X: on all 39 test cases every draft passes the verifier, and
+every hold is exact. One MI300X runs 1,590 complete cases an hour. Asked for the plan in free text, the raw model
 gets an amount wrong in 19 of 39 cases. Inside Wapsi, 0 of 301 drafts carry a wrong amount. Even when
 we force a model to invent a number in every paragraph, 27.57% of drafts get their prose replaced, and every
 draft still passes."
@@ -135,4 +135,8 @@ fraud, not the shop."
 - "Every draft passes the verifier" is drafts passing the verifier 1.0 and "every hold is exact" is holds exact
   1.0 on the 39-case demo world, Gemma 4 31B served by vLLM on the MI300X; "19 of 39" and "0 of 301" are the same
   run's raw-model comparison (`golden_eval.json`, `ab_test`). "1,590 complete cases an hour" is the end-to-end run
-  at concurrency 16 (`bench/e2e_c16.json`). All of these are MI300X notebook figures, never Token Factory ones.
+  at concurrency 16 (`bench/e2e_c16.json`). All of these are MI300X notebook figures, never Token Factory ones. The
+  golden-set figures and the throughput come from two notebook sessions on two different MI300X GPUs
+  (`editions/amd/evidence/notebook/2026-10-14/SESSIONS.md`), so the VO says "an MI300X" and "one MI300X", never
+  "the same GPU". In the throughput run 9 of 83 model-written prose fields were replaced by fixed text (0.1084) and
+  every draft still passed; the VO does not claim the model's prose always survived.

@@ -88,11 +88,19 @@ the `FEATURE_COLUMNS` names. Three extra columns make the decomposition exactly 
 
 `run_all.sh --mode notebook --stage gnn` on one AMD Instinct MI300X (an SR-IOV virtual function in an AMD AI
 Notebook, torch 2.11.0+rocm7.14.1; not the droplet): hidden 128, 3 layers, 410,017 parameters, 13 epochs in 8.6 s
-(0.055 s per epoch after the first), peak memory 0.39 GB. On the hard world (64 cases) it gets dispositions 0.9198
-(the heuristic's too), innocent-holder recall 0.875 (heuristic 0.6875) and mule ROC-AUC 0.9202 (heuristic 0.9411),
-and sends 0.185 of accounts to the officer as UNKNOWN (heuristic 0.035); holds stay exact and false freezes 0, so the
-heuristic stays the default. Files: `editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json`, `gnn_eval.json`,
-`gnn_hard_eval.json` (and `SESSIONS.md` there).
+(0.055 s per epoch after the first), peak memory 0.39 GB.
+
+Validation (`gnn-2001`, `gnn-2002`) and held-out test (`heldout-404`, `heldout-505`) ROC-AUC are 1.0 in
+`gnn_metrics.json`. Those are ordinary synthetic worlds like the training worlds, and they are easy enough to
+saturate, so the 1.0 is not evidence of a strong scorer. The worlds it was trained, validated and tested on (1,600
+cases for training and validation, 81 for test) exclude the hard world, so the hard world is the real test.
+
+On the hard world (64 cases) it gets dispositions 0.9198 (the heuristic's too), innocent-holder recall 0.875
+(heuristic 0.6875) and mule ROC-AUC 0.9202 (heuristic 0.9411, best single feature 0.9205), but its mule recall
+falls to 0.7415 (heuristic 0.966) and it sends 0.185 of accounts to the officer as UNKNOWN (heuristic 0.035). Holds
+stay exact and false freezes 0, so the heuristic stays the default. Files:
+`editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json`, `gnn_eval.json`, `gnn_hard_eval.json` (and
+`SESSIONS.md` there).
 
 ## CPU dev results (2026-09-23, NOT MI300X)
 

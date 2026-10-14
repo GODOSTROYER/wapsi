@@ -99,6 +99,7 @@ The track says: do not use a language model as the only forecasting method. Waps
 | Hard world, 64 cases, built to fool the classifier | Heuristic | GNN (CPU development checkpoint) | GNN trained on the MI300X |
 |---|---:|---:|---:|
 | Mule ROC-AUC | 0.9411 | 0.9786 | 0.9202 |
+| Mule recall | 0.966 | 0.7415 | 0.7415 |
 | Dispositions right | 0.9198 | 0.9151 | 0.9198 |
 | Innocent-holder recall | 0.6875 | 0.875 | 0.875 |
 | Merchant precision / recall | 1.0 / 1.0 | same hard rules | same hard rules |
@@ -136,15 +137,17 @@ through AMD's Token Factory API, and served by vLLM on an AMD Instinct MI300X (A
 | The officer's agent and its tool calls | Gemma 4 31B through Google ADK | AMD Token Factory endpoint | run live; its trace is replayed in the Agent trace tab |
 | Second opinion on untrusted text | a small open model | AMD Token Factory endpoint | wired, not yet measured |
 | Speech to text for voice notes | Whisper large-v3-turbo, open weights | local, or an AMD GPU | timed on the MI300X: the 31-second note in 0.92 s |
-| Mule scoring (optional second scorer) | GraphSAGE GNN, PyTorch on ROCm | AMD Instinct MI300X | trained on the MI300X: mule ROC-AUC 0.9202 on the hard world |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, PyTorch on ROCm | AMD Instinct MI300X | trained on the MI300X: mule ROC-AUC 0.9202 on the hard world (heuristic 0.9411; the heuristic stays the default) |
 
 - **Measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026,** with Gemma 4 31B served
   on the notebook: output <!-- slot:droplet_tokens_s -->55 / 181 / 474 tokens/s at concurrency 1 / 4 / 16<!-- /slot --> (699 at concurrency 64); a real drafting request takes a median of
   3.07 s one at a time; complete cases per hour through the whole pipeline <!-- slot:droplet_cases_hour -->1,590<!-- /slot --> at concurrency
-  16, which is $0.0013 per case ($1.25 per 1,000 cases) at the $1.99 per GPU-hour list price; device memory peak
-  97.0 GB of 191.7 GB while serving. On the 39-case demo world with Gemma 4 writing the prose: drafts passing the
-  verifier 1.0, holds exact 1.0, numeric accuracy 1.0, citation validity 1.0, prose replaced by fixed text 0.0332,
-  injection leaks 0.
+  16, where 9 of 83 model-written prose fields were replaced by fixed text (0.1084) and every draft still passed the
+  verifier; a case costs $0.0013 there ($1.25 per 1,000 cases) at the $1.99 per GPU-hour list price; device memory
+  peak 97.0 GB of 191.7 GB while serving. In the first of the two notebook sessions, on a different
+  MI300X, the 39-case demo world with Gemma 4 writing the prose: drafts passing the verifier 1.0, holds exact 1.0,
+  numeric accuracy 1.0, citation validity 1.0, prose replaced by fixed text in 0.0332 of all 301 drafts, injection
+  leaks 0.
 - **Measured through the AMD Token Factory (Gemma-4-31B-IT, 14-10-2026; AMD-served, not an MI300X benchmark):** on
   the showcase world with Gemma 4 writing the prose, drafts passing the verifier 1.0 and prose replaced by fixed
   text on that run 0.0. In the smoke run one prose request takes a median of 8.29 s (one request at a time, from a

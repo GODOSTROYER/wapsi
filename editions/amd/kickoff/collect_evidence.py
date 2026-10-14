@@ -720,10 +720,11 @@ HEADLINE_ROWS = [
     ("Drafts per GPU-hour (best concurrency)", ("e2e_best_drafts_per_gpu_hour",)),
     ("$ per case (best concurrency)", ("e2e_best_usd_per_case",)),
     ("₹ per case (best concurrency, the day's rate)", ("e2e_best_inr_per_case",)),
-    ("Draft verification pass rate / prose fallback rate", ("e2e_best_draft_verification_pass_rate",
-                                                            "e2e_best_prose_fallback_rate")),
+    ("Draft verification pass rate / prose fallback rate (of the drafts with model-written prose)",
+     ("e2e_best_draft_verification_pass_rate", "e2e_best_prose_fallback_rate")),
     ("Peak VRAM: llm / verifier / gnn / device (GB)", ("vram_llm_gb", "vram_verifier_gb", "vram_gnn_gb", "vram_peak_gb")),
-    ("GNN: s per epoch / validation AUC / peak memory (GB)", ("gnn_epoch_s", "gnn_val_auc", "gnn_peak_mem_gb")),
+    ("GNN: s per epoch / validation AUC (ordinary synthetic worlds; the hard-world row is the real test) / "
+     "peak memory (GB)", ("gnn_epoch_s", "gnn_val_auc", "gnn_peak_mem_gb")),
     ("GNN on the hard world: dispositions / mule AUC / innocent-holder recall",
      ("gnn_hard_disposition", "gnn_hard_mule_auc", "gnn_hard_ih_recall")),
     ("LoRA: verifier pass rate base -> tuned", ("lora_base_prose_verifier_pass_rate", "lora_tuned_prose_verifier_pass_rate")),
@@ -735,7 +736,8 @@ QUALITY_ROWS = [
      ("golden_cases", "golden_hold_exact_match_rate", "golden_false_freeze_count")),
     ("Golden set: draft numeric accuracy / citation validity / verifier pass rate",
      ("golden_draft_numeric_accuracy", "golden_citation_validity", "golden_draft_verification_pass_rate")),
-    ("Golden set: prose fallback rate / injection leaks", ("golden_llm_prose_fallback_rate", "golden_injection_leaks")),
+    ("Golden set: prose fallback rate (of all drafts) / injection leaks",
+     ("golden_llm_prose_fallback_rate", "golden_injection_leaks")),
     ("Same model without slots (LLM-only baseline): cases with an amount not in the case",
      ("golden_llm_only_hallucination_rate",)),
     ("A/B like with like, STRs with a wrong amount: raw / bound", ("ab_raw_docs_with_wrong_amount",
@@ -785,8 +787,8 @@ def headline_rows(ev: dict[str, Any]) -> list[tuple[str, tuple[str, ...]]]:
              ("LLM calls per case / call latency p50 / p95 (s) / LLM seconds per case p50",
               ("e2e_best_llm_calls_per_case", "e2e_best_llm_latency_p50_s", "e2e_best_llm_latency_p95_s",
                "e2e_best_llm_seconds_per_case_p50")),
-             ("Draft verification pass rate / prose fallback rate", ("e2e_best_draft_verification_pass_rate",
-                                                                     "e2e_best_prose_fallback_rate"))]
+             ("Draft verification pass rate / prose fallback rate (of the drafts with model-written prose)",
+              ("e2e_best_draft_verification_pass_rate", "e2e_best_prose_fallback_rate"))]
     if ev["mode"] == "endpoint":
         rows += [("API-reported cost per case ($, relative usage cost; the trial is not billed)",
                   ("e2e_best_api_usd_per_case",)),

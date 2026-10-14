@@ -1,0 +1,19 @@
+{
+  "available": true,
+  "captured_at": "2026-10-14T13:34:58.369748+00:00",
+  "source": "rocm-smi",
+  "gpus": [
+    {
+      "gpu": 0,
+      "vram_used_mb": 96782.895,
+      "vram_total_mb": 196288.0,
+      "gfx_activity_pct": 0.0,
+      "umc_activity_pct": null,
+      "power_w": 157.0,
+      "temp_hotspot_c": null,
+      "temp_mem_c": null
+    }
+  ],
+  "processes": [],
+  "raw_metric": null
+}

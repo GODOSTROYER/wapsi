@@ -1,0 +1,12 @@
+{
+  "available": true,
+  "captured_at": "2026-10-14T13:23:34Z",
+  "python": "3.14.7",
+  "torch": "2.11.0+rocm7.14.1",
+  "hip": "7.14.60850",
+  "cuda": null,
+  "device_count": 1,
+  "device_name": "AMD Instinct MI300X VF",
+  "vram_total_mb": 196288,
+  "rocm_build": true
+}

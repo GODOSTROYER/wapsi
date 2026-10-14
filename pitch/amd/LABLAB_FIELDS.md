@@ -33,7 +33,7 @@ Wapsi is a copilot for a bank's fraud desk. From the bank's own transaction data
 
 Which account is a mule, an innocent holder or a merchant is predicted by a transparent scorer (a GNN trained on an AMD MI300X adds a second opinion), never by a language model. Amounts are arithmetic.
 
-Gemma 4 on AMD GPUs (AMD's Token Factory, or vLLM on an MI300X) writes the sentences of each draft and reads Hinglish complaints and voice notes. Every number is filled from data and recomputed by a verifier before a supervisor approves. On one MI300X: 1,590 cases an hour, every draft verified. A Google ADK agent on it logs every tool call.
+Gemma 4 on AMD GPUs (AMD's Token Factory, or vLLM on an MI300X in an AMD AI Notebook) writes each draft's sentences and reads Hinglish complaints and voice notes. Every number is filled from data and recomputed by a verifier before approval. On that MI300X: 1,590 cases an hour, all drafts verified. The Google ADK agent logs every tool call.
 
 On a 39-case synthetic test world a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false freezes and every hold exact. For honest merchants and customers: ₹82.99 L frozen against ₹2.50 L held. All data is synthetic.
 <!-- /limit -->
@@ -57,7 +57,7 @@ AMD Token Factory · AMD Instinct · ROCm · vLLM · Gemma 4 · Google ADK (Agen
 Whisper · PyTorch · Graph Neural Network · Streamlit · FastAPI · Docker · Python · Fintech · Fraud · Commerce
 
 These are the tags of the stack the submitted build uses. **AMD Instinct**, **ROCm**, **vLLM** and **Graph Neural
-Network** are in because the AMD AI Notebook run on one MI300X is committed
+Network** are in because the AMD AI Notebook runs on MI300X GPUs are committed
 (`editions/amd/evidence/notebook/2026-10-14/`). Add **AMD Developer Cloud** only after a droplet run is committed;
 the notebook is not the droplet.
 
