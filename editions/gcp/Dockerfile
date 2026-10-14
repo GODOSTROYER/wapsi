@@ -32,6 +32,7 @@ COPY .streamlit ./.streamlit
 COPY data/docs ./data/docs
 COPY data/samples ./data/samples
 COPY evals ./evals
+COPY editions/shared ./editions/shared
 COPY editions/gcp ./editions/gcp
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra gcp --extra ui --extra docs

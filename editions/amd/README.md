@@ -92,6 +92,7 @@ droplet `bench/gpu_telemetry.py` reads `amd-smi` on the host.
 | `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at the endpoint, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
 | `bench/` | `llm_bench.py` (streaming TTFT, tokens/s, concurrency sweep; `--rpm` for a rate-limited endpoint), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case; `--endpoint` for the metered client), `voice_bench.py` (voice intake: speech-to-text real-time factor, extraction latency per model, samples reconciled as documented), `report.py` (writes `AMD_RESULTS.md`). |
 | `asr/` | `server.py`: Whisper on the AMD GPU behind an OpenAI-compatible `POST /v1/audio/transcriptions` (transformers on torch-ROCm; runs on the droplet host or in a GPU notebook, no Docker needed). Voice intake then runs on open models end to end: Whisper transcribes, the `llm` service translates and extracts the fields. See `docs/voice-intake.md`. |
+| `AGENT.md`, `app/agent.py`, `app/agent_demo.py` | The officer agent: Google ADK on Gemma 4 served on AMD (AMD Token Factory, vLLM-ROCm or a notebook), through an OpenAI-compatible endpoint and no Google Cloud service. Native tool calls or a strict JSON tool protocol, chosen by a capability probe. `POST /agent/run`, "Ask the agent" in the Case Room, and a CLI that prints the tool-by-tool trace and the verified outcome. Measured results are in `AGENT.md`. |
 | `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. Their own READMEs. |
 
 ## Run the demo locally (no GPU, no key, no model downloads)
@@ -121,7 +122,16 @@ uv run pytest tests/amd -q
 ```
 
 (PowerShell: `$env:WAPSI_DEMO_MODE=1; $env:WAPSI_STATE_DIR=".wapsi-state"; uv run streamlit run editions/amd/app/ui_app.py`.
-The API also needs `fastapi` and `uvicorn`: `uv sync --extra amd-app`.)
+The API also needs `fastapi` and `uvicorn`: `uv sync --extra amd-app`; the officer agent needs `--extra agent`.)
+
+The officer agent (Google ADK on Gemma 4 served on AMD) runs offline too, against a fake OpenAI-compatible
+endpoint, and live when `WAPSI_LLM_BASE_URL` is set; see [AGENT.md](AGENT.md):
+
+```bash
+uv run python -m editions.amd.app.agent_demo --case 31009260000101 --demo
+```
+
+During the event, follow [RUNBOOK.md](RUNBOOK.md).
 
 ## Configuration
 

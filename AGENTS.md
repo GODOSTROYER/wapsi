@@ -46,7 +46,8 @@ src/wapsi/
   audit/         hash-chained, append-only audit log per case; tamper drill (python -m wapsi.audit drill)
 ui/              Streamlit app (shared by editions)
 evals/           golden-set harness and reports
-editions/        gcp/ amd/ — thin platform-specific layers
+editions/        gcp/ amd/ — thin platform-specific layers; shared/ — the edition-neutral ADK officer agent
+                 (tools, guard / audit / trace plugins, instruction, OpenAI-compatible endpoint model, runtime)
 deploy/          the edition-neutral public demo: demo/ (Dockerfile, launcher), streamlit_cloud/, DEMO_HOSTING.md
 data/recordings/ prose recorded from an open model on AMD, replayed by the demo (placeholders only; never training data)
 data/docs/       public legal/regulatory corpus + MANIFEST (licences, URLs, retrieval dates)
@@ -195,6 +196,16 @@ uv run python scripts/make_space.py --out ../wapsi-space   # assemble the Huggin
   case_id=)`, `redact_text` / `redact_value` (accounts, phones, e-mails, names, secrets; untrusted complaint text is
   never copied into a trace). Summaries and verdicts are taken from tool results, never computed by a model. Each
   run anchors its own wall-clock time; `AgentTrace.user_id` scopes `GET /wapsi/traces` behind IAP.
+- `editions.shared` (needs the `agent` extra: google-adk + litellm; no Google Cloud client): `context.get_services` /
+  `set_services` (the services the agent's tools use; an edition binds its own), `tools.OFFICER_TOOLS`,
+  `endpoint.AgentEndpoint.from_env()` (`WAPSI_LLM_BASE_URL` / `WAPSI_LLM_API_KEY` / `WAPSI_LLM_MODEL`, agent-only
+  `WAPSI_AGENT_*`) and `endpoint.build_endpoint_model(endpoint)` (ADK `LiteLlm`; native tool calls or the strict JSON
+  tool protocol, chosen by `probe.probe_tool_calling`), `fake_openai.FakeOpenAIBackend` (offline endpoint for demos
+  and tests), `runtime.AgentRuntime.run(text, user_id=, role=) -> AgentRunResult` (a reply with an amount or account
+  no tool returned is replaced by `scripted.summarize_results`). The Google Cloud edition's
+  `editions.gcp.app.{tools,plugins,tracing,identity,demo_model}` are the same module objects (plus Gemini voice
+  intake in `tools`). AMD wiring: `editions.amd.app.agent.{build_runtime,get_runtime,ask,agent_status}`,
+  `python -m editions.amd.app.agent_demo --case <ncrp id>`, `POST /agent/run`, `GET /agent/traces`.
 
 ## Originality and event boundaries
 - AI Builder Cup: only work created on or after 2026-09-01 (repo created 2026-09-16).

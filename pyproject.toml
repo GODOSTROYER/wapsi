@@ -31,6 +31,8 @@ amd-app = ["fastapi>=0.115", "uvicorn>=0.30"]
 # local speech-to-text for voice intake: Whisper through transformers (ROCm GPU on AMD, CPU fallback);
 # soundfile decodes OGG / Opus (WhatsApp), MP3 and FLAC without ffmpeg
 asr = ["torch>=2.9", "transformers>=4.56", "soundfile>=0.12"]
+# the ADK officer agent on any OpenAI-compatible endpoint (AMD edition: Gemma 4 on AMD); no Google Cloud client
+agent = ["google-adk>=2.9", "litellm>=1.84"]
 gcp = [
     "google-adk>=2.9",
     "google-cloud-bigquery>=3.25",

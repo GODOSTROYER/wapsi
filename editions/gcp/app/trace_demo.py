@@ -121,7 +121,7 @@ def seed_case_traces(services: Any, script: Sequence[DemoTurn] | None = None, *,
 
     if not services.settings.demo_mode:
         raise RuntimeError("the scripted demo runs in demo mode only (WAPSI_DEMO_MODE=1)")
-    previous = services_mod._services
+    previous = services_mod.current_services()
     services_mod.set_services(services)
     try:
         # warm ADK up first (one unrecorded turn): its first invocation in a process pays one-time setup that
@@ -150,7 +150,7 @@ def build_demo_traces(*, deterministic: bool = False, script: Sequence[DemoTurn]
     else:
         recorder = ToolTraceRecorder(source="adk-offline-demo")
     services = services_mod.build_services(GcpSettings(demo_mode=True))
-    previous = services_mod._services
+    previous = services_mod.current_services()
     services_mod.set_services(services)
     try:
         traces = run_sync(_run_script(recorder, script, persist=True))

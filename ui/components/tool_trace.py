@@ -20,6 +20,7 @@ from ui.components import html as h
 from ui.components.formatting import ROLE_TITLES, humanize, ist
 from ui.components.theme import MONO
 from wapsi.agenttrace import (
+    LIVE_SOURCES,
     SOURCE_LABELS,
     TRACE_ACTION,
     AgentTrace,
@@ -33,6 +34,7 @@ from wapsi.agenttrace.model import FAILED_STATUSES, STOPPED_STATUSES
 from wapsi.models import CaseBundle
 
 ORIGIN_AUDIT, ORIGIN_RECORDING, ORIGIN_NONE = "audit", "recording", "none"
+OFFLINE_ENDPOINT = "adk-endpoint-offline"  # the AMD edition's fake OpenAI-compatible endpoint (no network)
 ORIGIN_AUDIT_UNSEALED = "audit_unsealed"  # in the audit log, but the store did not seal it into the hash chain
 Masker = Callable[[str], str]
 
@@ -340,8 +342,12 @@ def run_header_html(trace: AgentTrace, number: int, *, origin: str = ORIGIN_AUDI
     role = ROLE_TITLES.get(trace.role, humanize(trace.role)) if trace.role else ""
     who = " · ".join(x for x in (mask(trace.user), role) if x)
     source = SOURCE_LABELS.get(trace.source, humanize(trace.source))
-    chips = [h.chip(source, "accent" if trace.source == "adk" else "gray",
+    chips = [h.chip(source, "accent" if trace.source in LIVE_SOURCES else "gray",
                     title=f"{trace.model or 'model not recorded'} · app {trace.app or '—'}")]
+    if trace.provider:  # an OpenAI-compatible endpoint: say which model answered and where it is served
+        model = trace.model.removeprefix("openai/")
+        chips.append(h.chip(" · ".join(x for x in (model, trace.provider) if x), "gray",
+                            title="Model id on the endpoint · serving platform"))
     if origin == ORIGIN_AUDIT:
         chips.append(h.chip("In the case's hash-chained audit log", "good",
                             title="Recorded as an agent_trace audit event; the audit page re-verifies the chain"))
@@ -384,8 +390,9 @@ def summary_html(traces: Sequence[AgentTrace]) -> str:
     return h.tiles([
         h.Tile("Tool calls", str(calls), f"in {len(traces)} agent run{'s' if len(traces) != 1 else ''}", accent=True),
         h.Tile("Time in tools", fmt_ms(tool_ms), f"model turns: {turns}", title=f"{tool_ms:.1f} ms"),
-        h.Tile("Tokens in / out", tokens, "as reported by the model" if tin or tout
-               else "not reported (scripted model)", swatch="gray"),
+        h.Tile("Tokens in / out", tokens,
+               ("character-count stand-ins (offline fake endpoint)" if all(t.source == OFFLINE_ENDPOINT for t in traces)
+                else "as reported by the model") if tin or tout else "not reported (scripted model)", swatch="gray"),
         h.Tile("Blocked calls", str(blocked), "guard, maker-checker or tool rule",
                swatch="orange" if blocked else None),
         h.Tile("Guard checks", str(checks), f"{flags} flagged", swatch="teal"),
@@ -432,7 +439,8 @@ def render_agent_trace(ctx: object) -> None:
     if origin == ORIGIN_RECORDING:
         md(h.callout("No live agent run is recorded on this case yet, so this is the recorded offline run: the "
                      "real ADK app, tools and guards, driven by a scripted model instead of Gemini (no API key). "
-                     "Latencies were measured on a laptop CPU. With a Gemini key, live runs appear here.",
+                     "Latencies were measured on a laptop CPU. With a model configured (a Gemini key, or Gemma 4 "
+                     "on AMD behind an OpenAI-compatible endpoint), live runs appear here.",
                      strong="Recorded offline run."))
     else:
         md(f'<div class="wp-note" style="margin:-.2rem 0 .6rem">{h.esc(lead)}</div>')
@@ -454,7 +462,8 @@ def render_agent_trace(ctx: object) -> None:
 
 def _empty_args() -> tuple[str, str, str, str]:
     return ("No agent runs on this case yet",
-            "When an officer asks the Wapsi agent (Gemini on ADK) about this case, every tool call it makes "
+            "When an officer asks the Wapsi agent (Google ADK on Gemini, or on Gemma 4 served on AMD) about this "
+            "case, every tool call it makes "
             "appears here in order — arguments, result, latency and the guard and verifier verdicts around it — "
             "and is recorded in the case's audit log. On the showcase data, case CASE-31009260000101 shows a "
             "recorded offline run.",

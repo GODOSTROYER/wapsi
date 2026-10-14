@@ -81,11 +81,12 @@ class ToolTraceRecorder:
 
     def __init__(self, *, clock: Callable[[], float] = time.perf_counter, now: Callable[[], datetime] = utcnow,
                  on_finish: Callable[[AgentTrace], None] | None = None, max_finished: int = 200,
-                 source: str = "adk") -> None:
+                 source: str = "adk", provider: str = "") -> None:
         self.clock = clock
         self.now = now
         self.on_finish = on_finish
         self.source = source
+        self.provider = provider  # where the model is served (copied onto every trace)
         self._runs: OrderedDict[str, _Run] = OrderedDict()
         self.finished: deque[AgentTrace] = deque(maxlen=max_finished)
         self._lock = threading.RLock()
@@ -109,7 +110,7 @@ class ToolTraceRecorder:
             t = self.clock()
             wall0 = self.now()
             trace = AgentTrace(trace_id=run_id, app=app, session_id=session_id, user=user, user_id=user_id,
-                               role=role, source=source or self.source, model=model,
+                               role=role, source=source or self.source, model=model, provider=self.provider,
                                prompt=redact_text(prompt or "", max_len=PROMPT_CHARS), started_at=wall0)
             if prompt:
                 trace.steps.append(TraceStep(seq=1, kind="input", name="officer message", status="ok",
@@ -128,6 +129,12 @@ class ToolTraceRecorder:
 
     def has_run(self, run_id: str) -> bool:
         return run_id in self._runs
+
+    def active_run_ids(self) -> list[str]:
+        """Runs that started and have not finished, oldest first (a run that raised never reaches its end
+        callback: its host finishes it with ``finish_run``)."""
+        with self._lock:
+            return list(self._runs)
 
     def _add(self, run: _Run, **kw: Any) -> TraceStep:
         step = TraceStep(seq=len(run.trace.steps) + 1, **kw)

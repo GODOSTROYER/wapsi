@@ -4102,6 +4102,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+agent = [
+    { name = "google-adk" },
+    { name = "litellm" },
+]
 amd = [
     { name = "accelerate" },
     { name = "datasets" },
@@ -4151,12 +4155,14 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'amd'", specifier = ">=1.10" },
     { name = "datasets", marker = "extra == 'amd'", specifier = ">=4.0" },
     { name = "fastapi", marker = "extra == 'amd-app'", specifier = ">=0.115" },
+    { name = "google-adk", marker = "extra == 'agent'", specifier = ">=2.9" },
     { name = "google-adk", marker = "extra == 'gcp'", specifier = ">=2.9" },
     { name = "google-cloud-bigquery", marker = "extra == 'gcp'", specifier = ">=3.25" },
     { name = "google-cloud-firestore", marker = "extra == 'gcp'", specifier = ">=2.19" },
     { name = "google-cloud-modelarmor", marker = "extra == 'gcp'", specifier = ">=0.2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "litellm", marker = "extra == 'agent'", specifier = ">=1.84" },
     { name = "litellm", marker = "extra == 'gcp'", specifier = ">=1.84" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
@@ -4177,7 +4183,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'amd-app'", specifier = ">=0.30" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0" },
 ]
-provides-extras = ["ml", "docs", "ui", "amd", "amd-app", "asr", "gcp"]
+provides-extras = ["ml", "docs", "ui", "amd", "amd-app", "asr", "agent", "gcp"]
 
 [package.metadata.requires-dev]
 dev = [

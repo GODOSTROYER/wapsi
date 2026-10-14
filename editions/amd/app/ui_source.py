@@ -1,6 +1,10 @@
 """Streamlit data source for the AMD edition: the shared UI reads and writes cases through ``FileCaseStore`` and
 re-runs the pipeline with the edition's LLM (vLLM-ROCm, or ``FakeLLM`` in demo mode), guard and scorer.
 Launched by ``editions/amd/app/ui_app.py``.
+
+It also gives the Case Room its "Ask the agent" box (``ask_agent`` / ``agent_status``): the Google ADK officer
+agent on Gemma 4 served on AMD (``editions.amd.app.agent``), whose runs are sealed into the case's audit chain
+and shown in the Agent trace tab.
 """
 
 from __future__ import annotations
@@ -64,6 +68,37 @@ class AmdDataSource(ShowcaseDataSource):
         super().append_audit(case_id, event)
         if case_id and case_id in self._bundles:
             self._persist(self._bundles[case_id])
+
+    # ------------------------------------------------------------------ the officer agent (ADK on AMD)
+    def agent_status(self) -> dict[str, Any]:
+        """Non-secret description of the agent (backend, model, serving platform, tool mode); no network call."""
+        from .agent import agent_status
+
+        try:
+            return agent_status(self.services)
+        except Exception as exc:  # noqa: BLE001 - the page shows why instead of failing
+            log.exception("agent status failed")
+            return {"available": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
+
+    def ask_agent(self, case_id: str | None, text: str, *, actor: str, role: str) -> Outcome:
+        """One officer message through the ADK agent; ``Outcome.message`` is the reply to show and
+        ``Outcome.data`` the ``AgentRunResult``. The case is re-read from the store afterwards, so the page shows
+        the sealed trace (and anything the agent's tools recorded)."""
+        from . import agent as agent_mod
+
+        if role.lower() == "auditor":
+            return Outcome(False, "Auditors have read-only access.")
+        try:
+            result = agent_mod.ask(text, services=self.services, case_id=case_id, user_id=actor, role=role)
+        except agent_mod.AgentUnavailable as exc:
+            return Outcome(False, str(exc), unavailable=True)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("agent run failed")
+            return Outcome(False, f"The agent could not run: {type(exc).__name__}")
+        self.refresh()
+        if case_id:
+            self._clock_cache = {k: v for k, v in self._clock_cache.items() if k[0] != case_id}
+        return Outcome(result.ok, result.reply, bundle=self._bundles.get(case_id) if case_id else None, data=result)
 
     def run_pipeline(self, case_id: str, *, actor: str, role: str) -> Outcome:
         bundle = self._bundles.get(case_id)

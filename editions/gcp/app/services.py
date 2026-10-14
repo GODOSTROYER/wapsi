@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from editions.shared import context
 from wapsi.adapters.memory import InMemoryCaseStore, RecordingActionSink
 from wapsi.config import WapsiConfig
 from wapsi.ports import LLM, ActionSink, CaseStore, DocSearch, Guard, Ledger
@@ -118,21 +119,17 @@ def build_services(settings: GcpSettings | None = None) -> Services:
                     search=_docs_search(), sink=RecordingActionSink())
 
 
-_services: Services | None = None
-_lock = threading.Lock()
-
-
 def get_services() -> Services:
-    global _services
-    if _services is None:
-        with _lock:
-            if _services is None:
-                _services = build_services()
-    return _services
+    """The process-wide services (built from the environment on first use). The slot is
+    ``editions.shared.context``, which the edition-neutral agent tools and plugins read."""
+    return context.get_services(build_services)
 
 
 def set_services(services: Services | None) -> None:
     """Install (or clear, with ``None``) the process-wide services; used by tests and the server."""
-    global _services
-    with _lock:
-        _services = services
+    context.set_services(services)
+
+
+def current_services() -> Services | None:
+    """The installed services, without building any."""
+    return context.peek_services()
