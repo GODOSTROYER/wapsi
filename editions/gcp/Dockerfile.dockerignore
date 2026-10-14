@@ -7,13 +7,14 @@
 .git
 .github
 .venv
-.pytest_tmp
+.pytest_tmp*
 .claude
 .agents
 .env
 .env.*
 data/generated
 data/docs/raw
+data/docs/index/text
 data/golden
 models
 *.ckpt

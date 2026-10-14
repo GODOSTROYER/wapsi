@@ -1536,6 +1536,7 @@ assert sc.SHOWCASE_1["baseline_freeze_amount"] == 50350000.0
 | `python -m wapsi.synth` | generate a synthetic world and its golden set |
 | `python -m wapsi.search.fetch` | download the legal corpus |
 | `python -m wapsi.search.build` | build the BM25 index |
+| `python -m wapsi.search.bake [--fetch] [--prune-raw]` | make sure a deployable tree (the Cloud Run image) carries a usable index: keep it, build it from `raw/`, or download then build; warns and exits 0 when it cannot |
 | `python -m wapsi.search.check_citations` | verify every citation quote, fact and radar quote against the documents |
 | `python -m wapsi.search.radar fetch` / `verify [--write]` | fetch the radar's extra documents (not indexed) / re-check every radar quote |
 | `python -m wapsi.audit drill` / `verify FILE.json` | audit-chain tamper drill / verify a stored bundle's chain |

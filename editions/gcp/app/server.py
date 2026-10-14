@@ -25,6 +25,7 @@ from typing import Any
 from .config import FIRESTORE_URI, GcpSettings, load_settings
 from .identity import ROLES, granted_state, role_for_email, strip_protected
 from .memory import register_firestore_services
+from .seed import SEED_ENV, SeedState, seed_choice
 from .services import build_services, get_services, set_services
 
 log = logging.getLogger("wapsi.gcp.server")
@@ -212,6 +213,10 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
     )
 
     summary = settings.public_summary()
+    seed = seed_choice(os.environ.get(SEED_ENV))
+    seeding = SeedState()
+    adk_app.state.wapsi_seed = seeding
+    seeding.start(get_services(), seed, background=True)  # WAPSI_SEED_CASES=showcase: ready case, no login
 
     @adk_app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, Any]:
@@ -223,6 +228,10 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
             "settings": summary,
             "guard_fallbacks": len(getattr(guard, "fallback_events", []) or []),
             "docs_index": svc.search is not None,
+            # the citations-only corpus (no baked index: python -m wapsi.search.bake) or no search at all
+            "docs_fallback": svc.search is None or bool(getattr(svc.search, "fallback", False)),
+            "docs_chunks": len(svc.search) if svc.search is not None and hasattr(svc.search, "__len__") else 0,
+            "seed": {"cases": seed or None, **seeding.as_dict()},
         }
 
     @adk_app.get("/wapsi/traces", include_in_schema=False)
@@ -244,8 +253,85 @@ def create_app(settings: GcpSettings | None = None, *, services: Any | None = No
                 "summaries": [{"trace_id": t.trace_id, "cases": t.case_ids, **t.summary().model_dump(mode="json")}
                               for t in items]}
 
+    if settings.demo_mode or seed or settings.trust_role_header:
+        _add_demo_routes(adk_app, seeding, seed)
+
     adk_app.add_middleware(RoleStateMiddleware, settings=settings)
     return adk_app
+
+
+def case_summary(bundle: Any) -> dict[str, Any]:
+    """Read-only, publishable view of a stored case (synthetic data): what the deploy smoke test checks."""
+    from wapsi.money import fmt_inr
+
+    plan, trace = bundle.plan, bundle.trace
+    drafts = []
+    for d in bundle.drafts:
+        rep = bundle.verifications.get(d.draft_id)
+        drafts.append({
+            "draft_id": d.draft_id,
+            "kind": getattr(d.kind, "value", str(d.kind)),
+            "verified": bool(rep and rep.passed),
+            "prose_by": d.llm_model,
+            "prose_fallback": bool(d.structured.get("llm_fallback")),
+        })
+    return {
+        "case_id": bundle.case.case_id,
+        "status": bundle.case.status.value,
+        "ncrp_ids": list(bundle.case.ncrp_ids),
+        "stolen": fmt_inr(trace.totals.stolen) if trace else None,
+        "total_hold": fmt_inr(plan.total_hold) if plan else None,
+        "total_recoverable": fmt_inr(plan.total_recoverable) if plan else None,
+        "whole_account_freeze_baseline": fmt_inr(plan.baseline_freeze_amount) if plan else None,
+        "accounts_on_trail": sum(1 for a in (trace.accounts.values() if trace else []) if a.layer >= 1),
+        "drafts": drafts,
+        "drafts_verified": sum(1 for d in drafts if d["verified"]),
+        "disclaimer": "Synthetic data. Simulated CFCFRMS interface.",
+    }
+
+
+def _add_demo_routes(app: Any, seeding: SeedState, seed: str) -> None:
+    """Judging-deployment routes (synthetic data): ``GET /demo/status``, ``GET /demo/cases/{case_id}`` (read-only)
+    and ``POST /demo/seed`` (idempotent: processes only showcase cases missing from the store; with
+    ``redo_fallback=1`` also those whose stored prose fell back to the deterministic paragraphs; with ``reset=1``
+    it restores the showcase cases to their freshly seeded state, so the next judge starts on a fresh case; the
+    audit log keeps every earlier event and records the reset).
+
+    ``POST /demo/seed`` waits inside the request on purpose: Cloud Run allocates CPU to an instance only while a
+    request is in flight, so the deploy's smoke test drives the seeding to completion this way. A request that asks
+    for a reset or a redo while another run is in progress (the start-up seeding) waits for that run, then starts
+    its own; across instances the seeding lease (``seed.SeedLease``) keeps runs from overlapping."""
+    import time
+
+    from fastapi import HTTPException
+
+    @app.get("/demo/status", include_in_schema=False)
+    def demo_status() -> dict[str, Any]:  # sync: the store does blocking I/O (thread pool)
+        cases = get_services().store.list_cases()
+        return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}
+
+    @app.post("/demo/seed", include_in_schema=False)
+    def demo_seed(wait_s: float = 240.0, redo_fallback: bool = False, reset: bool = False) -> dict[str, Any]:
+        budget = max(0.0, min(float(wait_s), 280.0))
+        deadline = time.monotonic() + budget
+        which = seed or "showcase"
+        started = seeding.start(get_services(), which, background=True, redo_fallback=redo_fallback, reset=reset)
+        if not started and (reset or redo_fallback):
+            seeding.join(budget)  # the run in progress first (it seeds without resetting)
+            seeding.start(get_services(), which, background=True, redo_fallback=redo_fallback, reset=reset)
+        seeding.join(max(0.0, deadline - time.monotonic()))
+        cases = get_services().store.list_cases()
+        return {"seed": seeding.as_dict(), "cases": [c.case_id for c in cases[:25]]}
+
+    @app.get("/demo/cases/{case_id}", include_in_schema=False)
+    def demo_case(case_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"CASE-\d{14}", case_id):
+            raise HTTPException(status_code=400, detail="case_id must look like CASE-<14-digit NCRP id>")
+        svc = get_services()
+        bundle = svc.store.get_bundle(case_id)
+        if bundle is None:
+            raise HTTPException(status_code=404, detail=f"{case_id} is not in the case store (yet)")
+        return {**case_summary(bundle), "prose_llm": getattr(svc.llm, "name", None)}
 
 
 def __getattr__(name: str) -> Any:  # lazy ``app`` so importing this module has no side effects

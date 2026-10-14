@@ -387,9 +387,13 @@ nodal, escrow, or pool account, the bank shall hold the disputed amount" (`SOP-9
 
 - **Draft body**. There are two views: **Formatted**, and **Plain text with highlights**. The page opens in plain
   view when a failed check names text in the draft. Text named by a failed check is highlighted red, text named
-  by a warning amber; hover over a highlight to see why. The footer shows either "Prose by fake-llm; every number
-  is filled from case tables." or, for template-only drafts, just the second half. In the showcase case the EDD memo, the STR
-  and the CFCFRMS update carry LLM prose; the other 13 drafts are template-only.
+  by a warning amber; hover over a highlight to see why. The footer says who wrote the prose: "Prose by the
+  offline stub (no model call); every number is filled from case tables." in the local app, "Prose by Gemma 4 on
+  AMD via developer.amd.com.cn (model Gemma-4-31B-IT, live call); ..." in the public demo with a live endpoint,
+  "... recorded on <date> and replayed; ..." for a recorded run, or, for template-only drafts, just the second
+  half. In the public demo a chip above the drafts names the model and endpoint host for the whole case (the
+  hosting guide is `deploy/DEMO_HOSTING.md` in the repository). In the showcase case the EDD memo, the STR and the
+  CFCFRMS update carry LLM prose; the other 13 drafts are template-only.
 - **Citations** table: ID, section, and whether the ID is cited in the text.
 - The **Values filled from case tables (N)** expander lists every slot and its value. For the hold instruction on
   HB01-1000000001 there are 12, including `hold_amount = ₹43,200.00` and `utrs = 425310000001`.

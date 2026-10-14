@@ -349,6 +349,7 @@ class GeminiLLM:
         secret = self._key()
         attempts = self.max_retries + 1
         last: LLMError | None = None
+        last_exc: BaseException | None = None  # the SDK error behind ``last`` (keeps RetryInfo / quota details)
         hint: str | None = None
         for attempt in range(attempts):
             server_delay: float | None = None
@@ -363,7 +364,7 @@ class GeminiLLM:
                 if not _retryable(exc):
                     raise err from exc
                 server_delay = retry_delay_s(exc)
-                last = err
+                last, last_exc = err, exc
             else:
                 self.last_usage = _field(resp, "usage_metadata")
                 text = response_text(resp)
@@ -374,7 +375,7 @@ class GeminiLLM:
                 try:
                     return json.dumps(parse_json_text(text), ensure_ascii=False, separators=(",", ":"))
                 except ValueError:
-                    last = LLMError(f"Gemini {self.model} returned invalid JSON", body=text[:2000])
+                    last, last_exc = LLMError(f"Gemini {self.model} returned invalid JSON", body=text[:2000]), None
             if attempt < attempts - 1:
                 delay = min(self.backoff_s * (2**attempt), self.max_backoff_s)
                 if server_delay is not None:  # the free tier says how long until the next minute window
@@ -382,8 +383,10 @@ class GeminiLLM:
                 self._sleep(delay)
         assert last is not None
         prefix = f"{hint} " if hint and last.status_code == 429 else ""
+        # chained to the SDK error so a caller that owns the retry policy (llm_resilience.ResilientLLM, which runs
+        # this adapter with max_retries=0) still sees the server's RetryInfo delay; the message alone is truncated
         raise LLMError(f"{prefix}giving up after {attempts} attempt(s): {last}", status_code=last.status_code,
-                       body=last.body)
+                       body=last.body) from last_exc
 
 
 # --------------------------------------------------------------------------- private Gemma tier

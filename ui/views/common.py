@@ -17,6 +17,7 @@ from ui.components.formatting import (
     inr_short,
     relative_due,
 )
+from ui.components.llm_status import MODE_FAKE, served_chip, ui_llm_mode
 from ui.components.theme import CASE_STATUS_TONE, CLOCK_STATUS_TONE
 from ui.data_source import EngineStatus, ShowcaseDataSource, clock_status, doc_search
 from wapsi.citations import registry
@@ -172,6 +173,17 @@ def first_layer(bundle: CaseBundle) -> list[str]:
 def status_chip(bundle: CaseBundle) -> str:
     st_ = bundle.case.status
     return h.chip(CASE_STATUS_LABELS.get(st_, st_.value), CASE_STATUS_TONE.get(st_, "gray"))
+
+
+def served_chip_html(bundle: CaseBundle) -> str | None:
+    """The chip naming the model and endpoint host that served this case's prose ("Gemma 4 on AMD via <host>",
+    "Recorded run · ...", "Fixed paragraphs · model not reached"), from what the drafts themselves record. ``None``
+    when there is no LLM-written draft yet, and for the plain local app (offline stub, ``WAPSI_UI_LLM`` unset),
+    where there is nothing to disclose."""
+    chip = served_chip(bundle)
+    if chip is None or (chip.tone == "gray" and ui_llm_mode() == MODE_FAKE):
+        return None
+    return h.chip(chip.text, chip.tone, title=chip.title)
 
 
 def sla_chips(ctx: Ctx, bundle: CaseBundle) -> list[str]:

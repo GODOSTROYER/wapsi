@@ -36,15 +36,26 @@ COPY editions/gcp ./editions/gcp
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra gcp --extra ui --extra docs
 
-# 3. optional: the synthetic demo world (~2 MB, seed 7: the same world `cloudrun.sh data` loads into BigQuery),
-#    so WAPSI_LEDGER=parquet WAPSI_WORLD=/app/data/world runs without BigQuery. BAKE_WORLD=0 skips it.
+# 3. optional: the synthetic judging world (~2 MB: demo seed 7 + the two showcase cases; the same world that
+#    deploy.ps1 / deploy.sh load into BigQuery), so WAPSI_LEDGER=parquet WAPSI_WORLD=/app/data/world runs without
+#    BigQuery and WAPSI_SEED_CASES=showcase finds its cases. BAKE_WORLD=0 skips it.
 ARG BAKE_WORLD=1
 RUN if [ "${BAKE_WORLD}" = "1" ]; then \
-      /app/.venv/bin/python -m wapsi.synth --size demo --seed 7 --out /app/data/world --golden-dir '' \
-      && rm -rf /app/data/world/golden; \
+      /app/.venv/bin/python -m editions.gcp.app.seed world --out /app/data/world; \
     fi
 
-# 4. unprivileged runtime user; the app never writes to its own tree
+# 4. the docs search index (BM25 over the public legal corpus), so search_sop and the citation corpus work on the
+#    deployed URL. data/docs/index is gitignored (the documents carry no open licence, so their text is never
+#    committed): the one-command deploy builds it on the deploying machine and uploads it with the source; when it
+#    is not in the build context it is built here from the public sources (polite, TLS-verified downloads; the raw
+#    files are not kept). If neither works the build still succeeds and the app serves the citations-only corpus;
+#    /healthz then reports docs_fallback: true. BAKE_DOCS_INDEX=0 skips it.
+ARG BAKE_DOCS_INDEX=1
+RUN if [ "${BAKE_DOCS_INDEX}" = "1" ]; then \
+      /app/.venv/bin/python -m wapsi.search.bake --fetch --prune-raw; \
+    fi
+
+# 5. unprivileged runtime user; the app never writes to its own tree
 RUN groupadd --system --gid 10001 wapsi \
  && useradd --system --uid 10001 --gid wapsi --home-dir /home/wapsi --create-home wapsi \
  && chown -R root:root /app && chmod -R a+rX /app

@@ -1,0 +1,35 @@
+# BuildKit uses this file for `docker build -f deploy/demo/Dockerfile .` (context = repository root).
+# The Dockerfile reads: pyproject.toml uv.lock README.md LICENSE src ui .streamlit data/docs data/samples
+# data/recordings evals/reports/latest.json deploy/demo. tests/demo/test_demo_container.py checks every COPY source
+# against this file. Never in the context: keys (.env*, secrets), the raw legal documents and their full texts.
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.adk
+.git
+.github
+.venv
+.cache
+.pytest_tmp*
+.claude
+.agents
+.env
+.env.*
+**/.env
+.streamlit/secrets.toml
+.secrets
+data/generated
+data/golden
+data/docs/raw
+data/docs/index/text
+models
+*.ckpt
+*.safetensors
+docs
+editions
+pitch
+scripts
+tests
+build
+dist

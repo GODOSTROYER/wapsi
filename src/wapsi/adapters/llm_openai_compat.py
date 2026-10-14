@@ -1,6 +1,7 @@
 """OpenAI-compatible chat-completions client (implements ``wapsi.ports.LLM``).
 
-Works with any server exposing ``POST {base_url}/chat/completions``: vLLM, Gemini's OpenAI-compatible endpoint
+Works with any server exposing ``POST {base_url}/chat/completions``: vLLM, the AMD Token Factory
+(``https://developer.amd.com.cn/radeon/api/v1``), Gemini's OpenAI-compatible endpoint
 (``https://generativelanguage.googleapis.com/v1beta/openai``), Ollama, OpenAI, and so on.
 
 The API key comes from the ``api_key`` argument or the ``WAPSI_LLM_API_KEY`` environment variable (optional for
@@ -15,7 +16,10 @@ fields the client controls (``model``, ``messages``, ``temperature``, ``max_toke
 
 Token usage: ``complete_with_usage`` returns the text and that request's ``TokenUsage`` (``None`` when the server
 reports none); ``last_usage`` holds the latest one and ``usage`` the running total over the client's life
-(thread-safe; ``reset_usage()`` returns and clears it).
+(thread-safe; ``reset_usage()`` returns and clears it). A server that prices its answers (``usage.cost``, e.g. the
+AMD Token Factory) has that figure in ``TokenUsage.cost_usd``. ``last_rate_limit`` holds the latest response's
+``x-ratelimit-*`` headers; an ``LLMError`` for a 429 / 503 carries the server's ``Retry-After`` as
+``retry_after_s``. ``host`` is the endpoint's host name (never the key).
 """
 
 from __future__ import annotations
@@ -27,19 +31,25 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
 API_KEY_ENV = "WAPSI_LLM_API_KEY"
 RETRY_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 RESERVED_EXTRA_FIELDS = frozenset({"model", "messages", "stream"})
+# how a JSON answer is asked for: a strict schema, a plain JSON object, or "none" (no response_format field at
+# all: the prompt asks for JSON and the caller parses it; for servers whose structured-output modes misbehave)
+JSON_MODES = ("json_schema", "json_object", "none")
 
 
 class LLMError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, body: str | None = None) -> None:
+    def __init__(self, message: str, *, status_code: int | None = None, body: str | None = None,
+                 retry_after_s: float | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+        self.retry_after_s = retry_after_s  # the server's Retry-After, when it sent one
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,7 @@ class TokenUsage:
     completion_tokens: int = 0
     total_tokens: int = 0
     calls: int = 0  # responses that reported usage
+    cost_usd: float = 0.0  # the server's own ``usage.cost`` (0.0 when it reports none)
 
     @classmethod
     def from_response(cls, data: Mapping[str, Any]) -> TokenUsage | None:
@@ -65,7 +76,10 @@ class TokenUsage:
             return max(0, int(value))
 
         prompt, completion = count("prompt_tokens"), count("completion_tokens")
-        return cls(prompt, completion, count("total_tokens") or prompt + completion, 1)
+        cost = usage.get("cost")
+        priced = isinstance(cost, int | float) and not isinstance(cost, bool) and cost > 0
+        return cls(prompt, completion, count("total_tokens") or prompt + completion, 1,
+                   float(cost) if priced else 0.0)
 
     def __add__(self, other: TokenUsage) -> TokenUsage:
         return TokenUsage(
@@ -73,6 +87,7 @@ class TokenUsage:
             self.completion_tokens + other.completion_tokens,
             self.total_tokens + other.total_tokens,
             self.calls + other.calls,
+            self.cost_usd + other.cost_usd,
         )
 
     def as_dict(self) -> dict[str, int]:
@@ -100,11 +115,26 @@ def _error_detail(resp: httpx.Response) -> str:
     if isinstance(data, list) and data:
         data = data[0]
     if isinstance(data, dict):
+        detail = data.get("detail")  # FastAPI-style gateways wrap the error: {"detail": {"error": {...}}}
+        if "error" not in data and detail is not None:
+            data = detail if isinstance(detail, dict) else {"error": detail}
         err = data.get("error", data)
         if isinstance(err, dict):
             return str(err.get("message") or err.get("status") or err)[:300]
         return str(err)[:300]
     return str(data)[:300]
+
+
+def endpoint_host(base_url: str) -> str:
+    """``https://developer.amd.com.cn/radeon/api/v1`` -> ``developer.amd.com.cn``; ``http://127.0.0.1:8000/v1`` ->
+    ``127.0.0.1:8000``. Never contains credentials."""
+    parts = urlsplit(base_url if "//" in base_url else f"//{base_url}")
+    host = parts.hostname or ""
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    return f"{host}:{port}" if host and port else host
 
 
 def _retry_after(resp: httpx.Response) -> float | None:
@@ -139,8 +169,8 @@ class OpenAICompatLLM:
             raise ValueError("base_url is required")
         if not model:
             raise ValueError("model is required")
-        if json_mode not in ("json_schema", "json_object"):
-            raise ValueError("json_mode must be 'json_schema' or 'json_object'")
+        if json_mode not in JSON_MODES:
+            raise ValueError("json_mode must be 'json_schema', 'json_object' or 'none'")
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.name = name or model
@@ -151,6 +181,7 @@ class OpenAICompatLLM:
         self.json_mode = json_mode
         self.extra_body: dict[str, Any] = _check_extra(extra_body)
         self.last_usage: TokenUsage | None = None
+        self.last_rate_limit: dict[str, str] = {}
         self._usage = TokenUsage()
         self._usage_lock = threading.Lock()
         self._sleep = sleep
@@ -165,6 +196,11 @@ class OpenAICompatLLM:
     @property
     def url(self) -> str:
         return f"{self.base_url}/chat/completions"
+
+    @property
+    def host(self) -> str:
+        """Host name of the endpoint (with the port when the URL names one), e.g. ``developer.amd.com.cn``."""
+        return endpoint_host(self.base_url)
 
     def __repr__(self) -> str:  # never show the key
         return f"OpenAICompatLLM(base_url={self.base_url!r}, model={self.model!r}, api_key={'***' if self._has_key else None})"
@@ -226,7 +262,7 @@ class OpenAICompatLLM:
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        if json_schema is not None:
+        if json_schema is not None and self.json_mode != "none":
             payload["response_format"] = self._response_format(json_schema)
         data = self._post(payload)
         usage = TokenUsage.from_response(data)
@@ -268,6 +304,8 @@ class OpenAICompatLLM:
                 last = LLMError(f"connection error calling {self.url}: {exc}")
             else:
                 code = resp.status_code
+                self.last_rate_limit = {k.lower(): v for k, v in resp.headers.items()
+                                        if k.lower().startswith("x-ratelimit-")}
                 if code < 400:
                     try:
                         data = resp.json()
@@ -282,20 +320,22 @@ class OpenAICompatLLM:
                     return data
                 detail = _error_detail(resp)
                 hint = f" (check {API_KEY_ENV})" if code in (401, 403) else ""
+                retry_after = _retry_after(resp)
                 err = LLMError(
                     f"{self.url} returned HTTP {code}: {detail}{hint}",
                     status_code=code,
                     body=resp.text[:2000],
+                    retry_after_s=retry_after,
                 )
                 if code not in RETRY_STATUS:
                     raise err
                 last = err
-                retry_after = _retry_after(resp)
             if attempt < attempts - 1:
                 self._sleep(self._delay(attempt, retry_after))
         assert last is not None
         raise LLMError(
-            f"giving up after {attempts} attempt(s): {last}", status_code=last.status_code, body=last.body
+            f"giving up after {attempts} attempt(s): {last}", status_code=last.status_code, body=last.body,
+            retry_after_s=last.retry_after_s,
         )
 
     @staticmethod

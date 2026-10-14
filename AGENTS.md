@@ -47,6 +47,8 @@ src/wapsi/
 ui/              Streamlit app (shared by editions)
 evals/           golden-set harness and reports
 editions/        gcp/ amd/ — thin platform-specific layers
+deploy/          the edition-neutral public demo: demo/ (Dockerfile, launcher), streamlit_cloud/, DEMO_HOSTING.md
+data/recordings/ prose recorded from an open model on AMD, replayed by the demo (placeholders only; never training data)
 data/docs/       public legal/regulatory corpus + MANIFEST (licences, URLs, retrieval dates)
 data/golden/     golden cases (JSONL) with ground truth
 data/generated/  generated worlds (gitignored)
@@ -66,6 +68,10 @@ uv run python -m wapsi.search.radar fetch  # regulatory-radar documents (then: r
 uv run python -m evals.harness --world demo # golden-set evaluation
 uv run python -m wapsi.audit drill         # audit-chain tamper drill (edit / delete / reorder / truncate / re-hash)
 uv run streamlit run ui/app.py             # local UI
+uv run streamlit run deploy/demo/app.py    # the public demo: live endpoint if configured, else the recorded run
+uv run python -m evals.harness --world demo --llm openai-compat   # eval against WAPSI_LLM_BASE_URL / _API_KEY / _MODEL
+uv run python scripts/record_demo_prose.py --dry-run   # what the demo can replay (without --dry-run: record it)
+uv run python scripts/make_space.py --out ../wapsi-space   # assemble the Hugging Face Space folder
 ```
 
 ## Non-negotiable conventions
@@ -156,6 +162,20 @@ uv run streamlit run ui/app.py             # local UI
 - `wapsi.search.index.LocalDocSearch.load(path=None)` (implements `DocSearch`)
 - `wapsi.adapters.parquet_ledger.ParquetLedger(path)` (implements `Ledger`)
 - `wapsi.adapters.llm_fake.FakeLLM`, `wapsi.adapters.llm_openai_compat.OpenAICompatLLM` (implement `LLM`)
+- `wapsi.adapters.llm_env.endpoint_config(env=None)`, `make_endpoint_llm(cfg=None)`, `resilient_endpoint_llm(cfg=None,
+  cache_dir=...)`: the OpenAI-compatible endpoint from `WAPSI_LLM_BASE_URL` / `WAPSI_LLM_API_KEY` / `WAPSI_LLM_MODEL`
+  (AMD Token Factory, vLLM on AMD; `WAPSI_LLM_JSON_MODE`, `WAPSI_LLM_EXTRA_BODY`, `WAPSI_LLM_PLATFORM` optional). Never
+  hard-code an endpoint, a model or a key; never print the key. `served_name` / `parse_served`: the writer name a
+  draft records (`Gemma-4-31B-IT on AMD @ developer.amd.com.cn`, `... (recorded 2026-10-14)` for a replay). A host
+  is called "on AMD" only for AMD's own hosts or when the deployer states it (`WAPSI_LLM_PLATFORM`).
+- `wapsi.adapters.llm_resilience.ResilientLLM(inner, ...)`: cache, RPM / minimum-gap / RPD limiting, 429 / 503
+  retries honouring `Retry-After`, token and endpoint-reported cost accounting; `accept=` refuses unusable answers.
+- `wapsi.adapters.llm_replay.DemoLLM(live=, recording=, stub=, prefer=)` (live endpoint, recorded run, stub; `name`
+  is the writer of the latest answer), `Recording`, `prose_signature`, `prose_answer_problem`. A replay is always
+  labelled as one. `wapsi.draft.prose.not_prose_reason`: degenerate model output is rejected, never shown.
+- `ui.data_source.prose_llm(fake_cls, prefer=, fresh=, allow_live=)` (`WAPSI_UI_LLM` = `fake` default | `auto` |
+  `recorded` | `live`), `ui.components.llm_status.banner(status)` / `served_chip(bundle)` (the chip reads what the
+  drafts record, not what was configured).
 - `wapsi.pipeline.run.process_case(...)` (end to end), `approve(bundle, draft_id, approver=, role=, ...)`
 - `wapsi.pipeline.run.request_account_level_hold(bundle, ledger, account_id, reasons, requested_by=, role=)`
   (officer request; a different supervisor approves it with `approve`)

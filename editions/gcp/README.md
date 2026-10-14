@@ -9,6 +9,13 @@ service does. All data is synthetic.
 > Nothing in this folder has been deployed yet. The code is built and unit-tested locally with fakes; the
 > deploy scripts are written and dry-run in tests with a fake `gcloud`, but have not been run against Google Cloud.
 
+> **One command:** [DEPLOY.md](DEPLOY.md) gets you a warm, public, seeded judging deployment with
+> `editions\gcp\deploy\deploy.ps1 -ProjectId <PROJECT_ID>` (or `deploy.sh --project-id`). It covers the
+> sign-ins, the key, troubleshooting and teardown. The image carries the docs search index, every judge starts on
+> a fresh showcase case (**Reset demo** in the UI's sidebar; idle demos reset themselves), and seeding is guarded
+> by a Firestore lease so a redeploy never seeds twice. The rest of this page is the step-by-step `cloudrun.sh`
+> path for the paid profile and the optional pieces.
+
 ## Free-trial setup (what you need)
 
 The default profile (`PROFILE=free` in `deploy/cloudrun.sh`) needs no paid upgrade, no GPU and no quota increase.
@@ -156,13 +163,15 @@ editions/gcp/
     identity.py    HMAC-signed role grants in session state
     memory.py      in-memory (default), Firestore (WAPSI_ADK_STORE=firestore) or Memory Bank (paid)
     demo_model.py  offline scripted BaseLlm so the agents run with zero cloud access
+    seed.py        judging world (demo seed 7 + showcase) and the seeded showcase cases (WAPSI_SEED_CASES)
     server.py      FastAPI: ADK API (+ dev UI), Pub/Sub trigger, /healthz, role middleware
     ui_source.py   Streamlit data source on the CaseStore
   agents/          ADK agents_dir: wapsi_officer/, case_pipeline/
   ui_app.py        Streamlit entry point (shared ui/app.py on the case store)
   Dockerfile       python:3.11-slim + uv, non-root, optional baked demo world; one image for API and UI
-  deploy/          cloudrun.sh (PROFILE=free|paid), gemma_vllm_service.sh (paid add-on), cloudbuild.yaml,
-                   bigquery_setup.sql, model_armor_template.json, iam.md, firestore.rules (+ firebase.json)
+  deploy/          deploy.ps1 + deploy.sh (one command, see DEPLOY.md), cloudrun.sh (PROFILE=free|paid, step by step),
+                   gemma_vllm_service.sh (paid add-on), cloudbuild.yaml, bigquery_setup.sql,
+                   model_armor_template.json, iam.md, firestore.rules (+ firebase.json)
 src/wapsi/adapters/
   bigquery_ledger.py  firestore_store.py  model_armor_guard.py  gemini_llm.py
 tests/gcp/         offline tests (SQLite-backed BigQuery fake, in-memory Firestore, fake Model Armor/Gemini,

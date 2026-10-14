@@ -5,6 +5,12 @@ pipeline create. Launched by ``editions/gcp/ui_app.py``.
 In demo mode an empty store is seeded with the showcase cases and, with ``seed_agent_trace=True`` (the UI service),
 one offline run of the real ADK agent (scripted model, ``trace_demo.DEMO_SCRIPT``) whose traces land in the
 showcase cases' hash-chained audit logs, so the Case Room's Agent trace tab shows a run recorded on this instance.
+
+On the shared judging deployment (``WAPSI_SEED_CASES=showcase``, or demo mode) every visitor works on the same
+stored showcase cases. The sidebar's **Reset demo** (``reset_demo``) restores them to their freshly seeded state,
+and a new session resets them by itself when someone worked on them and nobody has touched them for
+``WAPSI_DEMO_IDLE_RESET_MIN`` minutes (default 30), so the next judge starts on a fresh case. The audit log keeps
+every earlier event and records each reset (``seed.seed_cases``).
 """
 
 from __future__ import annotations
@@ -27,7 +33,10 @@ SOURCE_CASE_STORE = "case_store"
 class CaseStoreDataSource(ShowcaseDataSource):
     def __init__(self, services: Services, *, seed_demo: bool = True, seed_agent_trace: bool = False) -> None:
         self.services = services
+        self.demo_notice: str | None = None  # what the session's start did to the shared demo (idle reset)
         store = services.store
+        if self.demo_reset_enabled:
+            self._idle_reset()
         bundles = [b for b in (store.get_bundle(c.case_id) for c in store.list_cases()) if b is not None]
         source = SOURCE_CASE_STORE
         if not bundles and seed_demo and services.settings.demo_mode:
@@ -50,6 +59,74 @@ class CaseStoreDataSource(ShowcaseDataSource):
         log.info("seeded %d offline agent runs", len(traces))
         store = self.services.store
         return [store.get_bundle(b.case.case_id) or b for b in bundles]
+
+    # -- the shared judging demo
+    @property
+    def demo_reset_enabled(self) -> bool:
+        """A public judging deployment (``WAPSI_SEED_CASES=showcase``) or demo mode: visitors share the stored
+        showcase cases, so the sidebar offers **Reset demo**."""
+        from .seed import SEED_ENV, seed_choice
+
+        try:
+            seeded = seed_choice(os.environ.get(SEED_ENV)) == "showcase"
+        except ValueError:
+            seeded = False
+        return seeded or bool(self.services.settings.demo_mode)
+
+    def demo_decisions(self) -> int:
+        """Decisions recorded on the showcase cases (by anyone) since they were last seeded or reset."""
+        from .seed import SHOWCASE_CASE_IDS
+
+        return sum(len(b.approvals) for cid, b in self._bundles.items() if cid in SHOWCASE_CASE_IDS)
+
+    def _idle_reset(self) -> None:
+        from .seed import reset_if_idle
+
+        try:
+            results = reset_if_idle(self.services)
+        except Exception:  # noqa: BLE001 - a new session must open even if the reset fails
+            log.exception("idle reset of the shared demo failed")
+            return
+        if results and "reset" in results.values() and all(v in ("reset", "fresh", "seeded")
+                                                            for v in results.values()):
+            self.demo_notice = ("The shared demo had been idle, so the showcase cases were reset for you: no "
+                                "decisions recorded yet. Earlier visits stay in each case's audit log.")
+
+    def reset_demo(self, *, actor: str, role: str) -> Outcome:
+        """Restore the showcase cases to their freshly seeded state (plan and drafts as computed, no decisions).
+        Every earlier event, including each decision, stays in the case's audit log, followed by the reset."""
+        from .seed import SHOWCASE_CASE_IDS, seed_cases
+
+        if not self.demo_reset_enabled:
+            return Outcome(False, "Reset is only available on the shared demo deployment.")
+        try:
+            results = seed_cases(self.services, "showcase", reset=True, actor=actor, role=role, wait_s=20.0,
+                                 reason="reset from the sidebar of the shared demo")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("demo reset failed")
+            return Outcome(False, f"The demo couldn't be reset: {exc}")
+        for cid in SHOWCASE_CASE_IDS:
+            try:
+                fresh = self.services.store.get_bundle(cid)
+            except Exception:  # noqa: BLE001
+                log.exception("could not re-read case %s", cid)
+                fresh = None
+            if fresh is not None:
+                self._bundles[cid] = fresh
+        self._clock_cache = {}
+        values = set(results.values())
+        if values <= {"reset", "seeded", "fresh"}:
+            if values <= {"fresh"}:
+                return Outcome(True, "Nothing to reset: the showcase cases are already fresh, with no decisions "
+                                     "recorded.")
+            return Outcome(True, "Demo reset: the showcase cases are back to their freshly seeded state, with no "
+                                 "decisions recorded. Earlier decisions stay in each case's audit log.")
+        if "busy" in values:
+            return Outcome(False, "Another reset is running. Try again in a few seconds.")
+        if "missing_in_ledger" in values:
+            return Outcome(False, "The showcase complaints aren't in this deployment's ledger, so there is nothing "
+                                  "to reset.")
+        return Outcome(False, "Some showcase cases couldn't be reset. Try again, or check the service logs.")
 
     def refresh(self) -> None:
         """Pick up cases created elsewhere (agents, Pub/Sub pipeline)."""

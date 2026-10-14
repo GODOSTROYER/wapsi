@@ -4,13 +4,14 @@
 # No build machine option here: the default e2-standard-2 machine is the one covered by the Cloud Build free tier
 # (2,500 build-minutes a month). The paid profile passes --machine-type=e2-highcpu-8 on the command line.
 # _BAKE_WORLD=1 generates the ~2 MB synthetic demo world into the image (/app/data/world) so WAPSI_LEDGER=parquet
-# works without BigQuery.
+# works without BigQuery. _BAKE_DOCS_INDEX=1 bakes the docs search index into the image (python -m wapsi.search.bake:
+# the uploaded data/docs/index if the deploying machine built it, else built from the public sources at build time).
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
     env: ["DOCKER_BUILDKIT=1"]
     args: ["build", "-f", "editions/gcp/Dockerfile", "-t", "${_IMAGE}", "--build-arg", "BAKE_WORLD=${_BAKE_WORLD}",
-           "--label", "app=wapsi", "."]
+           "--build-arg", "BAKE_DOCS_INDEX=${_BAKE_DOCS_INDEX}", "--label", "app=wapsi", "."]
 images: ["${_IMAGE}"]
 options:
   dynamicSubstitutions: true
@@ -19,3 +20,4 @@ timeout: 1800s
 substitutions:
   _IMAGE: asia-south1-docker.pkg.dev/${PROJECT_ID}/wapsi/wapsi-gcp:latest
   _BAKE_WORLD: "1"
+  _BAKE_DOCS_INDEX: "1"
