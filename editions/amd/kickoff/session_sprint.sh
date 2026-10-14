@@ -21,7 +21,22 @@ RUN=(bash editions/amd/kickoff/run_all.sh --mode notebook --skip-preflight --ign
 
 note() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "${OUT}/progress.log"; }
 
-# vLLM 0.23 (rocm7.14 image) reads Gemma 4's head_dim globally; newer transformers guard that attribute. Allow it.
+# vLLM 0.23.1.dev (AMD's rocm7.14 notebook image) was built against the transformers that shipped Gemma 4 (5.5.x).
+# With the newer transformers the env stage installs (5.16+), vLLM either refuses Gemma 4's per-layer config
+# ("head_dim is a per-layer attribute") or, if that guard is relaxed, builds the full-attention layers with the wrong
+# head size and fails while loading weights (512 vs 256). Fix: give vLLM its own transformers 5.5 + tokenizers 0.22
+# in an overlay directory on PYTHONPATH; everything else keeps the pinned versions. Verified on MI300X 2026-10-14:
+# google/gemma-4-31B-it loads (58.9 GiB, 24 s) and answers.
+vllm_overlay() {
+  local dir="${WAPSI_VLLM_OVERLAY:-$HOME/tf55}"
+  if [[ ! -d "${dir}/transformers" ]]; then
+    python3 -m pip install -q --no-deps --target "${dir}" "transformers>=5.5,<5.6" "tokenizers>=0.22.0,<=0.23.0"
+  fi
+  export PYTHONPATH="${dir}${PYTHONPATH:+:${PYTHONPATH}}"
+  echo "vLLM overlay on PYTHONPATH: ${dir} ($(python3 -c 'import transformers,tokenizers;print(transformers.__version__, tokenizers.__version__)'))"
+}
+
+# Older fallback, kept for reference: relaxing the guard is NOT enough for gemma-4-31B-it (wrong head size on load).
 patch_transformers() {
   python3 - <<'PY'
 import os, shutil
@@ -84,8 +99,8 @@ note "SPRINT START blocks=[${BLOCKS}] commit=$(git rev-parse --short HEAD)"
 for b in ${BLOCKS}; do
   note "BLOCK ${b} start"
   case "${b}" in
-    env)      "${RUN[@]}" --stage env >> "${OUT}/run.log" 2>&1; patch_transformers >> "${OUT}/run.log" 2>&1 ;;
-    serve)    patch_transformers >> "${OUT}/run.log" 2>&1; "${RUN[@]}" --stage models,serve >> "${OUT}/run.log" 2>&1 ;;
+    env)      "${RUN[@]}" --stage env >> "${OUT}/run.log" 2>&1 ;;
+    serve)    vllm_overlay >> "${OUT}/run.log" 2>&1; "${RUN[@]}" --stage models,serve >> "${OUT}/run.log" 2>&1 ;;
     eval)     "${RUN[@]}" --stage eval >> "${OUT}/run.log" 2>&1 ;;
     bench)    "${RUN[@]}" --stage bench >> "${OUT}/run.log" 2>&1 ;;
     ab)       "${RUN[@]}" --stage ab >> "${OUT}/run.log" 2>&1 ;;
