@@ -908,13 +908,14 @@ An edition is a thin platform layer. It must not fork the core rules.
 5. Add tests under `tests/<name>/` that start with `pytest.importorskip(<your SDK>)` and use offline fakes.
 6. Optional dependencies go in a new extra in `pyproject.toml`. Changing `pyproject.toml`, `models.py` or
    `ports.py` affects everyone: coordinate first (AGENTS.md).
-7. Respect the event boundaries in AGENTS.md ("Originality and event boundaries") and
-   [originality.md](originality.md). AMD edition code under `editions/amd/` may be prepared before the event
-   but is disclosed, and every run on AMD hardware and every reported GPU number happens during 12–18 Oct 2026;
-   label CPU development numbers as such. Do not use Gemini outputs to train other models.
+7. Respect the event boundaries in [originality.md](originality.md). Everything under the git tag
+   `amd-baseline` is pre-event work; every run against an AMD-served model or on AMD hardware, and every figure
+   reported from one, happens during 12–18 Oct 2026 and says where it ran. Label CPU development numbers as
+   such. Do not use the outputs of a hosted proprietary model to train another model.
 
-Existing editions: [Google Cloud](../editions/gcp/README.md) and [AMD](../editions/amd/README.md) (prepared before the event; no GPU runs yet). The
-[editions page](editions.md) compares them.
+Existing platform layers: [AMD](../editions/amd/README.md), which is the hackathon entry, and
+[`editions/gcp`](../editions/gcp/README.md), which holds the Google ADK agent app and the optional managed-cloud
+adapters. The [editions page](editions.md) compares them.
 
 ---
 

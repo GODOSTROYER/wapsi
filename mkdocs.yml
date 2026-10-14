@@ -4,7 +4,8 @@
 site_name: Wapsi
 site_description: >-
   Money-trail and victim-restoration copilot for a bank's cyber-fraud nodal officer:
-  amount-specific holds under the MHA/I4C SOP for NCRP-CFCFRMS (02.01.2026). Synthetic data only.
+  amount-specific holds under the MHA/I4C SOP for NCRP-CFCFRMS (02.01.2026), so honest merchants and
+  customers keep trading. Gemma 4 on AMD GPUs writes the words; data supplies every number. Synthetic data only.
 copyright: Wapsi is MIT-licensed. All banking data is synthetic. Not legal advice.
 
 docs_dir: docs
@@ -76,7 +77,7 @@ nav:
   - Overview: overview.md
   - Architecture & editions:
       - Architecture: architecture.md
-      - Editions: editions.md
+      - Editions and AMD run modes: editions.md
   - Legal spine: legal-spine.md
   - Algorithms:
       - Money trail: algorithms/money-trail.md
@@ -97,7 +98,7 @@ nav:
       - "0002 Pro-rata apportionment": adr/0002-pro-rata-apportionment.md
       - "0003 Numbers from data, words from the LLM": adr/0003-numbers-from-data-words-from-llm.md
       - "0004 Intermediary accounts (SOP 9.1(iii))": adr/0004-intermediary-accounts-sop-9-1-iii.md
-      - "0005 One core, two editions": adr/0005-one-core-two-editions.md
+      - "0005 One core, thin platform editions": adr/0005-one-core-two-editions.md
       - "0006 Heuristic classifier by default": adr/0006-transparent-heuristic-classifier-default.md
       - "0007 Synthetic data only": adr/0007-synthetic-data-only.md
       - "0008 Verifier independent of planner": adr/0008-verifier-independent-of-planner.md

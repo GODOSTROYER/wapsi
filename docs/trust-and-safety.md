@@ -710,7 +710,8 @@ Persistence is the edition's job, through the `CaseStore` port.
 <a id="agent-traces"></a>
 ### Agent traces
 
-When an officer talks to the Wapsi agent (Gemini on ADK, Google Cloud edition), the agent decides which tools to
+When an officer talks to the Wapsi agent (a Google ADK agent; in the AMD entry its model is Gemma 4 served on
+AMD GPUs), the agent decides which tools to
 call. Supervisors, auditors and judges need to see exactly what it did and what checked it. `wapsi.agenttrace`
 records it, and the Case Room's **Agent trace** tab shows it.
 
@@ -758,9 +759,10 @@ auditors, and the gap is tracked for a fix in `wapsi.agenttrace`.
   Account numbers are **not** masked, because auditors need them to follow the trail.
 - **Voice notes.** The caller's phone number is masked in code before anything from a voice note is displayed,
   stored or reconciled ([section 8](#voice-notes)). The audit trail keeps the audio's SHA-256 and the claim
-  counts, never the transcript. With Gemini, the recording itself goes to the model provider; for real victims'
-  audio, a bank would use a provider and region it has approved (the Google Cloud edition documents Vertex AI in
-  `asia-south1` for in-country processing).
+  counts, never the transcript. With a hosted multimodal model, the recording itself goes to the model provider.
+  In the AMD entry's open-model path the speech model runs locally, so the audio stays on the machine and only
+  the transcript goes to the model endpoint; the hackathon endpoint is a shared trial service and receives
+  synthetic samples only. For real victims' audio, a bank would use a model and a region it has approved.
 - **Agent traces** are redacted before they are stored, and analysts read only their own runs through the API
   ([agent traces](#agent-traces)).
 - **No telemetry from the UI.** `.streamlit/config.toml` sets `gatherUsageStats = false` and
@@ -847,7 +849,7 @@ payload.
   scored on 386 labelled texts (235 in the corpus, 151 blind) and the freeze checks have sentence-level tests, but
   tests are not proofs.
 - **Voice intake is tested on six synthetic samples.** They are text-to-speech readings of synthetic scripts, and
-  the committed tests use the offline model's expected answers. How well Gemini transcribes real Hinglish voice
+  the committed tests use the offline model's expected answers. How well any speech model transcribes real Hinglish voice
   notes (accents, noise, code-switching) is not measured in this repository; the reconciliation, not the
   transcript, is what protects the money.
 - **Wapsi is decision support for trained officers, not legal advice.** A person approves every document, and

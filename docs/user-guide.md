@@ -312,12 +312,13 @@ answers the question a supervisor or auditor asks about any AI agent: what exact
 
 Where the runs come from:
 
-- **Live runs.** In the Google Cloud edition an officer talks to the Wapsi agent (Gemini on ADK). Every run is
-  recorded by the edition's `ToolTracePlugin` and sealed into the audit log of each case it touched, as an
+- **Live runs.** An officer talks to the Wapsi agent, which is built with Google's ADK; in the AMD entry its
+  model is Gemma 4 served on AMD GPUs. Every run is
+  recorded by the agent app's `ToolTracePlugin` and sealed into the audit log of each case it touched, as an
   "Agent run recorded (tool trace)" event. The tab reads those events, so the case's hash chain covers each run.
   The run header then carries the chip **In the case's hash-chained audit log**.
 - **Recorded offline run.** With no live run on the case, the showcase cases show a recording made with the real
-  ADK app, its real tools and guards, driven by a scripted model instead of Gemini (no API key). A callout says
+  ADK app, its real tools and guards, driven by a scripted model instead of a live one (no API key). A callout says
   so: "Recorded offline run." Its latencies were measured on a laptop CPU.
 - **Nothing recorded.** Other cases show "No agent runs on this case yet" and explain what will appear.
 
@@ -700,6 +701,11 @@ treats everything in it as a **claim**: the ledger decides. How it works inside:
 | Offline demo model · knows the bundled samples | No Gemini key is set. The offline model answers only for the six bundled synthetic samples (matched by the audio's SHA-256); any other recording gets an empty result, never an invented one |
 | Gemini · `<model>` | `GEMINI_API_KEY` is set (or Agent Platform is configured): any recording is transcribed by Gemini |
 | Synthetic voices and data | The samples are synthetic scripts read by an offline text-to-speech voice |
+
+The table shows the chips of the offline model and of the optional hosted multimodal model. The open-model path
+of the AMD entry (a Whisper-class speech model for the transcript, then Gemma 4 on AMD for the fields) is
+event-week work and names its own models in the same place; its settings are in the README section after
+integration. Whichever model reads the audio, everything below the chips works the same way.
 
 **Step by step**
 
@@ -1180,13 +1186,13 @@ These describe the app as it is in this repository.
   appears with the showcase data. The injection defences are measured on the 3 adversarial cases in the demo
   evaluation world (see [KPIs](#57-kpis)). To see the warning in this app, use Voice Intake with the Fatima Shaikh
   sample ([Step 11](#step-11-optional-a-victims-voice-note-with-a-hidden-instruction)).
-- **The offline voice model knows six recordings.** Without a Gemini key, Voice Intake answers only for the bundled
+- **The offline voice model knows six recordings.** Without a live model, Voice Intake answers only for the bundled
   samples, and only three of them retell complaints in the showcase ledger. Your own recording gets an empty
-  result ("The offline demo model only recognises the bundled sample voice notes."). With Gemini, transcripts and
+  result ("The offline demo model only recognises the bundled sample voice notes."). With a live model, transcripts and
   confidences come from the model and can differ from the samples' expected answers; the reconciliation still
   decides against the ledger.
 - **The local app has no agent chat.** The Agent trace tab shows live runs only when they are recorded in the case's
-  audit log, which the Google Cloud edition does. Locally the showcase cases show the recorded offline run, and
+  audit log, which the ADK agent app does. Locally the showcase cases show the recorded offline run, and
   other cases show none.
 
 ---

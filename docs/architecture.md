@@ -4,7 +4,7 @@ Wapsi is one Python package (`src/wapsi`) that turns NCRP / 1930 complaints into
 verified drafts and SOP clocks. It is built as **ports and adapters**: the legal and numerical logic lives in a
 portable core, and every platform-specific concern (where the ledger lives, which LLM writes prose, where cases are
 stored, where approved actions go) sits behind one of six small interfaces in `src/wapsi/ports.py`. The two
-hackathon editions (Google Cloud, AMD) plug in different adapters. Neither of them changes the core.
+platform layers (AMD, which is the hackathon entry, and optional managed-cloud adapters) plug in different adapters. Neither of them changes the core.
 
 Because every edition calls the same functions, the numbers are the same everywhere. In showcase case 1 a
 ₹4,80,000.00 loss becomes holds of ₹1,42,848.00 on 5 accounts, where a whole-account freeze would immobilise
@@ -60,7 +60,7 @@ flowchart TB
     DOCS --> VE
     VE -.->|"case bundle"| STORE[("CaseStore port")]
     LED --> VI
-    AG["AI agent tool calls<br/>(ADK, Google Cloud edition)"] --> AT["Agent trace<br/>wapsi.agenttrace"]
+    AG["AI agent tool calls<br/>(Google ADK agent)"] --> AT["Agent trace<br/>wapsi.agenttrace"]
     AT -->|"agent_trace event"| AUD
 ```
 
@@ -646,10 +646,10 @@ flowchart TB
         EV["evals/ + data/golden/<br/>golden set and harness"]
     end
     subgraph GC["editions/gcp"]
-        GC1["ADK tools call process_case and approve<br/>BigQuery, Firestore, Gemini"]
+        GC1["ADK tools call process_case and approve<br/>optional: BigQuery, Firestore, a hosted model"]
     end
     subgraph AM["editions/amd"]
-        AM1["FastAPI service calls process_case<br/>vLLM on ROCm, GNN scorer, file store"]
+        AM1["App calls process_case<br/>Gemma 4 on an AMD endpoint or vLLM on ROCm,<br/>GNN scorer, file store"]
     end
     GC1 --> CORE
     AM1 --> CORE
@@ -657,16 +657,16 @@ flowchart TB
     AM1 --> UI
 ```
 
-| Concern | Google Cloud | AMD |
+| Concern | `editions/gcp`: ADK agent app and optional managed-cloud adapters | `editions/amd`: the hackathon entry |
 |---|---|---|
 | `Ledger` | `BigQueryLedger`, or `ParquetLedger` with `WAPSI_LEDGER=parquet` | `ParquetLedger`; the showcase ledger if no world is mounted |
-| `LLM` for prose | `GeminiLLM` (Gemini API free tier by default, Vertex AI optional); Gemma on Cloud Run GPU via `OpenAICompatLLM` as a paid add-on | `OpenAICompatLLM` against vLLM on ROCm; `FakeLLM` in demo mode |
+| `LLM` for prose | `GeminiLLM` (a hosted model); or any OpenAI-compatible endpoint via `OpenAICompatLLM` | `OpenAICompatLLM` against Gemma 4 on an AMD-served endpoint (the Token Factory API, a dedicated endpoint, or vLLM on ROCm on a droplet); `FakeLLM` in demo mode |
 | `Guard` | `RulesGuard`; `ModelArmorGuard` (falls back to `RulesGuard`) when a Model Armor template is configured | `RulesGuard`; `LLMJudgeGuard` (rules plus an LLM judge) when `WAPSI_VERIFIER_BASE_URL` is set |
 | `CaseStore` | `FirestoreCaseStore` | `FileCaseStore` |
 | `DocSearch` | `LocalDocSearch` | `LocalDocSearch` |
 | `Scorer` | Heuristic | `GnnHttpScorer` when `WAPSI_GNN_URL` is set, with heuristic fallback |
-| `AudioLLM` for voice notes | `GeminiLLM.extract_media` (offline `FakeLLM` in demo mode) | none served; the shared Voice Intake page uses the offline `FakeLLM` (bundled samples only) |
-| Agent loop and trace | ADK agents; `ToolTracePlugin` drives `ToolTraceRecorder` | no agent loop; the Agent trace tab shows the recorded offline run on the showcase cases |
+| `AudioLLM` for voice notes | `GeminiLLM.extract_media` (offline `FakeLLM` in demo mode) | at the baseline, the offline `FakeLLM` (bundled samples only); the open-model path (a Whisper-class speech model plus Gemma 4 on AMD for the fields) is event-week work |
+| Agent loop and trace | ADK agents; `ToolTracePlugin` drives `ToolTraceRecorder` | the same ADK agent with Gemma 4 on AMD as its model (event-week work); at the baseline, the Agent trace tab shows the recorded offline run on the showcase cases |
 
 Sources: `editions/gcp/app/services.py`, `editions/amd/app/services.py`, `ui/data_source.py` (`voice_llm`).
 
@@ -769,15 +769,16 @@ failures; 291 of the tests are in the edition suites `tests/gcp` (178) and `test
 - **In-memory adapters are for demos.** `InMemoryCaseStore` and `RecordingActionSink` keep nothing across
   restarts. `ParquetLedger` loads the world into memory.
 - **Approval roles are strings.** `approve` trusts the `role` argument; each edition must authenticate the user.
-- **Edition status.** As of 2026-09-29 the Google Cloud edition is built and tested offline, and the AMD edition
-  runs on an AMD GPU only during 12–18 Oct 2026 ([editions.md](editions.md#summary)).
+- **Platform status.** As of 2026-10-14 the AMD entry's endpoint mode (Gemma 4 on an AMD-hosted API) is wired,
+  its notebook and MI300X droplet modes are prepared and tested offline, and the optional managed-cloud adapters
+  are built and tested offline with fakes ([editions.md](editions.md#summary)).
 - **The in-store anchor shares a trust domain with the log.** `InMemoryCaseStore`, `FirestoreCaseStore` and the
   AMD `FileCaseStore` chain on write and keep an anchor per case; someone who can rewrite both the log and its
   anchor is caught only by an anchor kept elsewhere (WORM storage, a signed receipt, a digest).
 
 ## Related documents
 
-- [editions.md](editions.md): the two editions and their status
+- [editions.md](editions.md): the AMD entry and its three modes, the ADK agent, the optional managed-cloud adapters
 - [adr/README.md](adr/README.md): architecture decision records
 - [legal-spine.md](legal-spine.md): every rule, its SOP paragraph and the code that enforces it
 - [algorithms/money-trail.md](algorithms/money-trail.md), [algorithms/hold-plan.md](algorithms/hold-plan.md),
@@ -788,5 +789,5 @@ failures; 291 of the tests are in the edition suites `tests/gcp` (178) and `test
 - [synthetic-data.md](synthetic-data.md) and [data-contract.md](data-contract.md): the generated world and its tables
 - [draft-contract.md](draft-contract.md): slots, skeletons and the verifier's body rules
 - [limitations-and-roadmap.md](limitations-and-roadmap.md): what is missing and what comes next
-- [originality.md](originality.md): build timeline for the two hackathons
+- [originality.md](originality.md): the pre-event baseline and what was built during the hackathon
 - `AGENTS.md` (repository root): conventions every contributor and coding agent follows

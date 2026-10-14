@@ -120,15 +120,21 @@ behaviour change per pull request is easiest to review against the SOP.
 
 ## Event rules
 
-Wapsi is entered in two hackathons. Follow "Originality and event boundaries" in AGENTS.md and
-[docs/originality.md](docs/originality.md):
+Wapsi is entered in one hackathon: the lablab.ai AMD Developer Hackathon ACT III (build window 12–18 Oct 2026,
+Track 3 "Reinvent Commerce"). Follow [docs/originality.md](docs/originality.md):
 
-- AI Builder Cup: only work created on or after 2026-09-01 counts. Work on Wapsi started on 2026-09-16; the
-  first commit is dated 2026-09-23.
-- AMD ACT III: every run on AMD hardware and every reported GPU number happens during 12–18 Oct 2026. CPU
-  development numbers are labelled as such.
-- Gemini outputs are not used to train other models.
-- Never rewrite commit dates.
+- Everything under the git tag `amd-baseline` (commit `1d500f6`, dated 2026-10-07) is pre-event work and is
+  disclosed. Work on Wapsi started on 2026-09-16; the first commit is dated 2026-09-23.
+- Every run against an AMD-served model or on AMD hardware, and every figure reported from one, happens during
+  12–18 Oct 2026. Each figure says where it ran: AMD Token Factory, an AMD GPU notebook or an MI300X droplet. A
+  result from the shared endpoint is never presented as an MI300X benchmark. CPU and rehearsal numbers are
+  labelled as such.
+- A figure that is not measured yet is an open slot, written `TBD(slot_id)` in `pitch/` and listed in
+  `pitch/NUMBERS.md`. Never fill a slot from memory.
+- Live calls to a model endpoint are never part of the test suite. Send synthetic data only, and never print,
+  log or commit a key.
+- Outputs of hosted proprietary models are not used to train other models.
+- Never rewrite commit dates, never rebase published history, never move the `amd-baseline` tag.
 
 ## Reporting problems
 

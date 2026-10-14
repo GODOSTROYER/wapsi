@@ -90,6 +90,24 @@ The first three rows rest on news and legal-blog reports of the judgments; their
 `data/docs/citations.json`. The last two rest on the SOP's own summaries, which Wapsi quotes and checks word for
 word.
 
+### What a freeze costs commerce
+
+Digital payments are how shops, landlords and payment companies get paid, so a freeze lands on commerce first. In
+the showcase case of section 4, a whole-account freeze would lock ₹5,03,50,000.00 in six accounts. Only
+₹1,23,800.00 of that is in the three mule accounts. The other ₹5,02,26,200.00, which is 99.75% of it, sits in
+three accounts whose holders did nothing wrong (`src/wapsi/fixtures/showcase.py`):
+
+| Honest account | What it did | Frozen under a whole-account freeze | With Wapsi |
+|---|---|---|---|
+| A kirana shop | sold ₹1,200.00 of groceries to a mule and delivered them | its whole balance, ₹51,200.00 | no hold; it keeps trading [SOP-9-2] |
+| A landlord | received ₹5,000.00 of rent from a mule | his whole balance, ₹1,55,000.00 | ₹4,800.00 held, no escalation [SOP-5-XII] |
+| A payment-aggregator pool account | received ₹20,000.00 for a wallet top-up | ₹5,00,20,000.00 of other merchants' and customers' money | ₹19,200.00 held; the account keeps running [SOP-9-1-III] |
+
+The shop cannot pay its suppliers, the pool cannot settle its merchants, and the bank that froze them loses the
+customers and answers the grievance. This is why Wapsi is entered in the hackathon's commerce track: it turns a
+bank's transaction data into a better action for each customer on the trail
+(`pitch/TRACK_FIT.md` in the repository).
+
 ### Why doing it right by hand is hard
 
 - **Money gets mixed.** A mule account holds its own money alongside money from one or more victims. Every
@@ -151,8 +169,9 @@ flowchart TD
     X --> K["SOP and STR clocks"]
 ```
 
-Every step is plain Python in `src/wapsi`. Each edition calls the same pipeline with its own adapters for the
-ledger, the LLM, the guard and the case store. The entry point is `wapsi.pipeline.run.process_case`, and the
+Every step is plain Python in `src/wapsi`. Every platform layer calls the same pipeline with its own adapters for
+the ledger, the LLM, the guard and the case store. In the hackathon entry the LLM is Gemma 4 served on AMD GPUs,
+and it writes prose only ([Editions](editions.md)). The entry point is `wapsi.pipeline.run.process_case`, and the
 approval step is `wapsi.pipeline.run.approve`.
 
 | Step | What happens | Code | Legal basis |
@@ -414,7 +433,7 @@ keeps running for its other customers.
 | freeze or debit-freeze a whole account on its own | it holds `min(victim money, balance)` by default [SOP-5-IX] [CASE-KARTIK-CHATUR]; account-level action happens only as a recorded exception an officer requests and a different supervisor approves |
 | suspend, seize or forward-hold a nodal, pool or escrow account | it holds the disputed amount only [SOP-9-1-III] [SOP-9-1-I] |
 | decide on s.106 BNSS escalation | it raises a flag that needs an FIR and at least 2 prior NCRP reports, and a person decides. `Disposition.ESCALATE_S106_CANDIDATE` is reserved and never emitted |
-| act without a supervisor | nothing leaves the case until a supervisor approves the exact draft. The core ships `RecordingActionSink`, which only records actions and is what both editions use; a deployment can plug in a Jira, Slack or ticketing sink through the `ActionSink` port |
+| act without a supervisor | nothing leaves the case until a supervisor approves the exact draft. The core ships `RecordingActionSink`, which only records actions and is what every platform layer uses; a deployment can plug in a Jira, Slack or ticketing sink through the `ActionSink` port |
 | file the STR with FIU-IND | it drafts the STR for the bank's Principal Officer, in a layout modelled on FINnet 2.0; filing stays with the bank |
 | connect to the live NCRP or CFCFRMS | it is a simulated CFCFRMS interface: other-bank responses come from `Ledger.consortium_transactions`, and every CFCFRMS action it prepares is labelled as simulated |
 | let the LLM write numbers | every value is a slot, and the verifier recomputes it |
@@ -443,8 +462,9 @@ keeps running for its other customers.
   2 of 6 instructions split across sentences and 3 of 7 Hinglish attacks (`evals/reports/guard-latest.json`). The
   real defence is structural: drafts are template-bound and verified, and the demo evaluation found 0 drafts
   containing injected text.
-- **The LLM in the evaluation is a stub.** Reported evaluations use the offline `FakeLLM`. Measuring real models
-  (Gemini, Gemma, models served with vLLM) is edition work, so `llm_only_hallucination_rate` is `null` for now.
+- **The LLM in the committed evaluation reports is a stub.** They use the offline `FakeLLM`, so
+  `llm_only_hallucination_rate` is `null` in them. Runs with Gemma 4 served on AMD are event-week work; a figure
+  from them is published only from a committed results file that says where it ran ([Editions](editions.md)).
 - **The bank holiday calendar is national.** `wapsi.domain.calendar` treats Sundays, the 2nd and 4th Saturdays
   and the DoPT list of closed holidays for Central Government offices in Delhi as non-working days. Real bank
   holidays vary by State.
@@ -452,8 +472,9 @@ keeps running for its other customers.
   notice lets the bank remove a contested hold 90 days after the amount was put on hold
   (`data/docs/facts.json`). Wapsi's `HOLD_LAPSE` clock counts 90 calendar days from the hold, with a warning at
   day 75. The [Legal spine](legal-spine.md) discusses this.
-- **The editions are at different stages.** On 29-09-2026 the Google Cloud edition was tested offline with fakes
-  and is deployed in October; the AMD edition's GPU work runs only during the event (12 to 18 Oct 2026). See
+- **The AMD modes are at different stages.** On 2026-10-14 the endpoint mode (Gemma 4 on an AMD-hosted API) is
+  wired and is what the demo uses; the notebook and MI300X droplet modes are prepared and tested offline, with no
+  AMD GPU run reported. The managed-cloud adapters are optional, tested offline with fakes, and not deployed. See
   [Editions](editions.md).
 - **The hard world shows where labels break.** On its 64 cases the heuristic's dispositions are 0.9198 and
   innocent-holder recall 0.6875; victims on another victim's trail are sometimes called mules, and innocent-only
@@ -465,7 +486,7 @@ keeps running for its other customers.
 
 | You are... | Start with |
 |---|---|
-| A Google Cloud or AMD judge | [Editions](editions.md), [Architecture](architecture.md), [Evaluation](evaluation.md), [FAQ](faq.md) |
+| A hackathon judge | [Editions](editions.md) (what runs on AMD), [Architecture](architecture.md), [Evaluation](evaluation.md), [FAQ](faq.md) |
 | A bank fraud or compliance expert | [Legal spine](legal-spine.md), [Hold plan](algorithms/hold-plan.md), [Trust and safety](trust-and-safety.md), [User guide](user-guide.md) |
 | A developer | [Developer guide](developer-guide.md), [API reference](api-reference.md), [Data contract](data-contract.md), [Draft contract](draft-contract.md) |
 | Curious how the money is followed | [Money trail](algorithms/money-trail.md), [Classification](algorithms/classification.md), [Synthetic data](synthetic-data.md) |

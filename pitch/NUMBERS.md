@@ -10,8 +10,14 @@ Rules for editing the pitch:
 - Amounts are Indian notation (₹1,42,848). 1 crore (Cr) = ₹1,00,00,000; 1 lakh (L) = ₹1,00,000.
 - **All case data is synthetic.** Official statistics are verbatim-quoted in `data/docs/facts.json` and re-checked by
   `uv run python -m wapsi.search.check_citations`.
-- Draft metrics come from the deterministic stub LLM (`fake-llm`). Real-LLM rows are **TBD** until measured on each
-  platform; never fill them from memory.
+- Draft metrics come from the deterministic stub LLM (`fake-llm`) unless a row says otherwise.
+- **AMD measurements are slots until measured.** A figure that has not been measured on AMD-served models or AMD
+  hardware is written `TBD(slot_id)` in the pitch, and the slot is listed in
+  [AMD measurement slots](#amd-measurement-slots-open-not-claims) at the end of this page. A slot is not a claim:
+  it carries no value. Fill it only from a results file committed to this repository, then move it into a
+  numbers table with a locator. Never fill a slot from memory, from a CPU run or from a rehearsal.
+- Every AMD row states where it ran: **AMD Token Factory** (models served on AMD GPUs by AMD's API), an **AMD GPU
+  notebook** or an **MI300X droplet**. A Token Factory result is not an MI300X benchmark and is never worded as one.
 - Locator kinds are explained in the docstring of `pitch/check_numbers.py`.
 
 ## The problem: official statistics (`data/docs/facts.json`)
@@ -58,6 +64,15 @@ One victim, one impersonation call, ₹4,80,000 stolen. These are the numbers ev
 | sc1_recoverable_pct | 69.76% of the stolen money recoverable | 69.76 | derived | `calc:100 * sc1_recoverable / sc1_stolen` |
 | sc1_kirana | kirana shop ₹1,152, goods delivered, no hold | 1152 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["tainted_now"][K]` |
 | sc1_pool_balance | pool account balance ₹5,00,20,000 keeps running | 50020000 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][P]` |
+| sc1_pool_free | ₹5,00,00,800 of the pool account stays free | 50000800 | derived | `calc:sc1_pool_balance - sc1_hold_p` |
+| sc1_kirana_balance | kirana shop balance ₹51,200, all of it frozen under the baseline | 51200 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][K]` |
+| sc1_kirana_sale | the kirana shop sold ₹1,200 of groceries to a mule | 1200 | src/wapsi/fixtures/showcase.py | `text:_t("TX-007", _ist(9, 10, 11, 40), B, K, 1200.0, Channel.UPI, "622210000007", "order 5521"),` |
+| sc1_landlord_balance | landlord balance ₹1,55,000, all of it frozen under the baseline | 155000 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][L]` |
+| sc1_landlord_rent | the landlord received ₹5,000 of rent from a mule | 5000 | src/wapsi/fixtures/showcase.py | `text:_t("TX-003", _ist(9, 10, 11, 15), A, L, 5000.0, Channel.UPI, "622210000003", "rent Sept"),` |
+| sc1_mule_balances | three mule accounts hold ₹1,23,800 between them | 123800 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["balance_now"][A] + SHOWCASE_1["balance_now"][B] + SHOWCASE_1["balance_now"][D]` |
+| sc1_honest_frozen | ₹5,02,26,200 of the frozen money sits in three honest accounts (landlord, kirana shop, payment-aggregator pool) | 50226200 | derived | `calc:sc1_kirana_balance + sc1_landlord_balance + sc1_pool_balance` |
+| sc1_honest_share | 99.75% of what the freeze locks belongs to people who did nothing wrong | 99.75 | derived | `calc:100 * sc1_honest_frozen / sc1_baseline` |
+| sc1_honest_held | Wapsi holds ₹24,000 in those three accounts, the victim's money only | 24000 | derived | `calc:sc1_hold_l + sc1_hold_p` |
 | sc1_baseline | whole-account freeze baseline ₹5,03,50,000 | 50350000 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["baseline_freeze_amount"]` |
 | sc1_baseline_accounts | in 6 accounts | 6 | src/wapsi/fixtures/showcase.py | `py:SHOWCASE_1["baseline_freeze_accounts"]` |
 | sc1_baseline_cr | more than ₹5 Cr (spoken rounding of ₹5,03,50,000) | 5 | derived | `calc:sc1_baseline / 10000000` |
@@ -119,6 +134,12 @@ One victim, one impersonation call, ₹4,80,000 stolen. These are the numbers ev
 | demo_prose_fallback | prose fallback 0.0 with a well-behaved LLM | 0.0 | evals/reports/demo.json | `json:metrics.llm_prose_fallback_rate` |
 | demo_totals_error | totals rounding error ₹0.34 over 39 cases × 7 totals | 0.34 | evals/reports/demo.json | `json:metrics.totals_abs_error_inr` |
 | demo_p95_total | p95 0.72 s per case, trace to verified drafts (laptop, stub LLM) | 0.72 | evals/reports/demo.json | `json:metrics.p95_total_s` |
+| demo_p95_plan | p95 0.35 s from complaint to hold plan (laptop; no language model on that path) | 0.349 | evals/reports/demo.json | `json:metrics.p95_time_to_hold_plan_s` |
+| demo_spared_accounts | 17 accounts a freeze would lock get no hold at all | 17 | derived | `calc:demo_freeze_accounts - demo_hold_accounts` |
+| demo_scored_accounts | 106 accounts scored by the classifier | 106 | evals/reports/demo.json | `json:classification.accounts` |
+| demo_merchant_precision | merchant precision 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.role_precision.MERCHANT` |
+| demo_merchant_recall | merchant recall 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.role_recall.MERCHANT` |
+| demo_process | restoration process (P1 or P2) chosen correctly 1.0 | 1.0 | evals/reports/demo.json | `json:metrics.process_accuracy` |
 
 ## Hallucination stress test: stub LLM writes a wrong rupee amount into every prose field (`evals/reports/baseline/demo-fake-hallucinate.json`)
 
@@ -151,6 +172,11 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | hard_ih_precision | innocent-holder precision 0.9429 | 0.9429 | evals/reports/hard.json | `json:metrics.role_precision.INNOCENT_HOLDER` |
 | hard_mule_precision | mule precision 0.8987 | 0.8987 | evals/reports/hard.json | `json:metrics.role_precision.MULE` |
 | hard_mule_recall | mule recall 0.966 | 0.966 | evals/reports/hard.json | `json:metrics.role_recall.MULE` |
+| hard_merchant_precision | merchant precision 1.0 | 1.0 | evals/reports/hard.json | `json:metrics.role_precision.MERCHANT` |
+| hard_merchant_recall | merchant recall 1.0 | 1.0 | evals/reports/hard.json | `json:metrics.role_recall.MERCHANT` |
+| hard_pool_recall | nodal / pool / escrow recall 1.0 | 1.0 | evals/reports/hard.json | `json:metrics.role_recall.INTERMEDIARY` |
+| hard_spared_accounts | 14 accounts a freeze would lock get no hold at all | 14 | derived | `calc:hard_freeze_accounts - hard_hold_accounts` |
+| hard_p95_plan | p95 0.50 s from complaint to hold plan on the hard world (laptop) | 0.50 | evals/reports/hard.json | `json:metrics.p95_time_to_hold_plan_s` |
 | hard_mule_auc | mule ROC-AUC 0.9411 (heuristic) | 0.9411 | evals/reports/hard.json | `json:classification.mule_auc` |
 | hard_unknown | 3.5% of accounts sent to the officer as UNKNOWN | 0.035 | evals/reports/hard.json | `json:classification.unknown_rate` |
 | hard_draft_pass | drafts passing the verifier 1.0 | 1.0 | evals/reports/hard.json | `json:metrics.draft_verification_pass_rate` |
@@ -203,19 +229,25 @@ Command: `uv run python -m evals.harness --world demo --llm fake-hallucinate --o
 | lea_fields | 8-field police / LEA request checklist | 8 | src/wapsi/verify/lea_request.py | `py:len(LeaField)` |
 | account_level_reasons | 4 recorded reasons for an account-level exception | 4 | src/wapsi/models.py | `py:len(AccountLevelReason)` |
 | skills_n | 6 Claude Code skills | 6 | .claude/skills | `glob:.claude/skills/*/SKILL.md` |
+| scorer_terms | transparent logistic scorer with 27 hand-set terms | 27 | src/wapsi/classify/scoring.py | `py:len(HEURISTIC_TERMS)` |
+| scorer_features | over 33 behavioural features | 33 | src/wapsi/classify/features.py | `py:len(FEATURE_COLUMNS)` |
+| scorer_mule_threshold | score at or above 0.6 is a mule | 0.6 | src/wapsi/config.py | `text:mule_threshold: float = 0.6` |
+| scorer_innocent_threshold | score at or below 0.35 is an innocent holder | 0.35 | src/wapsi/config.py | `text:innocent_threshold: float = 0.35` |
+## The Google ADK agent (`editions/gcp/app/`)
 
-## Google Cloud edition (`editions/gcp/`)
+The agent is built with Google's open-source Agent Development Kit. Its tools are the pipeline's own functions; the
+model behind it is a setting (Gemma 4 served on AMD for this entry).
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
 | gcp_tools | ADK agent with 10 pipeline tools | 10 | editions/gcp/architecture.md | `text:10 pipeline tools` |
-| gcp_cost | expected cost at demo scale $0 on the free trial | 0 | editions/gcp/README.md | `text:Expected cost at demo scale is **$0**` |
 
 ## Voice intake samples and the recorded agent run (`data/samples/voice/`, `src/wapsi/agenttrace/`)
 
 The voice counts are the bundled samples' expected reconciliation with the offline model (the tests in
-`tests/intake` check each one). With Gemini, a live transcription's counts are whatever the screen shows. The trace
-figures come from the recorded offline run (real ADK app, tools and guards; scripted model).
+`tests/intake` check each one). With a live speech and extraction model, the counts are whatever the screen shows;
+those are slots below until measured. The trace figures come from the recorded offline run (real ADK app, tools and
+guards; scripted model).
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
@@ -227,7 +259,10 @@ figures come from the recorded offline run (real ADK app, tools and guards; scri
 | trace_verifier | Verifier · 17/17 passed (plan check plus 16 drafts) | 17 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 17` |
 | trace_grounding | Reply grounding · 23/23 values traced to tools | 23 | src/wapsi/agenttrace/showcase_recording.json | `text:"checked": 23` |
 
-## AMD edition: memory plan and budget (config in `editions/amd/`)
+## AMD, MI300X droplet mode: memory plan and budget (design from config in `editions/amd/`; not a measurement)
+
+These rows are arithmetic over configuration values. They say what is planned to fit on one MI300X, not what was
+measured on one. Measured memory per container is the slot `droplet_vram`.
 
 | ID | Pitched as | Value | Source | Locator |
 |---|---|---|---|---|
@@ -257,3 +292,42 @@ figures come from the recorded offline run (real ADK app, tools and guards; scri
 | cmd_tests | 1,765 tests pass, 0 fail (full suite, 07-10-2026) | 1765 | pyproject.toml | `cmd:uv run pytest -q` |
 | cmd_trace_run1 | 5 tool calls behind "Open case 31009260000101" (agent trace demo, 07-10-2026) | 5 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
 | cmd_trace_case | Agent trace · 8: 8 tool calls in 4 runs on the showcase case, 2 blocked (agent trace demo, 07-10-2026) | 8 | editions/gcp/app/trace_demo.py | `cmd:uv run --extra gcp python -m editions.gcp.app.trace_demo` |
+
+## AMD measurement slots (open; not claims)
+
+Each slot is a figure the pitch wants and does not have yet. In the pitch it appears as `TBD(slot_id)`;
+`pitch/check_numbers.py` fails on a bare TBD and on a slot id that is not in this table. A slot has no value. To fill
+one: commit the results file, add a row with a locator to a numbers table above, replace `TBD(slot_id)` in the pitch
+with the figure, and delete the slot's row here. If a slot is still open when the video is recorded, its sentence is
+cut; it is never estimated.
+
+"Where it runs" is part of the claim and goes on the slide with the figure.
+
+**Check the run was healthy before promoting a figure from the shared endpoint.** Wapsi's verifier checks numbers,
+citations and policy, not the quality of the prose, so a run made while the endpoint was returning truncated or
+degenerate text can still report every draft as passing. Run
+`uv run python pitch/amd/evidence/token_factory_smoke.py --probe-only` before and after the measurement, read a
+few draft bodies from the run, and look at the timings: replies that all stop at the token limit and take several
+times longer than usual are the signature of a degraded model. A figure from an unhealthy run is discarded.
+
+| Slot | Will be pitched as | Where it runs | Planned source |
+|---|---|---|---|
+| tf_showcase_pass | showcase world, drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_verification_pass_rate`) |
+| tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report |
+| tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`) |
+| tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`) |
+| tf_demo_p95 | demo world, p95 seconds per case, trace to verified drafts, with the real model | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.p95_total_s`) |
+| ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`) |
+| ab_bound_wrong | the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0) | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_numeric_accuracy`) |
+| tf_call_latency | median seconds per prose request, one request at a time | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.latency_s_median`) |
+| tf_tokens_case | prompt and completion tokens for one showcase case | AMD Token Factory, Gemma-4-31B-IT | `pitch/amd/evidence/token-factory-smoke-<date>.json` (`pipeline.prompt_tokens`, `pipeline.completion_tokens`) |
+| adk_tool_calls | tool calls Gemma 4 made through Google ADK behind "Open case 31009260000101" (native tool calling) | AMD Token Factory, Gemma-4-31B-IT | agent trace recorded by the ADK-on-AMD run (path set at integration) |
+| adk_grounding | reply grounding of that run: values in the reply that came from a tool | AMD Token Factory, Gemma-4-31B-IT | the same agent trace |
+| voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | open-model voice run (path set at integration) |
+| voice_asr_seconds | seconds to transcribe the 31-second note | local Whisper; state CPU or the GPU used | open-model voice run |
+| gnn_amd_auc | GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/` |
+| gnn_amd_epoch | GraphSAGE training time per epoch on an AMD GPU | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/` |
+| droplet_tokens_s | dedicated vLLM endpoint: tokens per second at concurrency 1 / 4 / 16 | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md` |
+| droplet_cases_hour | complete cases per hour through the pipeline | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md` |
+| droplet_vram | measured GPU memory per container (drafting model, verifier, GNN) | MI300X droplet | `editions/amd/AMD_RESULTS.md` |
+| evolus_blocks | Evolus building blocks driven from the app through the REST API (at least 2) | Evolus event workspace + own vLLM endpoint on AMD | `pitch/EVOLUS_TRACK.md` evidence table |
