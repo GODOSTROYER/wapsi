@@ -16,7 +16,7 @@ What runs on AMD in this edition:
   instead, where customer data never leaves the bank.
 - **A second, smaller model as judge.** It screens untrusted complaint text next to the deterministic rules; it can
   add a flag, never clear one.
-- **A GraphSAGE mule scorer** (PyTorch, built to run on ROCm; CPU-tested, not yet run on AMD) and an optional **LoRA fine-tune** of the drafting model, when a GPU
+- **A GraphSAGE mule scorer** (PyTorch on ROCm; trained on an AMD Instinct MI300X in an AMD AI Notebook on 2026-10-14, `evidence/notebook/2026-10-14/`) and an optional **LoRA fine-tune** of the drafting model, when a GPU
   box is available (a ROCm notebook or an MI300X droplet).
 - **Predictions are never the language model's.** Mule, innocent-holder and merchant decisions come from a
   transparent scorer with per-feature contributions and from the GNN; the rules decide dispositions; the LLM is not

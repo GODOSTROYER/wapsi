@@ -88,8 +88,8 @@ customers.
 
 Reports: [`evals/reports/demo.json`](../evals/reports/demo.json),
 [`evals/reports/hard.json`](../evals/reports/hard.json). Timings are from a laptop with the stub model; the hold
-plan itself involves no language model. With Gemma 4 on AMD writing the prose, the end-to-end figure is
-TBD(tf_demo_p95). These are plans measured against a reference on synthetic data, not money restored at a real
+plan itself involves no language model. With Gemma 4 31B writing the prose on an AMD Instinct MI300X (AMD AI
+Notebook, ROCm 7.14, vLLM), the end-to-end figure is p95 11.12 s per case to verified drafts. These are plans measured against a reference on synthetic data, not money restored at a real
 bank; [`docs/limitations-and-roadmap.md`](../docs/limitations-and-roadmap.md) says what would have to be true in
 production.
 
@@ -100,11 +100,12 @@ shown to judges.
 
 | Workload in the product | Runs on | Status |
 |---|---|---|
-| Prose fields of every draft | Gemma 4 31B on AMD GPUs through the AMD Token Factory endpoint | built during the event and run live on 2026-10-14: the showcase world with Gemma 4 writing the prose, drafts passing the verifier 1.0; the public demo replays 5 prose fields recorded from Gemma 4 on AMD (AMD Token Factory, 2026-10-14), labelled as a recording. Demo world: TBD(tf_demo_pass) |
-| Complaint and voice-note field extraction, translation | the same model and endpoint | built during the event and run live on 2026-10-14 on the six sample transcripts: 98.3% of the extracted values agree with the expected answers (AMD Token Factory, text model only); with Whisper transcribing: TBD(voice_asr_samples) |
+| Prose fields of every draft | Gemma 4 31B on AMD GPUs: the AMD Token Factory endpoint, or served by vLLM on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14) | built during the event and run live on 2026-10-14. On the MI300X, the 39-case demo world end to end: drafts passing the verifier 1.0, holds exact 1.0, prose replaced by fixed text 0.0332. Through the Token Factory: the showcase world with Gemma 4 writing the prose, drafts passing the verifier 1.0; the public demo replays 5 prose fields recorded from Gemma 4 on AMD (AMD Token Factory, 2026-10-14), labelled as a recording |
+| Complaint and voice-note field extraction, translation | the same model, through the Token Factory | built during the event and run live on 2026-10-14 on the six sample transcripts: 98.3% of the extracted values agree with the expected answers (AMD Token Factory, text model only); with Whisper transcribing: TBD(voice_asr_samples) |
+| Speech to text for voice notes | Whisper large-v3-turbo on an AMD Instinct MI300X (AMD AI Notebook) | timed on 2026-10-14: the six bundled notes at a steady-state real-time factor of 0.0312, the 31-second note in 0.92 s |
 | The officer's agent and its tool calls (Google ADK) | the same model and endpoint | built during the event and run live on 2026-10-14: 5 tool calls behind "Open case 31009260000101" (AMD Token Factory, Gemma-4-31B-IT); that live run ended VERIFIED: 16 of 16 drafts verified, with Gemma 4 on AMD writing the draft prose too |
-| GraphSAGE mule scorer (optional; the transparent scorer is the default) | built to run on ROCm: AMD GPU notebook or MI300X droplet | prepared and CPU-tested; not yet run on AMD. AMD GPU training TBD(gnn_amd_auc) |
-| Dedicated serving of both models next to the GNN | vLLM on one MI300X (droplet mode) | compose stack and benchmarks prepared and tested offline; TBD(droplet_tokens_s) |
+| GraphSAGE mule scorer (optional; the transparent scorer is the default) | PyTorch on ROCm: trained on an AMD Instinct MI300X (AMD AI Notebook) | trained and evaluated on 2026-10-14: hard-world mule ROC-AUC <!-- slot:gnn_amd_auc -->0.9202 (MI300X, AMD ROCm notebook)<!-- /slot -->, dispositions 0.9198, innocent-holder recall 0.875 |
+| Dedicated serving of the drafting model | vLLM on one AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14) | measured on 2026-10-14: <!-- slot:droplet_tokens_s -->55 / 181 / 474 tokens/s at concurrency 1 / 4 / 16<!-- /slot -->; <!-- slot:droplet_cases_hour -->1,590<!-- /slot --> complete cases per hour at concurrency 16, $0.0013 per case at the $1.99 per GPU-hour list price. Droplet mode (both models next to the GNN in Docker Compose) is prepared and tested offline, not run |
 
 The endpoint is a setting (`WAPSI_LLM_BASE_URL`, `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`), so the same build runs
 against AMD's shared API, a dedicated AMD endpoint or a droplet. Modes and honest status:

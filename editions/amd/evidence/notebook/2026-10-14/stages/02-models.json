@@ -1,0 +1,39 @@
+{
+  "schema": "wapsi-amd-stage/1",
+  "stage": "models",
+  "index": 2,
+  "mode": "notebook",
+  "label": "AMD ROCm notebook run",
+  "status": "ok",
+  "exit_code": 0,
+  "started_at": "2026-10-14T14:31:45Z",
+  "ended_at": "2026-10-14T14:32:32Z",
+  "duration_s": 47.0,
+  "window": "inside",
+  "log": "logs/02-models.log",
+  "amd_smi_before": "amd_smi/02-models-before.json",
+  "amd_smi_after": "amd_smi/02-models-after.json",
+  "notes": {
+    "base_model": "google/gemma-4-31B-it",
+    "verifier_model": "google/gemma-4-E4B-it",
+    "lora": "gemma4-31b-mi300x"
+  },
+  "budget": {
+    "billed": true,
+    "metered": true,
+    "mode": "notebook",
+    "label": "AMD ROCm notebook, credits at WAPSI_GPU_HOUR_USD per hour",
+    "gpu_hour_usd": 1.99,
+    "budget_usd": 100.0,
+    "spent_before_usd": 0.0,
+    "droplet_started_at": "2026-10-02T14:47:52Z",
+    "started_source": "boot time (/proc/stat btime)",
+    "hours": 287.745,
+    "droplet_usd": 572.61,
+    "total_usd": 572.61,
+    "pct": 572.6,
+    "warn_pct": 75.0,
+    "stop_pct": 90.0,
+    "state": "stop"
+  }
+}

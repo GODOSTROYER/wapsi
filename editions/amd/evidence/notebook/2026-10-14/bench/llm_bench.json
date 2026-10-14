@@ -1,0 +1,293 @@
+{
+  "kind": "llm_bench",
+  "schema_version": 1,
+  "generated_at": "2026-10-14T14:37:48.664888+00:00",
+  "label": "AMD ROCm notebook run, 2026-10-14",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "model": "wapsi-llm",
+  "model_root": "google/gemma-4-31B-it",
+  "max_model_len": 16384,
+  "settings": {
+    "levels": [
+      1,
+      4,
+      16,
+      64
+    ],
+    "requests": null,
+    "input_len": 1024,
+    "output_len": 256,
+    "prompts": "synthetic",
+    "ignore_eos": true,
+    "temperature": 0.0,
+    "warmup": 2,
+    "seed": 0,
+    "rpm": null,
+    "retry_429": 3,
+    "json_mode": "json_schema"
+  },
+  "env": {
+    "host": "jupyter-user-261014142914-35b202b3",
+    "platform": "Linux-6.12.48+deb13-amd64-x86_64-with-glibc2.39",
+    "python": "3.14.7",
+    "git_commit": "fc20109"
+  },
+  "levels": [
+    {
+      "concurrency": 1,
+      "requests": 8,
+      "completed": 8,
+      "errors": 0,
+      "error_samples": [],
+      "duration_s": 36.9892,
+      "rate_limited": 0,
+      "paced_s": 0.0,
+      "stream_buffered": false,
+      "ttft_s": {
+        "n": 8,
+        "mean": 0.1307,
+        "p50": 0.1307,
+        "p95": 0.1313,
+        "p99": 0.1313,
+        "min": 0.1298,
+        "max": 0.1313
+      },
+      "itl_s": {
+        "n": 2040,
+        "mean": 0.0176,
+        "p50": 0.0176,
+        "p95": 0.018,
+        "p99": 0.0182,
+        "min": 0.0168,
+        "max": 0.0186
+      },
+      "tpot_s": {
+        "n": 8,
+        "mean": 0.0176,
+        "p50": 0.0176,
+        "p95": 0.0176,
+        "p99": 0.0176,
+        "min": 0.0176,
+        "max": 0.0176
+      },
+      "e2e_s": {
+        "n": 8,
+        "mean": 4.6236,
+        "p50": 4.6251,
+        "p95": 4.6301,
+        "p99": 4.6301,
+        "min": 4.6144,
+        "max": 4.6301
+      },
+      "request_tokens_per_s": {
+        "n": 8,
+        "mean": 55.37,
+        "p50": 55.35,
+        "p95": 55.47,
+        "p99": 55.48,
+        "min": 55.29,
+        "max": 55.48
+      },
+      "cost_usd": null,
+      "input_tokens": 6588,
+      "output_tokens": 2048,
+      "tokens_source": "usage",
+      "output_tokens_per_s": 55.37,
+      "total_tokens_per_s": 233.47,
+      "requests_per_s": 0.2163,
+      "output_tokens_per_s_per_user": 56.76
+    },
+    {
+      "concurrency": 4,
+      "requests": 16,
+      "completed": 16,
+      "errors": 0,
+      "error_samples": [],
+      "duration_s": 22.6265,
+      "rate_limited": 0,
+      "paced_s": 0.0,
+      "stream_buffered": false,
+      "ttft_s": {
+        "n": 16,
+        "mean": 0.3951,
+        "p50": 0.45,
+        "p95": 0.4511,
+        "p99": 0.4513,
+        "min": 0.2359,
+        "max": 0.4513
+      },
+      "itl_s": {
+        "n": 4080,
+        "mean": 0.0206,
+        "p50": 0.0204,
+        "p95": 0.0212,
+        "p99": 0.0215,
+        "min": 0.0178,
+        "max": 0.2142
+      },
+      "tpot_s": {
+        "n": 16,
+        "mean": 0.0206,
+        "p50": 0.0204,
+        "p95": 0.0212,
+        "p99": 0.0212,
+        "min": 0.0204,
+        "max": 0.0212
+      },
+      "e2e_s": {
+        "n": 16,
+        "mean": 5.6538,
+        "p50": 5.6587,
+        "p95": 5.6642,
+        "p99": 5.6644,
+        "min": 5.6217,
+        "max": 5.6645
+      },
+      "request_tokens_per_s": {
+        "n": 16,
+        "mean": 45.28,
+        "p50": 45.24,
+        "p95": 45.54,
+        "p99": 45.54,
+        "min": 45.19,
+        "max": 45.54
+      },
+      "cost_usd": null,
+      "input_tokens": 13181,
+      "output_tokens": 4096,
+      "tokens_source": "usage",
+      "output_tokens_per_s": 181.03,
+      "total_tokens_per_s": 763.58,
+      "requests_per_s": 0.7071,
+      "output_tokens_per_s_per_user": 48.5
+    },
+    {
+      "concurrency": 16,
+      "requests": 64,
+      "completed": 64,
+      "errors": 0,
+      "error_samples": [],
+      "duration_s": 34.5397,
+      "rate_limited": 0,
+      "paced_s": 0.0,
+      "stream_buffered": false,
+      "ttft_s": {
+        "n": 64,
+        "mean": 1.2319,
+        "p50": 1.1562,
+        "p95": 1.6823,
+        "p99": 1.6835,
+        "min": 0.1702,
+        "max": 1.6845
+      },
+      "itl_s": {
+        "n": 16320,
+        "mean": 0.029,
+        "p50": 0.0274,
+        "p95": 0.0284,
+        "p99": 0.0291,
+        "min": 0.0133,
+        "max": 0.986
+      },
+      "tpot_s": {
+        "n": 64,
+        "mean": 0.029,
+        "p50": 0.0293,
+        "p95": 0.0325,
+        "p99": 0.0332,
+        "min": 0.0274,
+        "max": 0.0332
+      },
+      "e2e_s": {
+        "n": 64,
+        "mean": 8.6304,
+        "p50": 8.6299,
+        "p95": 8.6618,
+        "p99": 8.6634,
+        "min": 8.5974,
+        "max": 8.6645
+      },
+      "request_tokens_per_s": {
+        "n": 64,
+        "mean": 29.66,
+        "p50": 29.66,
+        "p95": 29.71,
+        "p99": 29.74,
+        "min": 29.55,
+        "max": 29.78
+      },
+      "cost_usd": null,
+      "input_tokens": 52762,
+      "output_tokens": 16384,
+      "tokens_source": "usage",
+      "output_tokens_per_s": 474.35,
+      "total_tokens_per_s": 2001.93,
+      "requests_per_s": 1.8529,
+      "output_tokens_per_s_per_user": 34.55
+    },
+    {
+      "concurrency": 64,
+      "requests": 256,
+      "completed": 256,
+      "errors": 0,
+      "error_samples": [],
+      "duration_s": 93.7268,
+      "rate_limited": 0,
+      "paced_s": 0.0,
+      "stream_buffered": false,
+      "ttft_s": {
+        "n": 256,
+        "mean": 7.9023,
+        "p50": 4.5329,
+        "p95": 16.0476,
+        "p99": 17.032,
+        "min": 0.8371,
+        "max": 17.0325
+      },
+      "itl_s": {
+        "n": 65280,
+        "mean": 0.0522,
+        "p50": 0.0366,
+        "p95": 0.0387,
+        "p99": 0.7285,
+        "min": 0.0224,
+        "max": 10.9908
+      },
+      "tpot_s": {
+        "n": 256,
+        "mean": 0.0522,
+        "p50": 0.0481,
+        "p95": 0.0841,
+        "p99": 0.0924,
+        "min": 0.0253,
+        "max": 0.0945
+      },
+      "e2e_s": {
+        "n": 256,
+        "mean": 21.2037,
+        "p50": 20.2762,
+        "p95": 29.3678,
+        "p99": 29.4059,
+        "min": 14.0857,
+        "max": 29.4064
+      },
+      "request_tokens_per_s": {
+        "n": 256,
+        "mean": 12.96,
+        "p50": 12.63,
+        "p95": 18.12,
+        "p99": 18.17,
+        "min": 8.71,
+        "max": 18.17
+      },
+      "cost_usd": null,
+      "input_tokens": 211257,
+      "output_tokens": 65536,
+      "tokens_source": "usage",
+      "output_tokens_per_s": 699.22,
+      "total_tokens_per_s": 2953.19,
+      "requests_per_s": 2.7313,
+      "output_tokens_per_s_per_user": 19.96
+    }
+  ]
+}

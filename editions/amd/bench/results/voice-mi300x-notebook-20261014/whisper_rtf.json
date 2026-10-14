@@ -1,0 +1,18 @@
+{
+ "measured_at": "2026-10-14T15:25:09.434341+00:00",
+ "model": "openai/whisper-large-v3-turbo",
+ "device": "AMD Instinct MI300X VF",
+ "torch": "2.11.0+rocm7.14.1",
+ "load_s": 4.64,
+ "note": "AMD ROCm notebook run (session 5); audio decoded with the wave module (no ffmpeg on the image), fp16, return_timestamps=True; the first sample includes kernel warm-up",
+ "samples": [
+  {"file": "amit_courier_two_payments.wav", "audio_s": 27.97, "asr_s": 9.394, "rtf": 0.3359},
+  {"file": "arjun_kyc_two_payments.wav", "audio_s": 30.83, "asr_s": 1.067, "rtf": 0.0346},
+  {"file": "fatima_courier_injection.wav", "audio_s": 26.75, "asr_s": 0.798, "rtf": 0.0299},
+  {"file": "kavitha_courier_injection.wav", "audio_s": 27.0, "asr_s": 0.813, "rtf": 0.0301},
+  {"file": "meera_impersonation.wav", "audio_s": 30.93, "asr_s": 0.921, "rtf": 0.0298},
+  {"file": "swati_task_scam.wav", "audio_s": 26.29, "asr_s": 0.833, "rtf": 0.0317}
+ ],
+ "mean_rtf": 0.082,
+ "steady_state_rtf_excluding_first": 0.0312
+}

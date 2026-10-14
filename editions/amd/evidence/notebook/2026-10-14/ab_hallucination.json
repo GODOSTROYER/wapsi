@@ -1,0 +1,116 @@
+{
+  "kind": "ab_hallucination",
+  "schema": 1,
+  "generated_at": "2026-10-14T14:54:42Z",
+  "label": "AMD ROCm notebook run, 2026-10-14",
+  "stub": false,
+  "llm": "vllm-rocm:wapsi-llm",
+  "world": "demo",
+  "cases": 20,
+  "cases_compared": 20,
+  "wall_s": 94.38,
+  "endpoint": null,
+  "raw_latency_s_p50": 14.001,
+  "arms": {
+    "raw": {
+      "cases": 20,
+      "case_errors": 0,
+      "cases_compared": 20,
+      "docs": 20,
+      "docs_with_wrong_amount": 4,
+      "wrong_amount_mentions": 4,
+      "docs_with_invented_account": 0,
+      "invented_accounts": 0,
+      "docs_with_invented_utr": 0,
+      "docs_with_unknown_citation": 0,
+      "unknown_citations": 0,
+      "docs_clean": 16,
+      "clean_rate": 0.8,
+      "wrong_amount_doc_rate": 0.2,
+      "verifier_pass_rate": 0.8
+    },
+    "bound": {
+      "cases": 20,
+      "case_errors": 0,
+      "cases_compared": 20,
+      "docs": 155,
+      "docs_with_wrong_amount": 0,
+      "wrong_amount_mentions": 0,
+      "docs_with_invented_account": 0,
+      "invented_accounts": 0,
+      "docs_with_invented_utr": 0,
+      "docs_with_unknown_citation": 0,
+      "unknown_citations": 0,
+      "docs_clean": 155,
+      "clean_rate": 1.0,
+      "wrong_amount_doc_rate": 0.0,
+      "verifier_pass_rate": 1.0,
+      "llm_prose_drafts": 43,
+      "prose_fallbacks": 7,
+      "prose_fallback_rate": 0.1628,
+      "str_only": {
+        "docs": 17,
+        "docs_with_wrong_amount": 0,
+        "wrong_amount_mentions": 0,
+        "docs_with_invented_account": 0,
+        "invented_accounts": 0,
+        "docs_with_invented_utr": 0,
+        "docs_with_unknown_citation": 0,
+        "unknown_citations": 0,
+        "docs_clean": 17,
+        "clean_rate": 1.0,
+        "wrong_amount_doc_rate": 0.0,
+        "verifier_pass_rate": 1.0
+      }
+    }
+  },
+  "definitions": {
+    "wrong_amount": "money mention not equal to any amount of the case or of a verifier-recomputed slot",
+    "invented_account": "account-number-shaped token not on the case trail or complaints",
+    "unknown_citation": "[ID] outside wapsi.citations.KNOWN_IDS, or a reference to repealed law",
+    "clean": "no wrong amount, invented account/UTR or unknown citation (bound: also passes verify_draft)",
+    "compared": "both arms are scored on the cases both completed; str_only = the bound arm's STRs alone"
+  },
+  "examples": {
+    "raw": [
+      {
+        "case_id": "CASE-10709260078327",
+        "wrong_amounts": [
+          "₹1,81,260.00"
+        ],
+        "invented_accounts": [],
+        "invented_utrs": [],
+        "unknown_citations": []
+      },
+      {
+        "case_id": "CASE-11008260078294",
+        "wrong_amounts": [
+          "₹20,000.00"
+        ],
+        "invented_accounts": [],
+        "invented_utrs": [],
+        "unknown_citations": []
+      },
+      {
+        "case_id": "CASE-11208260078296",
+        "wrong_amounts": [
+          "₹30,000.00"
+        ],
+        "invented_accounts": [],
+        "invented_utrs": [],
+        "unknown_citations": []
+      },
+      {
+        "case_id": "CASE-21308260078298",
+        "wrong_amounts": [
+          "₹2,11,000.00"
+        ],
+        "invented_accounts": [],
+        "invented_utrs": [],
+        "unknown_citations": []
+      }
+    ],
+    "bound": []
+  },
+  "errors": []
+}

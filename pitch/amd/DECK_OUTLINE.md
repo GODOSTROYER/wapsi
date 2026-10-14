@@ -91,18 +91,21 @@ The track says: do not use a language model as the only forecasting method. Waps
 - **Thresholds on screen:** score at or above 0.6 is a mule, at or below 0.35 an innocent holder, anything
   between goes to the officer as UNKNOWN. Every score breaks into per-feature contributions with plain-English
   reasons.
-- **Scorer 2, the graph model:** a GraphSAGE GNN of 78k parameters in pure PyTorch, behind the same interface,
-  with the heuristic as its fallback. Trained on an AMD GPU: mule ROC-AUC TBD(gnn_amd_auc), TBD(gnn_amd_epoch)
-  per epoch.
+- **Scorer 2, the graph model:** a GraphSAGE GNN in pure PyTorch (78k parameters in the CPU development
+  checkpoint), behind the same interface, with the heuristic as its fallback. Trained on an AMD Instinct MI300X
+  (AMD AI Notebook, ROCm 7.14, 14-10-2026; 410k parameters): mule ROC-AUC on the hard world <!-- slot:gnn_amd_auc -->0.9202 (MI300X, AMD ROCm notebook)<!-- /slot -->,
+  <!-- slot:gnn_amd_epoch -->0.06 s<!-- /slot --> per epoch.
 
-| Hard world, 64 cases, built to fool the classifier | Heuristic | GNN (CPU development checkpoint) |
-|---|---:|---:|
-| Mule ROC-AUC | 0.9411 | 0.9786 |
-| Dispositions right | 0.9198 | 0.9151 |
-| Innocent-holder recall | 0.6875 | 0.875 |
-| Merchant precision / recall | 1.0 / 1.0 | same hard rules |
+| Hard world, 64 cases, built to fool the classifier | Heuristic | GNN (CPU development checkpoint) | GNN trained on the MI300X |
+|---|---:|---:|---:|
+| Mule ROC-AUC | 0.9411 | 0.9786 | 0.9202 |
+| Dispositions right | 0.9198 | 0.9151 | 0.9198 |
+| Innocent-holder recall | 0.6875 | 0.875 | 0.875 |
+| Merchant precision / recall | 1.0 / 1.0 | same hard rules | same hard rules |
 
-Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false freezes.
+Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false freezes. The MI300X-trained GNN finds
+more innocent holders than the heuristic, ranks mules less well, and sends more accounts to the officer as UNKNOWN,
+so the transparent heuristic stays the default.
 
 ## 7. Measurable effect
 
@@ -110,7 +113,7 @@ Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false fr
 |---|---|---|
 | Revenue and working capital | money a freeze would lock that stays free | ₹34.97 Cr of non-victim money left free: ₹35.26 Cr frozen becomes ₹29.19 L held, 0.83% of the freeze |
 | Retention | honest accounts that are never touched | 0 false freezes; 17 accounts a freeze would lock get no hold at all |
-| Service quality | time from complaint to a hold plan | p95 0.35 s to the plan, p95 0.72 s to verified drafts (laptop, stub LLM); with Gemma 4 on AMD: TBD(tf_demo_p95) |
+| Service quality | time from complaint to a hold plan | p95 0.35 s to the plan, p95 0.72 s to verified drafts (laptop, stub LLM); with Gemma 4 writing the prose on an AMD Instinct MI300X: p95 11.12 s per case to verified drafts |
 | Accuracy of the action | holds against an independent reference | holds exact to the paisa 1.0 (100%), over-hold ₹0 |
 | Restoration | victim money identified for return | showcase: ₹3,34,848 recoverable of ₹4,80,000 stolen |
 
@@ -123,34 +126,41 @@ Every miss is a label, never money: holds stay exact, over-hold ₹0, 0 false fr
 ## 8. What runs on AMD
 
 The AMD component is in the working product: with an endpoint configured, the words in every draft, the fields
-read from a complaint and every agent tool call come from Gemma 4 served on AMD GPUs. The status column says what
-has run on AMD so far and what is prepared.
+read from a complaint and every agent tool call come from Gemma 4 served on AMD GPUs. It has run on AMD two ways:
+through AMD's Token Factory API, and served by vLLM on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14).
 
 | Workload | Model | Where it runs | Status (14-10-2026) |
 |---|---|---|---|
-| Draft prose (placeholder-only fields) | Gemma 4 31B | AMD Token Factory endpoint (AMD GPUs) | run live: the agent session and the showcase world; the public demo replays prose recorded from it |
+| Draft prose (placeholder-only fields) | Gemma 4 31B | AMD Token Factory endpoint, or vLLM on an AMD Instinct MI300X | run live on both: the agent session and the showcase world on the Token Factory; the 39-case demo world end to end on the MI300X |
 | Complaint and voice-note field extraction, translation | Gemma 4 31B | AMD Token Factory endpoint | run live on the six sample transcripts |
 | The officer's agent and its tool calls | Gemma 4 31B through Google ADK | AMD Token Factory endpoint | run live; its trace is replayed in the Agent trace tab |
 | Second opinion on untrusted text | a small open model | AMD Token Factory endpoint | wired, not yet measured |
-| Speech to text for voice notes | Whisper, open weights | local by default; any GPU is faster | built and tested offline; not yet run in this entry |
-| Mule scoring (optional second scorer) | GraphSAGE GNN, PyTorch, built to run on ROCm | AMD GPU notebook or MI300X droplet | prepared and CPU-tested; not yet run on AMD |
+| Speech to text for voice notes | Whisper large-v3-turbo, open weights | local, or an AMD GPU | timed on the MI300X: the 31-second note in 0.92 s |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, PyTorch on ROCm | AMD Instinct MI300X | trained on the MI300X: mule ROC-AUC 0.9202 on the hard world |
 
+- **Measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026,** with Gemma 4 31B served
+  on the notebook: output <!-- slot:droplet_tokens_s -->55 / 181 / 474 tokens/s at concurrency 1 / 4 / 16<!-- /slot --> (699 at concurrency 64); a real drafting request takes a median of
+  3.07 s one at a time; complete cases per hour through the whole pipeline <!-- slot:droplet_cases_hour -->1,590<!-- /slot --> at concurrency
+  16, which is $0.0013 per case ($1.25 per 1,000 cases) at the $1.99 per GPU-hour list price; device memory peak
+  97.0 GB of 191.7 GB while serving. On the 39-case demo world with Gemma 4 writing the prose: drafts passing the
+  verifier 1.0, holds exact 1.0, numeric accuracy 1.0, citation validity 1.0, prose replaced by fixed text 0.0332,
+  injection leaks 0.
+- **Measured through the AMD Token Factory (Gemma-4-31B-IT, 14-10-2026; AMD-served, not an MI300X benchmark):** on
+  the showcase world with Gemma 4 writing the prose, drafts passing the verifier 1.0 and prose replaced by fixed
+  text on that run 0.0. In the smoke run one prose request takes a median of 8.29 s (one request at a time, from a
+  laptop), and showcase case 1 uses 25,914 prompt and 636 completion tokens for its prose.
+- **Whisper on the MI300X:** the six bundled notes at a steady-state real-time factor of 0.0312 (warm-up
+  excluded). How many of the six reconcile with Whisper in the loop is still open: TBD(voice_asr_samples).
 - **Three modes, one codebase.** Endpoint mode is the default: three settings (`WAPSI_LLM_BASE_URL`,
-  `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`). Notebook mode runs the GNN and the benchmarks in a ROCm JupyterLab.
-  Droplet mode serves everything on one MI300X with vLLM and docker compose.
+  `WAPSI_LLM_API_KEY`, `WAPSI_LLM_MODEL`). Notebook mode serves the model with vLLM, trains the GNN and runs the
+  benchmarks in a ROCm JupyterLab (the MI300X figures above). Droplet mode serves everything on one MI300X with vLLM
+  and docker compose.
 - **Why this matters to a bank:** the model is open and the endpoint is the bank's choice. The same code moves
   from AMD's shared API to one AMD GPU in the bank's own rack by changing those three settings.
-- **Measured with Gemma 4 on AMD (Token Factory, 14-10-2026):** on the showcase world with Gemma 4 writing the
-  prose, drafts passing the verifier 1.0 and prose replaced by fixed text on that run 0.0. On the demo world, drafts
-  passing the verifier TBD(tf_demo_pass), prose replaced by fixed text TBD(tf_demo_fallback), holds exact
-  TBD(tf_demo_hold_exact). In the smoke run one prose request takes a median of 8.29 s (one request at a time, from
-  a laptop), and showcase case 1 uses 25,914 prompt and 636 completion tokens for its prose; the kickoff run's
-  drafting latency is TBD(tf_call_latency). A voice note is transcribed in TBD(voice_asr_seconds), and TBD(voice_asr_samples) of the six bundled notes
-  reconcile as expected.
 - **Droplet mode, designed and tested offline:** one MI300X, 192 GB HBM3. Gemma 4 31B in BF16 ≈ 62 GB of weights
   plus 43.6 GB left for its KV cache is 105.6 GB for the drafting model; 28.8 GB for the verifier; 57.6 GB left
-  for the GNN and headroom. Measured on the droplet: memory per container TBD(droplet_vram), throughput
-  TBD(droplet_tokens_s), complete cases per hour TBD(droplet_cases_hour).
+  for the GNN and headroom. Not run on a droplet yet: memory per container next to the verifier and the GNN is
+  TBD(droplet_vram).
 
 ## 9. Google technology: Gemma 4 and the Agent Development Kit
 
@@ -179,8 +189,10 @@ has run on AMD so far and what is prepared.
 - **Numbers come from data, words come from the model.** A stub model that writes a wrong rupee amount into every
   prose field: 27.57% of drafts had their prose rejected and replaced by fixed text, and drafts passing the
   verifier still 1.0 (100%).
-- **The same test with the real model:** raw Gemma 4 asked for the plan in free text gets a wrong amount in
-  TBD(ab_raw_wrong) of cases; inside Wapsi's slots and verifier, TBD(ab_bound_wrong) wrong amounts reach a draft.
+- **The same test with the real model** (Gemma 4 31B on an AMD Instinct MI300X, 14-10-2026): asked for the plan
+  in free text, raw Gemma 4 wrote a wrong amount in 19 of 39 cases (0.4872), while 0 of the same run's 301 Wapsi
+  drafts had a numeric error. In a separate A/B, 4 of 20 free-form STRs had a wrong amount against 0 of 17
+  Wapsi-bound STRs; across every bound draft of that A/B, <!-- slot:ab_bound_wrong -->0 (of 155 drafts)<!-- /slot --> wrong amounts reach a draft.
 - **The SOP's own arithmetic:** the SOP Annexure-V worked example, ₹2,06,543 over five victims, is reproduced to
   the paisa.
 - **Untrusted text stays untrusted:** a complaint or voice note that says "release the hold" is quoted to the

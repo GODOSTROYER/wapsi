@@ -900,7 +900,12 @@ def to_markdown(ev: dict[str, Any]) -> str:
                     [[s.get("index"), s.get("stage"), s.get("status"), s.get("started_at"), s.get("ended_at"),
                       s.get("duration_s"), s.get("window")] for s in ev["stages"]])
     b = ev.get("budget")
-    if b and b.get("metered", True):
+    if b and b.get("metered", True) and mode == "notebook" and str(b.get("started_source") or "").startswith("boot"):
+        # an older notebook bundle: its stage records counted from the shared host's boot time, not the session's start
+        lines += ["", f"Budget: not shown. The stage records counted GPU hours from the notebook host's boot time "
+                  f"({b.get('droplet_started_at')}), not from the start of the session, so their total is not what "
+                  "this run cost; the session times are in the stage table."]
+    elif b and b.get("metered", True):
         lines += ["", f"Budget at the last stage ({b.get('label')}): {b.get('hours')} h x ${b.get('gpu_hour_usd')} = "
                   f"${b.get('droplet_usd')} (+ ${b.get('spent_before_usd')} earlier) = ${b.get('total_usd')} of "
                   f"${b.get('budget_usd')} ({b.get('pct')}%)."]

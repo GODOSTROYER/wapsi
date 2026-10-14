@@ -193,7 +193,8 @@ def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[di
             f"- Hardware: {gpu} · hosts: {', '.join(hosts) or '—'} · commits: {', '.join(commits) or '—'}",
             f"- Measured on: {', '.join(stamps) or '—'} · report generated {utc_now().isoformat()}",
             "- Every number below is read from the JSON files listed at the end, produced by `editions/amd/bench/*` "
-            "runs on the droplet. Nothing is hand-entered.",
+            "runs on the host named above (an MI300X droplet or an AMD GPU notebook; the run's evidence.md says "
+            "which). Nothing is hand-entered.",
             "",
         ]
     else:  # voice benchmarks only: they say themselves where each model ran (no droplet claim in the header)

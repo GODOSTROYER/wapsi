@@ -1,0 +1,136 @@
+[
+    {
+        "gpu": 0,
+        "process_list": [
+            {
+                "process_info": {
+                    "name": "N/A",
+                    "pid": 1686352,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "sdma_usage": {
+                        "value": 0,
+                        "unit": "us"
+                    },
+                    "cu_occupancy": 0,
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "N/A",
+                    "pid": 2488079,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "sdma_usage": {
+                        "value": 0,
+                        "unit": "us"
+                    },
+                    "cu_occupancy": 0,
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "N/A",
+                    "pid": 2488362,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 101305540608,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 101305540608,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "sdma_usage": {
+                        "value": 0,
+                        "unit": "us"
+                    },
+                    "cu_occupancy": 0,
+                    "evicted_time": {
+                        "value": 2352,
+                        "unit": "ms"
+                    }
+                }
+            }
+        ]
+    }
+]

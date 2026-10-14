@@ -807,8 +807,9 @@ hard rules, thresholds and safety guard still apply. A graph model can never rel
 complainant, and it cannot give the innocent label to an account that trips a guard blocker.
 
 The graph model itself, an edge-aware GraphSAGE mule scorer in pure PyTorch, belongs to the AMD edition
-(MI300X / ROCm). Its code was prepared before the AMD event and so far has been trained and evaluated on CPU only;
-every MI300X run happens during the event week (12 to 18 October 2026). See
+(MI300X / ROCm). Its code was prepared before the AMD event; on 14 October 2026 it was trained and evaluated on an
+AMD Instinct MI300X in an AMD AI Notebook (hard world: mule ROC-AUC 0.9202, dispositions 0.9198, innocent-holder
+recall 0.875; `editions/amd/evidence/notebook/2026-10-14/`). See
 [`editions/amd/README.md`](../../editions/amd/README.md) for how it fits into that edition,
 [`editions/amd/gnn/README.md`](../../editions/amd/gnn/README.md) for the model and its training, and
 [the originality and build timeline](../originality.md) for what was built when.

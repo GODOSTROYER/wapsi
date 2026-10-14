@@ -340,6 +340,8 @@ def render(slot: Slot, head: dict[str, Any], date: str, where: str = "MI300X") -
     template = slot.template
     if any(t is None for t in texts.values()):
         template = template.replace(" ({k1})", "")
+    if "({where})" in template:  # no nested parentheses: "0.92 (MI300X, AMD ROCm notebook)"
+        where = re.sub(r"\s*\((.+)\)$", r", \1", where)
     return template.format(date=date, where=where, **{k: t for k, t in texts.items() if t is not None}), rows
 
 

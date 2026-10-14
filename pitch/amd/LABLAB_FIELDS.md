@@ -27,18 +27,18 @@ Length: 249 / 255 characters
 ## Long description (target 1,500 characters)
 
 <!-- limit:1500 -->
-A kirana shop sells groceries to a buyer who was spending stolen money. Next morning its whole account is frozen. India held ₹7,647 Cr for cyber-fraud victims and restored ₹167 Cr: 2.18% (MHA/I4C SOP, 2026). Whole-account freezes lock honest merchants, customers and payment-aggregator pools, and the money still does not go back.
+A kirana shop sells groceries to a buyer spending stolen money. Next morning its whole account is frozen. India held ₹7,647 Cr for cyber-fraud victims and restored ₹167 Cr: 2.18% (MHA/I4C SOP, 2026). Whole-account freezes lock honest merchants, customers and payment pools, and the money still does not go back.
 
 Wapsi is a copilot for a bank's fraud desk. From the bank's own transaction data it traces a complaint's money through mule accounts, splits each balance between victims by the SOP's method (reproduced to the paisa), and proposes one action per account: hold only the victim's money, no hold for a merchant that delivered, a request to the next bank, a restoration packet.
 
-Which account is a mule, an innocent holder or a merchant is predicted by a transparent scorer (an optional graph neural network is prepared), never by a language model. Amounts are arithmetic.
+Which account is a mule, an innocent holder or a merchant is predicted by a transparent scorer (a GNN trained on an AMD MI300X adds a second opinion), never by a language model. Amounts are arithmetic.
 
-Gemma 4, served on AMD GPUs through AMD's Token Factory, writes the sentences of each draft and reads Hinglish complaints and voice notes. Every number is filled from data and recomputed by a verifier before a supervisor approves. A Google ADK agent on the same model shows every tool call it makes.
+Gemma 4 on AMD GPUs (AMD's Token Factory, or vLLM on an MI300X) writes the sentences of each draft and reads Hinglish complaints and voice notes. Every number is filled from data and recomputed by a verifier before a supervisor approves. On one MI300X: 1,590 cases an hour, every draft verified. A Google ADK agent on it logs every tool call.
 
 On a 39-case synthetic test world a whole-account freeze locks ₹35.26 Cr in 101 accounts; Wapsi holds ₹29.19 L in 84, with 0 false freezes and every hold exact. For honest merchants and customers: ₹82.99 L frozen against ₹2.50 L held. All data is synthetic.
 <!-- /limit -->
 
-Length: 1,459 / 1,500 characters
+Length: 1,491 / 1,500 characters
 
 ## Selected challenge
 
@@ -53,13 +53,13 @@ partner prizes can be selected, and pick accordingly.
 
 ## Technologies and tags
 
-AMD Token Factory · Gemma 4 · Google ADK (Agent Development Kit) · LiteLLM · Whisper · PyTorch · Streamlit ·
-FastAPI · Docker · Python · Fintech · Fraud · Commerce
+AMD Token Factory · AMD Instinct · ROCm · vLLM · Gemma 4 · Google ADK (Agent Development Kit) · LiteLLM ·
+Whisper · PyTorch · Graph Neural Network · Streamlit · FastAPI · Docker · Python · Fintech · Fraud · Commerce
 
-These are the tags of the stack the submitted build uses. Add **ROCm**, **vLLM**, **AMD Instinct** and
-**AMD Developer Cloud** only after a notebook or droplet run is committed (an evidence bundle under
-`editions/amd/evidence/`, or a GNN result under `editions/amd/gnn/results/` from an AMD GPU); add **Graph Neural
-Network** with it.
+These are the tags of the stack the submitted build uses. **AMD Instinct**, **ROCm**, **vLLM** and **Graph Neural
+Network** are in because the AMD AI Notebook run on one MI300X is committed
+(`editions/amd/evidence/notebook/2026-10-14/`). Add **AMD Developer Cloud** only after a droplet run is committed;
+the notebook is not the droplet.
 
 ## Cover image brief
 

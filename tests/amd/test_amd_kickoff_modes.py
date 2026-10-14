@@ -1006,7 +1006,7 @@ def test_fill_pitch_never_puts_a_run_under_words_that_do_not_fit(tf, tmp_path, m
     assert ("the pitch words it as an MI300X figure and this run was measured on AMD Radeon PRO W7900 (AMD ROCm "
             "notebook)") in out
     # what it did measure is filled and names the GPU it ran on
-    assert "<!-- slot:gnn_amd_auc -->0.985 (AMD Radeon PRO W7900 (AMD ROCm notebook))<!-- /slot -->" in deck
+    assert "<!-- slot:gnn_amd_auc -->0.985 (AMD Radeon PRO W7900, AMD ROCm notebook)<!-- /slot -->" in deck
     assert "<!-- slot:ab_bound_wrong -->0 (of 180 drafts)<!-- /slot -->" in deck
     # 3. a notebook whose GPU is an MI300X fills them like the droplet does
     mi = _fixture(make_notebook_evidence(tmp_path / "m", gpu="AMD Instinct MI300X", static=True), "notebook")

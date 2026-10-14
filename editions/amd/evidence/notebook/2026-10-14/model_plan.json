@@ -1,0 +1,39 @@
+{
+  "schema": "wapsi-amd-model-plan/1",
+  "generated_at": "2026-10-14T14:31:46Z",
+  "platform": "notebook",
+  "vram_gb": 191.7,
+  "drafting": {
+    "id": "google/gemma-4-31B-it",
+    "family": "gemma",
+    "google_open_model": true,
+    "source": "default",
+    "reason": "largest candidate that serves in 192 GB",
+    "candidates": [
+      "google/gemma-4-31B-it",
+      "google/gemma-4-E4B-it"
+    ]
+  },
+  "judge": {
+    "id": "google/gemma-4-E4B-it",
+    "family": "gemma",
+    "google_open_model": true,
+    "source": "default",
+    "reason": "small second model next to the drafting model",
+    "candidates": [
+      "google/gemma-4-E4B-it"
+    ]
+  },
+  "lora": true,
+  "lora_config": "gemma4-31b-mi300x",
+  "base_profile": "gemma4-base",
+  "merged_profile": "gemma4-merged",
+  "merged_name": "wapsi-gemma-4-31b-str-merged",
+  "memory_estimates_gb": {
+    "serve": 80,
+    "lora": 150,
+    "judge": 24,
+    "status": "estimates from the LoRA presets, not measurements"
+  },
+  "warnings": []
+}

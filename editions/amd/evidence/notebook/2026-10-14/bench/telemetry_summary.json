@@ -1,0 +1,31 @@
+{
+  "kind": "gpu_telemetry",
+  "schema_version": 1,
+  "source": "rocm-smi",
+  "interval_s": 2.0,
+  "samples": 367,
+  "started_at": "2026-10-14T14:37:46.041012+00:00",
+  "ended_at": "2026-10-14T14:51:07.472004+00:00",
+  "gpus": [
+    {
+      "gpu": 0,
+      "name": "AMD Instinct MI300X VF",
+      "samples": 367,
+      "vram_total_mb": 196288.0,
+      "vram_used_mb_mean": 99167.35,
+      "vram_used_mb_peak": 99364.87,
+      "vram_used_pct_peak": 50.6,
+      "gfx_activity_pct_mean": 97.03,
+      "gfx_activity_pct_peak": 100.0,
+      "power_w_mean": 732.95,
+      "power_w_peak": 754.0,
+      "sriov_vf": true,
+      "unavailable_sensors": []
+    }
+  ],
+  "processes": [],
+  "files": {
+    "gpu_csv": "telemetry.csv",
+    "process_csv": "telemetry_processes.csv"
+  }
+}

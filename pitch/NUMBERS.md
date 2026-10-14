@@ -352,6 +352,48 @@ benchmarks of a dedicated MI300X. Results files:
 | tf_voice_agreement_pct | 98.3% of the extracted values agree with the expected answers (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 98.3 | derived | `calc:100 * tf_voice_agreement` |
 | tf_voice_as_documented | 4 of 6 notes reconciled as documented on the AMD Token Factory run; the other two were false alarms on a caller's closing plea | 4 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.samples_as_documented` |
 
+## Measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 2026-10-14
+
+Gemma 4 31B (`google/gemma-4-31B-it`) served by vLLM on an AMD AI Notebook: one AMD Instinct MI300X shared with the notebook as an SR-IOV virtual function, ROCm 7.14. Not the AMD Developer Cloud droplet and not the Token Factory. The golden set ran in GPU session 4, the rest in session 5, same model and code (`editions/amd/evidence/notebook/2026-10-14/SESSIONS.md`). Rows filled by `fill_pitch.py` from the same bundle are in the generated section below; these are the figures the pitch quotes by hand from the result files.
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| nb_tok_s_c64 | 699 output tokens/s at concurrency 64 (Gemma 4 31B, vLLM on the MI300X; synthetic 1,024-token prompts, 256 out) | 699 | editions/amd/evidence/notebook/2026-10-14/bench/llm_bench.json | `json:levels.3.output_tokens_per_s` |
+| nb_draft_p50 | a real drafting request takes a median of 3.07 s one at a time (Wapsi's own prompts) | 3.07 | editions/amd/evidence/notebook/2026-10-14/bench/llm_bench_wapsi_prompts.json | `json:levels.0.e2e_s.p50` |
+| nb_cases_hour_c1 | 414 complete cases per hour at concurrency 1 | 414 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c1.json | `json:metrics.cases_per_hour` |
+| nb_cases_hour_c8 | 1,410 complete cases per hour at concurrency 8 | 1410 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c8.json | `json:metrics.cases_per_hour` |
+| nb_e2e_cases_ok | 39 of 39 cases completed in each end-to-end run | 39 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.cases_ok` |
+| nb_e2e_pass | drafts passing the verifier 1.0 in the end-to-end runs | 1.0 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:metrics.draft_verification_pass_rate` |
+| nb_usd_per_case | $0.0013 per case at concurrency 16 at the $1.99 per GPU-hour list price | 0.0013 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.usd_per_case` |
+| nb_usd_per_1000 | $1.25 per 1,000 cases | 1.25 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.usd_per_1000_cases` |
+| nb_gpu_hour_usd | the $1.99 per GPU-hour list price the cost per case is computed at | 1.99 | editions/amd/evidence/notebook/2026-10-14/bench/e2e_c16.json | `json:cost.gpu_hour_usd` |
+| nb_vram_peak | device memory peak 97.0 GB while serving (rocm-smi) | 97.0 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.vram_peak_gb` |
+| nb_vram_total | of 191.7 GB | 191.7 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.vram_total_gb` |
+| nb_golden_cases | demo world, 39 cases, Gemma 4 writing the prose | 39 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:cases` |
+| nb_golden_hold_exact | holds exact 1.0 | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.hold_exact_match_rate` |
+| nb_golden_false_freezes | false freezes 0 | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.false_freeze_count` |
+| nb_golden_pass | drafts passing the verifier 1.0 (every draft passes the verifier) | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.draft_verification_pass_rate` |
+| nb_golden_numeric | numeric accuracy 1.0 | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.draft_numeric_accuracy` |
+| nb_golden_citations | citation validity 1.0 | 1.0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.citation_validity` |
+| nb_golden_leaks | injection leaks 0 | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.injection_leaks` |
+| nb_golden_fallback | prose replaced by fixed text 0.0332 | 0.0332 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_prose_fallback_rate` |
+| nb_golden_p95 | p95 11.12 s per case to verified drafts | 11.12 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.p95_total_s` |
+| nb_raw_rate | raw Gemma 4 in free text: a wrong amount in 0.4872 of cases | 0.4872 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:metrics.llm_only_hallucination_rate` |
+| nb_raw_wrong | 19 of 39 cases | 19 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.llm_only.summaries_with_wrong_amounts` |
+| nb_bound_drafts | the same run's 301 Wapsi drafts | 301 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.wapsi_bound.drafts` |
+| nb_bound_wrong | 0 of them with a numeric error | 0 | editions/amd/evidence/notebook/2026-10-14/golden_eval.json | `json:ab_test.wapsi_bound.drafts_with_numeric_errors` |
+| nb_ab_raw_wrong | 4 of 20 free-form STRs with a wrong amount | 4 | editions/amd/evidence/notebook/2026-10-14/ab_hallucination.json | `json:arms.raw.docs_with_wrong_amount` |
+| nb_ab_raw_docs | 20 free-form STRs (20 cases) | 20 | editions/amd/evidence/notebook/2026-10-14/ab_hallucination.json | `json:arms.raw.docs` |
+| nb_ab_str_wrong | 0 of 17 Wapsi-bound STRs with a wrong amount | 0 | editions/amd/evidence/notebook/2026-10-14/ab_hallucination.json | `json:arms.bound.str_only.docs_with_wrong_amount` |
+| nb_ab_str_docs | 17 Wapsi-bound STRs | 17 | editions/amd/evidence/notebook/2026-10-14/ab_hallucination.json | `json:arms.bound.str_only.docs` |
+| nb_gnn_params | the GNN trained on the MI300X has 410k parameters | 410017 | editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json | `json:parameters` |
+| nb_gnn_hard_disp | MI300X-trained GNN on the hard world: dispositions 0.9198 | 0.9198 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.disposition_accuracy` |
+| nb_gnn_hard_ih | innocent-holder recall 0.875 | 0.875 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.role_recall.INNOCENT_HOLDER` |
+| nb_gnn_hard_unknown | it sends more accounts to the officer as UNKNOWN (0.185 of accounts) | 0.185 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.gnn:nb-base.classification.unknown_rate` |
+| nb_heur_hard_unknown | against the heuristic's 0.035 | 0.035 | editions/amd/evidence/notebook/2026-10-14/gnn_hard_eval.json | `json:by_scorer.heuristic-v2.classification.unknown_rate` |
+| nb_whisper_rtf | Whisper large-v3-turbo on the MI300X: steady-state real-time factor 0.0312 (warm-up excluded) | 0.0312 | editions/amd/bench/results/voice-mi300x-notebook-20261014/whisper_rtf.json | `json:steady_state_rtf_excluding_first` |
+| nb_whisper_meera | the 31-second note transcribed in 0.92 s | 0.92 | editions/amd/bench/results/voice-mi300x-notebook-20261014/whisper_rtf.json | `json:samples.4.asr_s` |
+
 ## AMD, MI300X droplet mode: memory plan and budget (design from config in `editions/amd/`; not a measurement)
 
 These rows are arithmetic over configuration values. They say what is planned to fit on one MI300X, not what was
@@ -372,6 +414,23 @@ measured on one. Measured memory per container is the slot `droplet_vram`.
 | gnn_params | GNN of 78k parameters | 78 | editions/amd/gnn/README.md | `text:(78k parameters)` |
 | gpu_hour | $1.99 per GPU-hour | 1.99 | editions/amd/RUNBOOK.md | `text:$1.99 per GPU-hour` |
 | gpu_budget | GPU budget cap $99.50 | 99.50 | editions/amd/RUNBOOK.md | `text:**$99.50**` |
+
+<!-- amd-evidence:begin (generated by editions/amd/kickoff/fill_pitch.py; do not edit by hand) -->
+## AMD edition: measured on MI300X (AMD ROCm notebook)
+
+Written by `editions/amd/kickoff/fill_pitch.py --write` from the evidence bundles of the AMD ROCm notebook runs on 2026-10-14 (UTC). Each row re-reads `headline` in the `evidence.json` named in its Source, which `collect_evidence.py` built from that run's result files (the bundle's `compute` says where it ran). A later bundle replaces only the rows of the values it measured.
+
+| ID | Pitched as | Value | Source | Locator |
+|---|---|---|---|---|
+| amd_ab_bound_docs | 155 (A/B: Wapsi-bound drafts) | 155 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.ab_bound_docs` |
+| amd_ab_bound_docs_with_wrong_amount | 0 (A/B: Wapsi-bound drafts with a wrong amount) | 0 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.ab_bound_docs_with_wrong_amount` |
+| amd_e2e_best_cases_per_hour | 1,590 (cases per hour (best concurrency)) | 1590 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.e2e_best_cases_per_hour` |
+| amd_gnn_epoch_s | 0.06 s (GNN seconds per epoch on the AMD GPU) | 0.06 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.gnn_epoch_s` |
+| amd_gnn_hard_mule_auc | 0.9202 (AMD-trained GNN: mule ROC-AUC on the hard world) | 0.9202 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.gnn_hard_mule_auc` |
+| amd_llm_tok_s_c1 | 55 (drafting model output tokens/s at concurrency 1) | 55 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.llm_tok_s_c1` |
+| amd_llm_tok_s_c16 | 474 (drafting model output tokens/s at concurrency 16) | 474 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.llm_tok_s_c16` |
+| amd_llm_tok_s_c4 | 181 (drafting model output tokens/s at concurrency 4) | 181 | editions/amd/evidence/notebook/2026-10-14/evidence.json | `json:headline.llm_tok_s_c4` |
+<!-- amd-evidence:end -->
 
 ## Command outputs (checked by hand on 29-09-2026; re-run before quoting)
 
@@ -415,20 +474,16 @@ each `TBD(slot_id)` in the pitch, adds the rows that back the figure to a genera
 deletes the slot's row below. `--slots` lists which slots a bundle fills and which stay with their own results
 files.
 
+The demo-world figures with Gemma 4 on an AMD Instinct MI300X are measured (the MI300X section above); the `tf_*`
+and `ab_raw_wrong` slots below are the same figures through the AMD Token Factory, which are still open.
+
 | Slot | Will be pitched as | Where it runs | Planned source |
 |---|---|---|---|
 | tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_demo_p95 | demo world, p95 seconds per case, trace to verified drafts, with the real model | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.p95_total_s`) |
 | tf_call_latency | drafting request latency at p50 in the kickoff run (the smoke run's 8.29 s is a separate, one-at-a-time figure) | AMD Token Factory, Gemma-4-31B-IT | filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| ab_bound_wrong | the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0) | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.draft_numeric_accuracy`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | `uv run python -m editions.amd.bench.voice_bench --asr local` (`voice_bench.json` under `editions/amd/bench/results/`) |
-| voice_asr_seconds | seconds to transcribe the 31-second note | local Whisper; state CPU or the GPU used | open-model voice run |
-| gnn_amd_auc | GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| gnn_amd_epoch | GraphSAGE training time per epoch on an AMD GPU | AMD GPU notebook or MI300X droplet | `editions/amd/gnn/results/`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| droplet_tokens_s | dedicated vLLM endpoint: tokens per second at concurrency 1 / 4 / 16 | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| droplet_cases_hour | complete cases per hour through the pipeline | MI300X droplet or dedicated AMD vLLM endpoint | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | droplet_vram | measured GPU memory per container (drafting model, verifier, GNN) | MI300X droplet | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | evolus_blocks | Evolus building blocks driven from the app through the REST API (at least 2) | Evolus event workspace + own vLLM endpoint on AMD | `pitch/EVOLUS_TRACK.md` evidence table |

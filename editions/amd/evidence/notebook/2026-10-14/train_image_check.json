@@ -1,0 +1,99 @@
+{
+  "kind": "train_image_check",
+  "schema": 1,
+  "generated_at": "2026-10-14T14:30:22Z",
+  "note": "plumbing check on a tiny random model; measures nothing",
+  "imports": {
+    "torch": {
+      "ok": true,
+      "version": "2.11.0+rocm7.14.1",
+      "missing": []
+    },
+    "transformers": {
+      "ok": true,
+      "version": "5.17.0",
+      "missing": []
+    },
+    "peft": {
+      "ok": true,
+      "version": "0.21.0",
+      "missing": []
+    },
+    "trl": {
+      "ok": true,
+      "version": "1.13.0",
+      "missing": []
+    },
+    "accelerate": {
+      "ok": true,
+      "version": "1.15.0",
+      "missing": []
+    },
+    "datasets": {
+      "ok": true,
+      "version": "5.0.1",
+      "missing": []
+    },
+    "safetensors": {
+      "ok": true,
+      "version": "0.8.0",
+      "missing": []
+    },
+    "tokenizers": {
+      "ok": true,
+      "version": "0.23.2",
+      "missing": []
+    }
+  },
+  "torch": {
+    "version": "2.11.0+rocm7.14.1",
+    "hip": "7.14.60850",
+    "cuda": null,
+    "gpu_visible": true,
+    "device_name": "AMD Instinct MI300X VF"
+  },
+  "torch_ranges": {
+    "transformers": {
+      "ok": true,
+      "declares": [
+        ">=2.5"
+      ],
+      "rejects": []
+    },
+    "peft": {
+      "ok": true,
+      "declares": [
+        ">=1.13.0"
+      ],
+      "rejects": []
+    },
+    "trl": {
+      "ok": true,
+      "declares": [],
+      "rejects": []
+    },
+    "accelerate": {
+      "ok": true,
+      "declares": [
+        ">=2.0.0"
+      ],
+      "rejects": []
+    },
+    "datasets": {
+      "ok": true,
+      "declares": [],
+      "rejects": []
+    }
+  },
+  "lora_step": {
+    "ok": true,
+    "device": "cuda",
+    "loss": 5.8088,
+    "loss_finite": true,
+    "lora_modules": 14,
+    "trainable_tensors": 28,
+    "tensors_changed": 28,
+    "seconds": 7.77
+  },
+  "ok": true
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "wapsi-amd-stage/1",
+  "stage": "eval",
+  "index": 9,
+  "mode": "notebook",
+  "label": "AMD ROCm notebook run",
+  "status": "ok",
+  "exit_code": 0,
+  "started_at": "2026-10-14T13:34:59Z",
+  "ended_at": "2026-10-14T13:57:40Z",
+  "duration_s": 1361.0,
+  "window": "inside",
+  "log": "logs/09-eval.log",
+  "amd_smi_before": "amd_smi/09-eval-before.json",
+  "amd_smi_after": "amd_smi/09-eval-after.json",
+  "notes": {
+    "served_profile": "gemma4-base",
+    "serving_stack": "vLLM (python -m vllm.entrypoints.openai.api_server)",
+    "gnn_service": "not served: no checkpoint",
+    "session": "GPU session 4 (2026-10-14 13:22-14:25 UTC, commit 483b111d6b24126dbda494ce1449be4ea9e6e3ed), same notebook and served model (google/gemma-4-31B-it, profile gemma4-base) as the other stages of this folder, which ran in session 5 (commit fc20109); added to this folder after session 5, see SESSIONS.md"
+  },
+  "budget": {
+    "billed": true,
+    "metered": true,
+    "mode": "notebook",
+    "label": "AMD ROCm notebook, credits at WAPSI_GPU_HOUR_USD per hour",
+    "gpu_hour_usd": 1.99,
+    "budget_usd": 100.0,
+    "spent_before_usd": 0.0,
+    "droplet_started_at": "2026-10-02T14:42:31Z",
+    "started_source": "boot time (/proc/stat btime)",
+    "hours": 287.253,
+    "droplet_usd": 571.63,
+    "total_usd": 571.63,
+    "pct": 571.6,
+    "warn_pct": 75.0,
+    "stop_pct": 90.0,
+    "state": "stop"
+  }
+}

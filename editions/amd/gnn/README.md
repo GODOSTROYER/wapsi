@@ -84,6 +84,16 @@ the `FEATURE_COLUMNS` names. Three extra columns make the decomposition exactly 
 
 `explain` ignores columns it does not know.
 
+## Trained on an AMD Instinct MI300X (AMD AI Notebook, 2026-10-14)
+
+`run_all.sh --mode notebook --stage gnn` on one AMD Instinct MI300X (an SR-IOV virtual function in an AMD AI
+Notebook, torch 2.11.0+rocm7.14.1; not the droplet): hidden 128, 3 layers, 410,017 parameters, 13 epochs in 8.6 s
+(0.055 s per epoch after the first), peak memory 0.39 GB. On the hard world (64 cases) it gets dispositions 0.9198
+(the heuristic's too), innocent-holder recall 0.875 (heuristic 0.6875) and mule ROC-AUC 0.9202 (heuristic 0.9411),
+and sends 0.185 of accounts to the officer as UNKNOWN (heuristic 0.035); holds stay exact and false freezes 0, so the
+heuristic stays the default. Files: `editions/amd/evidence/notebook/2026-10-14/gnn_metrics.json`, `gnn_eval.json`,
+`gnn_hard_eval.json` (and `SESSIONS.md` there).
+
 ## CPU dev results (2026-09-23, NOT MI300X)
 
 These come from `results/cpu-dev-2026-09-23.json`: Windows laptop, CPU only, 4 threads, torch 2.14 CPU. The GNN

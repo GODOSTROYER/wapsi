@@ -30,26 +30,26 @@ Status as of 2026-10-14, checked against the repository.
 | Prose and extraction model | Gemma 4 31B served on AMD GPUs, through `OpenAICompatLLM` | `GeminiLLM`, or Gemma through `OpenAICompatLLM` |
 | Agent | Google ADK agent with Gemma 4 on AMD as its model (LiteLLM connector) | the same ADK agent with a hosted model |
 | Speech to text | Whisper (open weights), local by default | the hosted model reads the audio |
-| Mule scorer | heuristic by default; an optional GraphSAGE GNN in PyTorch, built to run on ROCm (CPU-tested; no AMD GPU run yet) | heuristic |
+| Mule scorer | heuristic by default; an optional GraphSAGE GNN in PyTorch on ROCm (trained on an AMD Instinct MI300X on 2026-10-14) | heuristic |
 | Ledger | `ParquetLedger` | `BigQueryLedger`, or `ParquetLedger` |
 | Case store and audit chain | `FileCaseStore`: JSON files with atomic writes, chained on write | `FirestoreCaseStore`: one transaction per audit event, anchor in `audit_anchors/{case_id}` |
 | Guard | `RulesGuard`, plus an LLM judge when a second model is configured | `RulesGuard`, plus `ModelArmorGuard` when a template is configured |
-| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode ran live on 2026-10-14 (the agent with live draft prose, the showcase world through the harness, voice-note extraction and the demo's recorded prose, all on Gemma 4 through the AMD Token Factory); AMD measurements are published only from committed results files. No MI300X or AMD GPU notebook run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
+| Status | Core and AMD layer code existed before the event (tag `amd-baseline`). Endpoint mode ran live on 2026-10-14 (the agent with live draft prose, the showcase world through the harness, voice-note extraction and the demo's recorded prose, all on Gemma 4 through the AMD Token Factory). Notebook mode ran on 2026-10-14 on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14): Gemma 4 31B served by vLLM, the benchmarks, the golden set, the A/B, GNN training and a Whisper timing run (`editions/amd/evidence/notebook/2026-10-14/`). AMD measurements are published only from committed results files. No droplet run is reported. | Built and unit-tested offline with fakes. Deploy scripts are dry-run in tests with a fake `gcloud`. Nothing is deployed. |
 
 ## AMD: what runs where
 
 The hackathon asks that a meaningful part of the workload runs on AMD and that the AMD component is part of the
-working product. In Wapsi it is the language side of every case; the learned mule scorer is prepared for an AMD GPU
-as an optional extra. The status column says what has run on AMD so far.
+working product. In Wapsi it is the language side of every case; the learned mule scorer, trained on an AMD GPU,
+is an optional extra. The status column says what has run on AMD so far.
 
 | Workload | Model | Where it runs | Decides a number? | Status (14-10-2026) |
 |---|---|---|---|---|
-| The prose fields of a case's drafts | Gemma 4 31B | AMD GPUs, through the model endpoint | no: placeholders only, the verifier recomputes | run live (AMD Token Factory) |
+| The prose fields of a case's drafts | Gemma 4 31B | AMD GPUs, through the model endpoint | no: placeholders only, the verifier recomputes | run live (AMD Token Factory); the 39-case demo world end to end with Gemma 4 served by vLLM on an AMD Instinct MI300X (AMD AI Notebook) |
 | Field extraction and translation of complaints and voice-note transcripts | Gemma 4 31B | the same endpoint | no: every extracted value is a claim, reconciled with the ledger | run live on the six sample transcripts |
 | The officer's agent and its tool calls | Gemma 4 31B through Google ADK | the same endpoint | no: figures come from tools | run live |
 | Second opinion on untrusted text (judge) | a small open model, configurable | the same endpoint, or a second model on the same GPU | no: it can add a flag, never clear one | wired, not yet measured |
-| Speech to text | Whisper, open weights | local by default; any GPU is faster | no | built and tested offline; not yet run in this entry |
-| Mule scoring (optional second scorer) | GraphSAGE GNN, pure PyTorch, built to run on ROCm | an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic | prepared and CPU-tested; not yet run on AMD |
+| Speech to text | Whisper, open weights | local by default; any GPU is faster | no | timed on an AMD Instinct MI300X (AMD AI Notebook): steady-state real-time factor 0.0312; not yet run through the voice-intake reconciliation |
+| Mule scoring (optional second scorer) | GraphSAGE GNN, pure PyTorch on ROCm | an AMD GPU (notebook or droplet) | it scores a role; amounts stay arithmetic | trained on an AMD Instinct MI300X (AMD AI Notebook): hard-world mule ROC-AUC 0.9202 |
 | Tracing, per-victim split, hold plan, verifier | no model | plain Python, any CPU | yes, all of them | runs everywhere |
 
 ### Three modes, one codebase
@@ -59,10 +59,10 @@ The model endpoint is a setting. Nothing in the core knows which mode it is in.
 | | Endpoint mode | Notebook mode | Droplet mode |
 |---|---|---|---|
 | What it is | an OpenAI-compatible API that serves open models on AMD GPUs (the AMD Token Factory that the event gives every team) | a ROCm JupyterLab on an AMD GPU; Docker may not be available | one AMD Instinct MI300X with Docker Compose |
-| Used for | everything on the language side: prose, extraction, the agent | GNN training on an AMD GPU, benchmarks | serving both models, the GNN and the app on one machine, so no request leaves it |
+| Used for | everything on the language side: prose, extraction, the agent | serving Gemma 4 with vLLM on the notebook, GNN training, benchmarks | serving both models, the GNN and the app on one machine, so no request leaves it |
 | You need | a base URL, a key and a model name | a notebook instance from the AMD portal | a droplet from the AMD Developer Cloud |
-| Role in the entry | **primary**: the demo and the measurements run here | secondary | secondary |
-| Status (2026-10-14) | run live with synthetic data; the agent, voice-extraction and showcase-world figures are published from committed results files, the demo-world figures are still open slots | code prepared and CPU-tested; no AMD GPU run reported | stack, runbook and benchmark harness prepared and tested offline; not run on an MI300X |
+| Role in the entry | **primary**: the demo and the agent run here | the MI300X measurements | secondary |
+| Status (2026-10-14) | run live with synthetic data; the agent, voice-extraction and showcase-world figures are published from committed results files, the demo-world figures through the endpoint are still open slots | run on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM) in two one-hour sessions; evidence in `editions/amd/evidence/notebook/2026-10-14/` | stack, runbook and benchmark harness prepared and tested offline; not run on a droplet |
 
 **Endpoint mode settings.** All of them come from the environment; none is ever committed.
 
@@ -256,7 +256,7 @@ flowchart TB
         DOCS["data/docs<br/>citations.json, facts.json"]
         SK[".claude/skills<br/>6 skills, mirrored to .agents/skills"]
     end
-    AM["editions/amd (the entry)<br/>Gemma 4 on AMD, GNN prepared for ROCm,<br/>endpoint / notebook / droplet"] --> CORE
+    AM["editions/amd (the entry)<br/>Gemma 4 on AMD, GNN trained on ROCm,<br/>endpoint / notebook / droplet"] --> CORE
     AG["editions/gcp/app<br/>Google ADK agent"] --> CORE
     AG --> AM
     GC["optional managed-cloud adapters<br/>BigQuery, Firestore, Model Armor"] --> CORE

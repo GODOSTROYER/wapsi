@@ -12,7 +12,7 @@
 # AMD AI Notebook tutorial sessions on MI300X end after about 1 hour: split the work, e.g.
 #   SPRINT_BLOCKS="env serve bench ab evidence"   then   SPRINT_BLOCKS="env gnn voice evidence"
 # Output: $SPRINT_OUT/progress.log, $SPRINT_OUT/run.log, $SPRINT_OUT/pack_<block>.tgz
-set -u
+set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "${ROOT}"
 OUT="${SPRINT_OUT:-/workspace/runlogs}"
@@ -81,10 +81,29 @@ pack() {  # small evidence pack: results only
 }
 
 voice_bench() {  # Whisper on the GPU over the committed voice samples (real-time factor)
+  # The notebook image has no ffmpeg, so the pipeline cannot open a .wav by path: decode each file with the wave
+  # module and pass {"raw", "sampling_rate"}. This is how Whisper ran on the MI300X by hand on 2026-10-14
+  # (editions/amd/bench/results/voice-mi300x-notebook-20261014/).
   python3 - <<'PY' >> "${OUT}/run.log" 2>&1
-import glob, json, time, os, datetime
+import datetime, glob, json, os, time, wave
+import numpy as np
 import torch
 from transformers import pipeline
+
+
+def load_wav(path):
+    """16-bit PCM WAV -> (mono float32 in [-1, 1], sample rate), standard library only (no ffmpeg)."""
+    with wave.open(path) as w:
+        rate, channels, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
+        frames = w.readframes(w.getnframes())
+    if width != 2:
+        raise SystemExit(f"{path}: {8 * width}-bit PCM; the bundled samples are 16-bit")
+    audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    if channels > 1:
+        audio = audio.reshape(-1, channels).mean(axis=1)
+    return audio, rate
+
+
 dev = 0 if torch.cuda.is_available() else -1
 t0 = time.time()
 asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo",
@@ -92,27 +111,34 @@ asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-tu
 load_s = time.time() - t0
 rows = []
 for wav in sorted(glob.glob("data/samples/voice/*.wav")):
-    import wave
-    with wave.open(wav) as w:
-        dur = w.getnframes() / w.getframerate()
+    audio, rate = load_wav(wav)
+    dur = len(audio) / rate
     t = time.time()
-    out = asr(wav, generate_kwargs={"task": "transcribe"}, return_timestamps=True)
+    out = asr({"raw": audio, "sampling_rate": rate}, generate_kwargs={"task": "transcribe"}, return_timestamps=True)
     el = time.time() - t
     rows.append({"file": os.path.basename(wav), "audio_s": round(dur, 2), "asr_s": round(el, 3),
                  "rtf": round(el / dur, 4), "chars": len(out.get("text", ""))})
-res = {"measured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "model": "openai/whisper-large-v3-turbo",
-       "device": torch.cuda.get_device_name(0) if dev == 0 else "cpu", "torch": torch.__version__, "load_s": round(load_s, 2),
-       "samples": rows, "mean_rtf": round(sum(r["rtf"] for r in rows) / max(len(rows), 1), 4)}
-os.makedirs("editions/amd/bench/results/voice-notebook", exist_ok=True)
-json.dump(res, open("editions/amd/bench/results/voice-notebook/whisper_rtf.json", "w"), indent=1)
-print("voice bench", res["device"], "mean RTF", res["mean_rtf"])
+rest = rows[1:] or rows  # the first sample includes kernel warm-up
+now = datetime.datetime.now(datetime.timezone.utc)
+res = {"measured_at": now.isoformat(), "model": "openai/whisper-large-v3-turbo",
+       "device": torch.cuda.get_device_name(0) if dev == 0 else "cpu", "torch": torch.__version__,
+       "load_s": round(load_s, 2),
+       "note": "session_sprint.sh voice block; audio decoded with the wave module (no ffmpeg), "
+               + ("fp16" if dev == 0 else "fp32") + ", return_timestamps=True; the first sample includes kernel warm-up",
+       "samples": rows, "mean_rtf": round(sum(r["rtf"] for r in rows) / max(len(rows), 1), 4),
+       "steady_state_rtf_excluding_first": round(sum(r["rtf"] for r in rest) / max(len(rest), 1), 4)}
+out_dir = os.environ.get("SPRINT_VOICE_OUT") or f"editions/amd/bench/results/voice-notebook-{now:%Y%m%d}"
+os.makedirs(out_dir, exist_ok=True)
+with open(os.path.join(out_dir, "whisper_rtf.json"), "w", encoding="utf-8") as fh:
+    json.dump(res, fh, indent=1)
+print("voice bench", res["device"], "steady-state RTF", res["steady_state_rtf_excluding_first"], "->", out_dir)
 PY
 }
 
-note "SPRINT START blocks=[${BLOCKS}] commit=$(git rev-parse --short HEAD)"
-for b in ${BLOCKS}; do
-  note "BLOCK ${b} start"
-  case "${b}" in
+# A block that fails is noted and packed, and the sprint goes on to the next one (run_all.sh --keep-going does the
+# same inside a block): run_block runs as the left side of ||, so errexit does not stop it halfway either.
+run_block() {
+  case "$1" in
     env)      "${RUN[@]}" --stage env >> "${OUT}/run.log" 2>&1 ;;
     serve)    vllm_overlay >> "${OUT}/run.log" 2>&1
               "${RUN[@]}" --stage models >> "${OUT}/run.log" 2>&1
@@ -124,9 +150,16 @@ for b in ${BLOCKS}; do
     gnn)      "${RUN[@]}" --stage gnn >> "${OUT}/run.log" 2>&1 ;;
     voice)    voice_bench ;;
     evidence) "${RUN[@]}" --stage evidence >> "${OUT}/run.log" 2>&1 ;;
-    *)        note "unknown block ${b}" ;;
+    *)        note "unknown block $1"; return 2 ;;
   esac
-  note "BLOCK ${b} end rc=$?"
-  pack "${b}"
+}
+
+note "SPRINT START blocks=[${BLOCKS}] commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+for b in ${BLOCKS}; do
+  note "BLOCK ${b} start"
+  rc=0
+  run_block "${b}" || rc=$?
+  note "BLOCK ${b} end rc=${rc}"
+  pack "${b}" || note "PACK ${b} failed"
 done
 note "SPRINT DONE"

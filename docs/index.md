@@ -150,7 +150,7 @@ layer swaps in its own adapters for the ledger, the LLM, the guard and the case 
 
 | Layer | What it is | Status (2026-10-14) |
 |---|---|---|
-| AMD (the hackathon entry) | Gemma 4 on AMD GPUs writes the prose, reads complaints and voice-note transcripts and drives the agent (run live on 14-10-2026); a GraphSAGE mule scorer is prepared for ROCm (not yet run on AMD). Three modes: an AMD-hosted endpoint (default), a ROCm notebook, one MI300X with Docker Compose | The core and the prepared AMD layer are tagged `amd-baseline`; event-week work and AMD measurements are listed in [Originality](originality.md). See `editions/amd/` |
+| AMD (the hackathon entry) | Gemma 4 on AMD GPUs writes the prose, reads complaints and voice-note transcripts and drives the agent (run live on 14-10-2026); Gemma 4 31B served by vLLM and a GraphSAGE mule scorer trained on an AMD Instinct MI300X (AMD AI Notebook, 14-10-2026). Three modes: an AMD-hosted endpoint (default), a ROCm notebook, one MI300X with Docker Compose | The core and the prepared AMD layer are tagged `amd-baseline`; event-week work and AMD measurements are listed in [Originality](originality.md). See `editions/amd/` |
 | The Google ADK agent | The officer's agent and its tool trace, with Gemma 4 on AMD as its model | Built and tested offline with a scripted model; Gemma 4 on AMD as its model is event-week work |
 | Optional managed-cloud adapters | BigQuery ledger, Firestore case store, Model Armor guard, deploy scripts. Not part of the entry | Built and unit-tested offline with fakes; not deployed. See `editions/gcp/README.md` |
 

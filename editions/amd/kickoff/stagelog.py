@@ -25,7 +25,8 @@ default 75) or 20 (at or above ``WAPSI_BUDGET_STOP_PCT``, default 90: run_all.sh
 In the CPU rehearsal the same arithmetic runs on the rehearsal's own clock and is labelled hypothetical. Endpoint
 mode has no GPU-hour bill (the API's own daily cost cap applies; ``endpoint.py`` reads it), and a notebook is
 metered only when ``WAPSI_GPU_HOUR_USD`` says what its credits cost per hour: both then report "not metered" and
-never stop a stage.
+never stop a stage. A notebook's boot time is its shared host's (seen on 2026-10-14: 12 days before the session), so
+a notebook budget starts at ``WAPSI_DROPLET_STARTED_AT`` or at the first ``run_all.sh`` run of its evidence folder.
 
 ``WAPSI_NOW`` (ISO UTC) overrides the clock for tests; nothing else reads it.
 """
@@ -151,7 +152,8 @@ def budget(evid: Path, mode: str, *, proc_stat: Path = Path("/proc/stat")) -> di
     before = _env_float("WAPSI_SPENT_USD", 0.0)
     warn_pct = _env_float("WAPSI_BUDGET_WARN_PCT", DEFAULT_WARN_PCT)
     stop_pct = _env_float("WAPSI_BUDGET_STOP_PCT", DEFAULT_STOP_PCT)
-    started, source = budget_start(evid, "gpu" if mode in ("droplet", "notebook") else mode, proc_stat=proc_stat)
+    # the boot time only for a droplet: a notebook container reports its shared host's boot time
+    started, source = budget_start(evid, "gpu" if mode == "droplet" else mode, proc_stat=proc_stat)
     hours = max(0.0, (now() - started).total_seconds() / 3600.0)
     droplet = hours * rate
     total = before + droplet

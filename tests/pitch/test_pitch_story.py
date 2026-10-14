@@ -130,9 +130,13 @@ def test_lablab_fields_carry_the_challenge_the_tags_and_a_cover_brief():
     default = tags.split(chr(10) * 2)[1]  # the tag line itself; the paragraph after it says when to add more
     for tag in ("AMD Token Factory", "Gemma", "ADK", "LiteLLM"):
         assert tag in default, tag
-    # tag only what the submitted build used: hardware tags wait for a committed notebook or droplet run
-    for tag in ("AMD Developer Cloud", "ROCm", "vLLM", "AMD Instinct"):
-        assert tag not in default and tag in tags, tag
+    # tag only what the submitted build used: the hardware tags of a committed notebook run, never the droplet's
+    # platform tag until a droplet run is committed
+    notebook_run = sorted((ROOT / "editions" / "amd" / "evidence" / "notebook").glob("*/evidence.json"))
+    for tag in ("ROCm", "vLLM", "AMD Instinct"):
+        assert (tag in default) == bool(notebook_run) and tag in tags, tag
+    droplet_run = sorted((ROOT / "editions" / "amd" / "evidence").glob("20*/evidence.json"))
+    assert ("AMD Developer Cloud" in default) == bool(droplet_run) and "AMD Developer Cloud" in tags
     assert "## Cover image brief" in text and "16:9" in text
     assert "15:00 UTC" in text, "the official deadline"
 

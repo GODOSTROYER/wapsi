@@ -58,11 +58,10 @@ and the plain-English reasons. Then deck slide 6 (the scorer and the GNN table).
 
 **VO:** "Which account is a mule and which is an honest shop is a prediction, and no language model makes it. A
 transparent scorer weighs 33 behavioural features, such as how fast the money was passed on, and shows its
-reasons in plain English. An optional graph neural network is prepared as a second scorer. Unclear accounts go
-to the officer. And the amount held is never predicted: it is arithmetic."
+reasons in plain English. An optional graph neural network, trained on an AMD MI300X, is a second opinion.
+Unclear accounts go to the officer. And the amount held is never predicted: it is arithmetic."
 
-*Add "trained on an AMD GPU, with a mule ROC-AUC of TBD(gnn_amd_auc)" after "second scorer" once that slot is
-filled.*
+*The hard-world figures of the GNN trained on the MI300X are on deck slide 6; the voice-over does not read them.*
 
 ## 2:05 to 2:50. Gemma 4 on AMD, a voice note and the agent trace
 
@@ -85,12 +84,13 @@ written.*
 
 ## 2:50 to 3:25. Measured on AMD
 
-**Screen:** deck slide 8's results table, then slide 10's raw-model comparison.
+**Screen:** deck slide 8's MI300X results, then slide 10's raw-model comparison. Caption on screen: "Measured on
+an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 14-10-2026".
 
-**VO (fill from the results files):** "Measured with Gemma 4 on AMD: TBD(tf_demo_pass) of drafts pass the
-verifier, and holds stay exact, TBD(tf_demo_hold_exact). Asked for the plan in free text, the raw model gets an
-amount wrong in TBD(ab_raw_wrong) of cases. Inside Wapsi, TBD(ab_bound_wrong) wrong amounts reach a draft. Even
-when we force a model to invent a number in every paragraph, 27.57% of drafts get their prose replaced, and every
+**VO:** "Measured with Gemma 4 served on one AMD MI300X: on all 39 test cases every draft passes the verifier, and
+every hold is exact. The GPU runs 1,590 complete cases an hour. Asked for the plan in free text, the raw model
+gets an amount wrong in 19 of 39 cases. Inside Wapsi, 0 of 301 drafts carry a wrong amount. Even when
+we force a model to invent a number in every paragraph, 27.57% of drafts get their prose replaced, and every
 draft still passes."
 
 ## 3:25 to 3:50. Why a bank can trust it
@@ -132,5 +132,7 @@ fraud, not the shop."
 - "Twelve hundred rupees" is the kirana shop's sale (the kirana shop sold ₹1,200 of groceries to a mule). "Five
   crore" is the spoken form of the pool account balance ₹5,00,20,000. "More than 32 lakh complaints" is the
   spoken form of 32.80 lakh complaints (to 30.06.2026). "92%" is the spoken form of dispositions 0.9198.
-- If the "Measured on AMD" slots are open on the day, replace that beat's first two sentences with the stub-model
-  stress test alone and spend the time on the Hold Plan screen. The cut then runs about 4:00.
+- "Every draft passes the verifier" is drafts passing the verifier 1.0 and "every hold is exact" is holds exact
+  1.0 on the 39-case demo world, Gemma 4 31B served by vLLM on the MI300X; "19 of 39" and "0 of 301" are the same
+  run's raw-model comparison (`golden_eval.json`, `ab_test`). "1,590 complete cases an hour" is the end-to-end run
+  at concurrency 16 (`bench/e2e_c16.json`). All of these are MI300X notebook figures, never Token Factory ones.

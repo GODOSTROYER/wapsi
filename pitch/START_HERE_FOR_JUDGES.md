@@ -29,8 +29,10 @@ line: [`TRACK_FIT.md`](TRACK_FIT.md).
 >
 > **On AMD:** the words in every draft, the fields read from a Hinglish complaint or voice note, and the officer's
 > agent come from Gemma 4, Google's open model, served on AMD GPUs (run live on 14-10-2026; the public demo replays
-> that recording when no key is set). Which account is a mule or an honest shop is predicted by a transparent
-> scorer, never by a language model; an optional graph neural network is prepared as a second scorer.
+> that recording when no key is set). On one AMD Instinct MI300X, Gemma 4 31B served by vLLM ran all 39 test cases
+> end to end with every draft passing the verifier, and 1,590 complete cases an hour: $0.0013 per case at the
+> $1.99 per GPU-hour list price. Which account is a mule or an honest shop is predicted by a transparent scorer,
+> never by a language model; an optional graph neural network, trained on the MI300X, is a second scorer.
 
 ## Headline numbers
 
@@ -77,13 +79,24 @@ had their prose rejected and replaced by fixed text, drafts passing the verifier
 blind-holdout precision 0.9661, blind-holdout recall 0.75 ([`guard-latest.json`](../evals/reports/guard-latest.json)).
 The guard is a warning layer. The defence is structural: the hold plan, not the LLM, decides every action.
 
-**Measured with the deterministic stub LLM, unless a line says otherwise.** With Gemma 4 on AMD in the loop (AMD
-Token Factory, 14-10-2026, committed results files): the agent's live session ended VERIFIED with 16 of 16 drafts
-verified and Gemma 4 writing the draft prose too; the showcase world with Gemma 4 writing the prose had drafts
-passing the verifier 1.0. Still open: on the demo world, drafts passing the verifier TBD(tf_demo_pass), prose
-replaced by fixed text TBD(tf_demo_fallback), raw Gemma 4 against Gemma 4 inside Wapsi TBD(ab_raw_wrong) against
-TBD(ab_bound_wrong). Open slots are listed at the end of [`NUMBERS.md`](NUMBERS.md) and are not claims. All case
-data is synthetic.
+**Measured with the deterministic stub LLM, unless a line says otherwise.** Two kinds of AMD run are reported, each
+labelled with where it ran:
+
+- **Gemma 4 31B served by vLLM on an AMD Instinct MI300X** (AMD AI Notebook, ROCm 7.14, 14-10-2026;
+  [`editions/amd/evidence/notebook/2026-10-14/`](../editions/amd/evidence/notebook/2026-10-14/evidence.md)). Demo
+  world, 39 cases, Gemma 4 writing the prose: holds exact 1.0, false freezes 0, drafts passing the verifier 1.0,
+  numeric accuracy 1.0, citation validity 1.0, injection leaks 0, prose replaced by fixed text 0.0332, p95 11.12 s
+  per case to verified drafts. Asked for the plan in free text, raw Gemma 4 wrote a wrong amount in 19 of 39 cases
+  (0.4872), while 0 of the same run's 301 Wapsi drafts had a numeric error; in a separate A/B, 4 of 20 free-form
+  STRs had a wrong amount against 0 of 17 Wapsi-bound STRs (0 of all 155 bound drafts). Throughput: 55 / 181 /
+  474 / 699 output tokens/s at concurrency 1 / 4 / 16 / 64; 414 / 1,410 / 1,590 complete cases per hour at
+  concurrency 1 / 8 / 16; $0.0013 per case ($1.25 per 1,000 cases) at the $1.99 per GPU-hour list price. The GNN
+  trained there: mule ROC-AUC 0.9202 on the hard world. Whisper there: the 31-second note in 0.92 s.
+- **Gemma 4 through the AMD Token Factory** (AMD-served through AMD's API, not an MI300X benchmark; 14-10-2026):
+  the agent's live session ended VERIFIED with 16 of 16 drafts verified and Gemma 4 writing the draft prose too;
+  the showcase world with Gemma 4 writing the prose had drafts passing the verifier 1.0.
+
+Open slots are listed at the end of [`NUMBERS.md`](NUMBERS.md) and are not claims. All case data is synthetic.
 
 ## Try it in 2 minutes
 
@@ -191,7 +204,8 @@ this folder.
   applies it.
 - Draft metrics above use the deterministic stub LLM unless a line names Gemma 4 on AMD; those come from
   committed results files and say where they ran. A result from AMD's shared Token Factory endpoint is never
-  presented as a benchmark of a dedicated MI300X. Whisper and the GNN are built and tested, but have not run on
-  AMD hardware in this entry yet.
+  presented as a benchmark of a dedicated MI300X. The MI300X figures come from an AMD AI Notebook (one MI300X,
+  shared as a virtual function), not from a droplet. Whisper on the MI300X was timed, not yet run through the
+  voice-intake reconciliation.
 - The pre-event core is tagged `amd-baseline`; [`docs/originality.md`](../docs/originality.md) lists what was built
   during 12 to 18 October 2026.

@@ -239,6 +239,23 @@ def test_boot_time_from_proc_stat(tmp_path):
     assert stagelog.boot_time(tmp_path / "missing") is None
 
 
+def test_notebook_budget_never_counts_from_the_shared_hosts_boot_time(tmp_path, monkeypatch):
+    """Seen on 2026-10-14: a notebook container reports its host's boot time, 12 days before the session."""
+    monkeypatch.delenv("WAPSI_DROPLET_STARTED_AT", raising=False)
+    monkeypatch.setenv("WAPSI_GPU_HOUR_USD", "1.99")
+    monkeypatch.setenv("WAPSI_NOW", "2026-10-14T15:00:00Z")
+    stat = tmp_path / "stat"
+    stat.write_text(f"btime {int(stagelog.parse_ts('2026-10-02T14:47:52Z').timestamp())}\n", encoding="utf-8")
+    assert stagelog.budget(tmp_path / "d", "droplet", proc_stat=stat)["started_source"].startswith("boot time")
+    nb = stagelog.budget(tmp_path / "n", "notebook", proc_stat=stat)
+    assert nb["started_source"] == "first run_all.sh run" and nb["hours"] == 0.0
+    # an older notebook bundle whose stages counted from the boot time: the total is not printed as a cost
+    old = {**nb, "started_source": "boot time (/proc/stat btime)", "total_usd": 574.29}
+    md = collect_evidence.to_markdown({**collect_evidence.build(make_evidence(tmp_path / "ev"), "notebook"),
+                                       "budget": old})
+    assert "Budget: not shown" in md and "of $100" not in md
+
+
 def test_stage_record_and_notes(tmp_path):
     notes = tmp_path / "n.notes"
     notes.write_text("git_commit=abc123\n# comment\nserved_profile=gemma4-merged\n", encoding="utf-8")
