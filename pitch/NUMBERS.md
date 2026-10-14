@@ -351,6 +351,10 @@ benchmarks of a dedicated MI300X. Results files:
 | tf_voice_agreement | share of extracted values that agree with the samples' expected answers (AMD Token Factory run) | 0.9833 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.value_agreement` |
 | tf_voice_agreement_pct | 98.3% of the extracted values agree with the expected answers (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 98.3 | derived | `calc:100 * tf_voice_agreement` |
 | tf_voice_as_documented | 4 of 6 notes reconciled as documented on the AMD Token Factory run; the other two were false alarms on a caller's closing plea | 4 | editions/amd/bench/results/voice-tokenfactory-20261014/voice_bench_gemma4.json | `json:metrics.samples_as_documented` |
+| tf_demo_cases | demo world, 39 cases, through the AMD Token Factory with Gemma 4 writing the prose (AMD Token Factory, Gemma-4-31B-IT, 2026-10-14) | 39 | evals/reports/amd/demo-gemma4-tokenfactory-20261014.json | `json:cases` |
+| tf_demo_drafts | the same run's 301 Wapsi drafts | 301 | evals/reports/amd/demo-gemma4-tokenfactory-20261014.json | `json:ab_test.wapsi_bound.drafts` |
+| tf_ab_wrong_count | 17 of 38 answered cases with a wrong amount in the raw free-text plan | 17 | evals/reports/amd/demo-gemma4-tokenfactory-20261014.json | `json:ab_test.llm_only.summaries_with_wrong_amounts` |
+| tf_ab_cases | 38 cases answered by raw Gemma 4 (the 39th raw call timed out) | 38 | evals/reports/amd/demo-gemma4-tokenfactory-20261014.json | `json:ab_test.llm_only.cases` |
 
 ## Measured on an AMD Instinct MI300X (AMD AI Notebook, ROCm 7.14, vLLM), 2026-10-14
 
@@ -483,16 +487,12 @@ each `TBD(slot_id)` in the pitch, adds the rows that back the figure to a genera
 deletes the slot's row below. `--slots` lists which slots a bundle fills and which stay with their own results
 files.
 
-The demo-world figures with Gemma 4 on an AMD Instinct MI300X are measured (the MI300X section above); the `tf_*`
-and `ab_raw_wrong` slots below are the same figures through the AMD Token Factory, which are still open.
+The demo-world figures with Gemma 4 on an AMD Instinct MI300X are measured (the MI300X section above); the same
+figures through the AMD Token Factory are measured in the Token Factory section above (2026-10-14). The slots below
+are the remaining open figures.
 
 | Slot | Will be pitched as | Where it runs | Planned source |
 |---|---|---|---|
-| tf_demo_pass | demo world (39 cases), drafts passing the verifier with Gemma 4 writing the prose | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_demo_fallback | demo world, share of drafts whose model prose was rejected and replaced by fixed text | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_prose_fallback_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_demo_hold_exact | demo world, holds exact with the real model in the loop | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.hold_exact_match_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| tf_call_latency | drafting request latency at p50 in the kickoff run (the smoke run's 8.29 s is a separate, one-at-a-time figure) | AMD Token Factory, Gemma-4-31B-IT | filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
-| ab_raw_wrong | raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount | AMD Token Factory, Gemma-4-31B-IT | `evals/reports/amd/` harness report (`metrics.llm_only_hallucination_rate`); filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | voice_asr_samples | bundled voice notes (of 6) whose Whisper transcript reconciles as the manifest expects | local Whisper (hardware stated with the figure) + Gemma-4-31B-IT on AMD for the fields | `uv run python -m editions.amd.bench.voice_bench --asr local` (`voice_bench.json` under `editions/amd/bench/results/`) |
 | droplet_vram | measured GPU memory per container (drafting model, verifier, GNN) | MI300X droplet | `editions/amd/AMD_RESULTS.md`; filled by `editions/amd/kickoff/fill_pitch.py` from an evidence bundle |
 | evolus_blocks | Evolus building blocks driven from the app through the REST API (at least 2) | Evolus event workspace + own vLLM endpoint on AMD | `pitch/EVOLUS_TRACK.md` evidence table |
