@@ -36,6 +36,13 @@ x-vllm-env: &vllm-env
   VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-}
   VLLM_KV_CACHE_DTYPE: ${VLLM_KV_CACHE_DTYPE:-}
   VLLM_EXTRA_ARGS: ${VLLM_EXTRA_ARGS:-}
+  # Native tool calls for the ADK officer agent: 1 adds --enable-auto-tool-choice --tool-call-parser gemma4
+  # --reasoning-parser gemma4 (serving/start_llm.sh). 0 = off: the agent's capability probe then selects its
+  # strict JSON tool protocol, so the agent works either way.
+  VLLM_ENABLE_TOOLS: ${VLLM_ENABLE_TOOLS:-0}
+  VLLM_TOOL_CALL_PARSER: ${VLLM_TOOL_CALL_PARSER:-}
+  VLLM_REASONING_PARSER: ${VLLM_REASONING_PARSER:-}
+  VLLM_CHAT_TEMPLATE: ${VLLM_CHAT_TEMPLATE:-}
 
 # /v1/models answers only once the weights are loaded and the engine is warm (minutes for a 31B model).
 x-vllm-healthcheck: &vllm-healthcheck
@@ -178,6 +185,11 @@ services:
       WAPSI_STATE_DIR: /state
       WAPSI_API_TOKEN: ${WAPSI_API_TOKEN:-}
       WAPSI_UI_SEED_LIMIT: ${WAPSI_UI_SEED_LIMIT:-3}
+      # ADK officer agent (Google ADK + LiteLLM on the same endpoint as the drafts; editions/amd/AGENT.md)
+      WAPSI_AGENT_BACKEND: ${WAPSI_AGENT_BACKEND:-auto}
+      WAPSI_AGENT_TOOL_MODE: ${WAPSI_AGENT_TOOL_MODE:-auto}
+      WAPSI_AGENT_MODEL: ${WAPSI_AGENT_MODEL:-}
+      WAPSI_AGENT_MIN_INTERVAL_S: ${WAPSI_AGENT_MIN_INTERVAL_S:-0}
     volumes:
       - ${WAPSI_WORLD_DIR:-../../data/generated/demo}:/data/world:ro
       - ../../data/golden:/app/data/golden:ro

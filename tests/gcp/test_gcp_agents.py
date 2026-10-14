@@ -437,3 +437,49 @@ def test_memory_bank_is_off_by_default_and_firestore_is_opt_in(monkeypatch):
     assert isinstance(registry.create_memory_service("firestore://"), FirestoreMemoryService)
     assert clients and all(c == {"project": "wapsi-test", "database": "wapsi-db"} for c in clients)
     assert GcpSettings(demo_mode=True, adk_store="firestore").memory_service_uri() is None
+
+
+def test_agent_runs_on_an_openai_compatible_endpoint_when_a_base_url_is_set(demo_services, monkeypatch):
+    """``WAPSI_LLM_BASE_URL``: the same agent on an open model (Gemma 4 on AMD) through ADK's LiteLlm."""
+    from google.adk.models.lite_llm import LiteLlm
+
+    from editions.shared.endpoint_model import EndpointLlm
+
+    key = "rc-agent-test-key-0123456789"
+    monkeypatch.delenv("WAPSI_AGENT_ON_PRIVATE", raising=False)
+    monkeypatch.setenv("WAPSI_LLM_BASE_URL", "https://developer.amd.com.cn/radeon/api/v1")
+    monkeypatch.setenv("WAPSI_LLM_API_KEY", key)
+    settings = GcpSettings(demo_mode=False, project="wapsi-test")
+    model = agent_mod.build_model(settings)  # no network: the endpoint is probed on the first request
+    assert isinstance(model, LiteLlm) and isinstance(model, EndpointLlm)
+    assert model.model == "openai/Gemma-4-31B-IT" and model.endpoint.provider == "AMD Token Factory"
+    assert model.tool_mode is None and key not in repr(model) and key not in model.model_dump_json()
+    monkeypatch.setenv("WAPSI_AGENT_MODEL", "Qwen3.8-27B")
+    assert agent_mod.build_model(settings).model == "openai/Qwen3.8-27B"
+    app = agent_mod.build_app(settings)
+    assert isinstance(app.root_agent.model, EndpointLlm) and app.root_agent.sub_agents[0].model is app.root_agent.model
+    assert _tool_names(app.root_agent) == TOOLS  # same tools, plugins and instruction as on Gemini
+
+    # demo mode stays offline whatever the environment says
+    assert isinstance(agent_mod.build_model(GcpSettings(demo_mode=True)), DemoScriptedLlm)
+
+
+def test_shared_agent_modules_are_the_gcp_modules(demo_services):
+    """The edition-neutral agent code lives in ``editions.shared``; the GCP module names are the same objects."""
+    from editions.gcp.app import demo_model, identity, plugins, services, tracing
+    from editions.gcp.app import tools as gcp_tools
+    from editions.shared import context, scripted
+    from editions.shared import identity as shared_identity
+    from editions.shared import plugins as shared_plugins
+    from editions.shared import tools as shared_tools
+    from editions.shared import tracing as shared_tracing
+
+    assert identity is shared_identity and plugins is shared_plugins and tracing is shared_tracing
+    assert demo_model is scripted
+    assert gcp_tools.open_case is shared_tools.open_case and gcp_tools.OFFICER_TOOLS is shared_tools.OFFICER_TOOLS
+    assert gcp_tools.intake_voice_note.__module__ == "editions.gcp.app.tools"  # Gemini voice intake stays here
+    assert context.peek_services() is demo_services is services.get_services() is services.current_services()
+    services.set_services(None)
+    assert context.peek_services() is None and services.current_services() is None
+    with pytest.raises(RuntimeError, match="no agent services are bound"):
+        context.get_services()

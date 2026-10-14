@@ -14,6 +14,9 @@ for p in (ROOT, Path(__file__).resolve().parent):
 # The GCP edition must never reach the network in tests: force demo mode before any app module is imported.
 os.environ["WAPSI_DEMO_MODE"] = "1"
 os.environ.pop("WAPSI_PROJECT", None)
+# ... and never an OpenAI-compatible endpoint a developer's shell may have exported (e.g. AMD Token Factory)
+for _name in ("WAPSI_LLM_BASE_URL", "WAPSI_LLM_API_KEY", "WAPSI_AGENT_BASE_URL", "WAPSI_AGENT_API_KEY"):
+    os.environ.pop(_name, None)
 
 pytest.importorskip("google.adk", reason="GCP extras not installed (uv sync --all-extras)")
 

@@ -24,7 +24,14 @@
 #   VLLM_QUANTIZATION        e.g. fp8 (on-the-fly FP8 weights) when memory is tight
 #   VLLM_KV_CACHE_DTYPE      e.g. fp8
 #   VLLM_LIMIT_MM            --limit-mm-per-prompt JSON (text-only default for official Gemma 4; "none" omits)
-#   VLLM_ENABLE_TOOLS=1      add tool-call + reasoning parser flags (not needed by the Wapsi pipeline)
+#   VLLM_ENABLE_TOOLS=1      native tool calls for the ADK officer agent (editions/amd/app/agent.py):
+#                            --enable-auto-tool-choice --tool-call-parser gemma4 --reasoning-parser gemma4
+#                            (Qwen: --tool-call-parser qwen3_coder). Not needed by the drafting pipeline; without
+#                            it the agent's capability probe selects its JSON tool protocol instead.
+#   VLLM_TOOL_CALL_PARSER    override the parser name (default per model family: gemma4 | qwen3_coder)
+#   VLLM_REASONING_PARSER    override the reasoning parser for Gemma 4 (default gemma4; "none" omits the flag)
+#   VLLM_CHAT_TEMPLATE       --chat-template path inside the container, e.g. the vLLM recipe's
+#                            examples/tool_chat_template_gemma4.jinja (default: the model's own template)
 #   VLLM_EXTRA_ARGS          extra flags appended verbatim (word-split)
 #   VLLM_API_KEY             require a bearer token on the OpenAI endpoints
 #   VLLM_PORT                port inside the container (8000)
@@ -92,14 +99,20 @@ if [[ "${FAMILY}" == "gemma4" ]]; then
     ARGS+=(--limit-mm-per-prompt "${MM}")
   fi
   if [[ "${VLLM_ENABLE_TOOLS:-0}" == "1" ]]; then
-    ARGS+=(--enable-auto-tool-choice --tool-call-parser gemma4 --reasoning-parser gemma4)
+    ARGS+=(--enable-auto-tool-choice --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-gemma4}")
+    if [[ "${VLLM_REASONING_PARSER:-gemma4}" != "none" ]]; then
+      ARGS+=(--reasoning-parser "${VLLM_REASONING_PARSER:-gemma4}")
+    fi
   fi
 else
   # Qwen3.6 thinks by default; Wapsi wants short prose, so thinking is off unless a request asks for it
   ARGS+=(--reasoning-parser qwen3 --default-chat-template-kwargs '{"enable_thinking": false}')
   if [[ "${VLLM_ENABLE_TOOLS:-0}" == "1" ]]; then
-    ARGS+=(--enable-auto-tool-choice --tool-call-parser qwen3_coder)
+    ARGS+=(--enable-auto-tool-choice --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_coder}")
   fi
+fi
+if [[ -n "${VLLM_CHAT_TEMPLATE:-}" ]]; then
+  ARGS+=(--chat-template "${VLLM_CHAT_TEMPLATE}")
 fi
 if [[ -n "${VLLM_QUANTIZATION:-}" ]]; then
   ARGS+=(--quantization "${VLLM_QUANTIZATION}")

@@ -28,6 +28,8 @@ amd = [
     "safetensors>=0.6",
 ]
 amd-app = ["fastapi>=0.115", "uvicorn>=0.30"]
+# the ADK officer agent on any OpenAI-compatible endpoint (AMD edition: Gemma 4 on AMD); no Google Cloud client
+agent = ["google-adk>=2.9", "litellm>=1.84"]
 gcp = [
     "google-adk>=2.9",
     "google-cloud-bigquery>=3.25",

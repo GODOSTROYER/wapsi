@@ -46,7 +46,10 @@ SOURCE_LABELS = {
     "adk": "Live ADK run",
     "adk-offline-demo": "Offline ADK run (scripted model, no API key)",
     "recording": "Recorded offline ADK run (scripted model, no API key)",
+    "adk-endpoint": "Live ADK run (open model on an OpenAI-compatible endpoint)",
+    "adk-endpoint-offline": "Offline ADK run (fake OpenAI-compatible endpoint, no API key)",
 }
+LIVE_SOURCES = frozenset({"adk", "adk-endpoint"})
 
 
 class _M(BaseModel):
@@ -134,6 +137,7 @@ class AgentTrace(_M):
     role: str = ""
     source: str = "adk"
     model: str = ""
+    provider: str = ""  # where the model is served, when the edition knows (e.g. "AMD Token Factory")
     prompt: str = ""  # the officer's message, redacted and shortened
     started_at: datetime
     finished_at: datetime | None = None

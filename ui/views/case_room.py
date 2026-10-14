@@ -1,12 +1,13 @@
 """Case Room: trail graph on the left; totals, waterfall and the account inspector on the right. A second tab shows
-the agent trace: every tool call the ADK agent made on the case, with its guard and verifier verdicts."""
+the agent trace: every tool call the ADK agent made on the case, with its guard and verifier verdicts, under an
+"Ask the agent" box when the edition's data source can run the agent (the AMD edition: Gemma 4 on AMD)."""
 
 from __future__ import annotations
 
 import streamlit as st
 
+from ui.components import agent_chat, tool_trace
 from ui.components import html as h
-from ui.components import tool_trace
 from ui.components.compat import stretch
 from ui.components.formatting import (
     ACCOUNT_TYPE_LABELS,
@@ -69,6 +70,7 @@ def render(ctx: Ctx) -> None:
     with trail_tab:
         _trail(ctx, bundle)
     with agent_tab:
+        agent_chat.render_agent_chat(ctx)
         tool_trace.render_agent_trace(ctx)
 
 

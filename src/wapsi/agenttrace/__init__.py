@@ -9,6 +9,7 @@ status and the safety verdicts around it (guard screening, maker-checker policy,
 """
 
 from wapsi.agenttrace.model import (
+    LIVE_SOURCES,
     SOURCE_LABELS,
     TRACE_ACTION,
     AgentTrace,
@@ -27,6 +28,7 @@ from wapsi.agenttrace.recorder import TickClock, ToolTraceRecorder
 from wapsi.agenttrace.redact import redact_text, redact_value
 
 __all__ = [
+    "LIVE_SOURCES",
     "SOURCE_LABELS",
     "TRACE_ACTION",
     "AgentTrace",

@@ -62,6 +62,7 @@ flowchart LR
 | `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at vLLM, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
 | `bench/` | `llm_bench.py` (streaming TTFT, ITL, tokens/s, concurrency sweep), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case), `report.py` (writes `AMD_RESULTS.md`). |
 | `RUNBOOK.md` | Event-week steps: credits, droplet, firewall, serving, training, benchmarks, video capture, teardown, budget. |
+| `AGENT.md`, `app/agent.py`, `app/agent_demo.py` | The officer agent: Google ADK on Gemma 4 served on AMD (AMD Token Factory, vLLM-ROCm or a notebook), through an OpenAI-compatible endpoint and no Google Cloud service. Native tool calls or a strict JSON tool protocol, chosen by a capability probe. `POST /agent/run`, "Ask the agent" in the Case Room, and a CLI that prints the tool-by-tool trace and the verified outcome. Measured results are in `AGENT.md`. |
 | `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. These are separate work streams with their own READMEs. |
 
 ## Run the demo locally (no GPU, no model downloads)
@@ -92,6 +93,13 @@ uv run pytest tests/amd -q -k "serving or bench"
 (PowerShell: `$env:WAPSI_DEMO_MODE=1; $env:WAPSI_STATE_DIR=".wapsi-state"; uv run streamlit run editions/amd/app/ui_app.py`.
 The API also needs `fastapi` and `uvicorn`. Both are in the uv environment when the `gcp` extra is installed; the app
 image installs them at the versions pinned in `uv.lock`.)
+
+The officer agent (Google ADK on Gemma 4 served on AMD) runs offline too, against a fake OpenAI-compatible
+endpoint, and live when `WAPSI_LLM_BASE_URL` is set; see [AGENT.md](AGENT.md):
+
+```bash
+uv run python -m editions.amd.app.agent_demo --case 31009260000101 --demo
+```
 
 On the MI300X, follow [RUNBOOK.md](RUNBOOK.md).
 
