@@ -9,12 +9,18 @@ GPU mode (default, on the MI300X droplet):
 Demo mode (``WAPSI_DEMO_MODE=1``, any laptop, no network): the same, with the offline ``FakeLLM``, rules guard and
 heuristic scorer (the GNN is still used if ``WAPSI_GNN_URL`` is set explicitly).
 
+Voice intake (``voice_model``): ``WAPSI_VOICE_BACKEND=auto|open|gemini|fake`` (``wapsi.intake.backends``). The open
+path transcribes with Whisper (``WAPSI_ASR_BASE_URL`` endpoint, or local through transformers on ROCm / CPU) and
+structures the transcript with this edition's own LLM; demo mode keeps the offline model unless ``open`` is asked
+for explicitly. Built on first use.
+
 Nothing here calls the network at build time; clients connect on first use.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -47,16 +53,23 @@ class Services:
     verifier_llm: LLM | None = None
     cfg: WapsiConfig = field(default_factory=WapsiConfig)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    voice: Any | None = field(default=None, repr=False)  # the voice-intake model, built on first use
 
     def describe(self) -> dict[str, Any]:
-        return {
+        out = {
             **self.settings.describe(),
             "llm_name": getattr(self.llm, "name", type(self.llm).__name__),
             "guard": getattr(self.guard, "name", type(self.guard).__name__),
             "scorer": getattr(self.scorer, "name", "heuristic") if self.scorer is not None else "heuristic",
             "search": self.search is not None,
             "store": repr(self.store),
+            "voice_backend": (os.environ.get("WAPSI_VOICE_BACKEND") or "auto").strip().lower(),
         }
+        if self.voice is not None:  # only once built: /healthz makes no network call (no audio probe)
+            from wapsi.intake.backends import describe_voice_model
+
+            out["voice"] = describe_voice_model(self.voice)["label"]
+        return out
 
 
 def _docs_search() -> DocSearch | None:
@@ -125,6 +138,47 @@ def build_services(settings: AmdSettings | None = None, *, llm: LLM | None = Non
 
     return Services(settings=settings, ledger=ledger, store=store, llm=llm, guard=guard, search=docs,
                     sink=RecordingActionSink(), scorer=scorer, verifier_llm=verifier_llm)
+
+
+# --------------------------------------------------------------------------- voice intake
+
+
+def build_voice(services: Services, env: Any = None) -> Any:
+    """The voice model for this edition (an ``AudioLLM``); never raises (a configuration that cannot be built
+    gives a stand-in that says what to set).
+
+    Demo mode keeps the offline model (bundled samples) unless ``WAPSI_VOICE_BACKEND`` asks for something else.
+    Otherwise the transcript is structured by this edition's own LLM client, so translation and field extraction
+    run wherever drafting runs: vLLM-ROCm on the droplet, or the AMD Token Factory."""
+    from wapsi.intake.backends import VOICE_BACKEND_ENV, llm_provider, safe_voice_model
+
+    e = os.environ if env is None else env
+    requested = (e.get(VOICE_BACKEND_ENV) or "auto").strip().lower()
+    if services.settings.demo_mode:
+        if requested == "auto" and callable(getattr(services.llm, "extract_media", None)):
+            return services.llm
+        return safe_voice_model(e)  # an explicit backend in demo mode is built from WAPSI_LLM_* / WAPSI_ASR_*
+    served_by, on_amd = llm_provider(str(getattr(services.llm, "base_url", "") or ""), e)
+    return safe_voice_model(e, text_llm=services.llm, served_by=served_by, llm_on_amd=on_amd)
+
+
+def voice_model(services: Services) -> Any:
+    """``services.voice``, built once (thread-safe): a local Whisper stays loaded between requests."""
+    if services.voice is None:
+        with services.lock:
+            if services.voice is None:
+                services.voice = build_voice(services)
+    return services.voice
+
+
+def run_voice_intake(services: Services, audio: bytes, *, filename: str = "", sample_id: str | None = None,
+                     received_at: Any = None) -> Any:
+    """Audio bytes -> ``VoiceIntakeResult`` with this edition's voice model, ledger and guard. Raises
+    ``VoiceIntakeError`` / ``LLMError`` (the API and the UI turn them into messages)."""
+    from wapsi.intake.voice import intake_voice_note
+
+    return intake_voice_note(audio, llm=voice_model(services), ledger=services.ledger, guard=services.guard,
+                             filename=filename, received_at=received_at, sample_id=sample_id)
 
 
 # --------------------------------------------------------------------------- case helpers

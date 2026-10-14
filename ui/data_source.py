@@ -806,22 +806,26 @@ class ShowcaseDataSource:
                              "the ledger.", bundle=fresh)
 
 
-def voice_llm() -> Any:
-    """The model that reads voice notes: Gemini when a key (``GEMINI_API_KEY`` / ``GOOGLE_API_KEY``) or Agent
-    Platform (``WAPSI_GEMINI_BACKEND=vertex`` + a project) is configured, else the offline ``FakeLLM``, which knows
-    the bundled synthetic samples only. Never prints or stores the key."""
-    from wapsi.adapters.gemini_llm import DEFAULT_MODEL, GeminiLLM, gemini_api_key
-    from wapsi.adapters.llm_fake import FakeLLM
+_VOICE_MODELS: dict[tuple, Any] = {}
 
-    model = os.environ.get("WAPSI_VOICE_MODEL") or os.environ.get("WAPSI_MODEL") or DEFAULT_MODEL
-    backend = os.environ.get("WAPSI_GEMINI_BACKEND", "aistudio").strip().lower()
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("WAPSI_PROJECT")
-    if os.environ.get("WAPSI_VOICE_OFFLINE", "").strip() != "1":
-        if backend == "vertex" and project:
-            return GeminiLLM(model, project=project, backend="vertex", max_retries=2, timeout_s=90)
-        if backend != "vertex" and gemini_api_key():
-            return GeminiLLM(model, backend="aistudio", max_retries=2, timeout_s=90)
-    return FakeLLM(name="offline demo model")
+
+def voice_llm() -> Any:
+    """The model that reads voice notes, chosen by ``WAPSI_VOICE_BACKEND`` (``wapsi.intake.backends``): the open
+    path (a speech recogniser such as Whisper plus an open text LLM such as Gemma 4 on AMD) when it is configured,
+    Gemini when a key (``GEMINI_API_KEY`` / ``GOOGLE_API_KEY``) or Agent Platform (``WAPSI_GEMINI_BACKEND=vertex`` +
+    a project) is configured, else the offline ``FakeLLM``, which knows the bundled synthetic samples only.
+
+    Built once per configuration (a local Whisper stays loaded between reruns); a configuration that cannot be
+    built gives a stand-in that explains what to set. Never prints or stores a key."""
+    from wapsi.intake.backends import env_signature, safe_voice_model
+
+    key = env_signature()
+    model = _VOICE_MODELS.get(key)
+    if model is None:
+        if len(_VOICE_MODELS) > 8:
+            _VOICE_MODELS.clear()
+        model = _VOICE_MODELS[key] = safe_voice_model()
+    return model
 
 
 FixtureDataSource = ShowcaseDataSource  # backwards-compatible name

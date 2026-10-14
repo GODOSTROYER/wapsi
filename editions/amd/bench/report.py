@@ -2,10 +2,13 @@
 
     uv run python -m editions.amd.bench.report --results-dir editions/amd/bench/results/<stamp>
     uv run python -m editions.amd.bench.report --llm-bench a.json b.json --e2e report.json \
-        --telemetry telemetry_summary.json --gnn gnn_metrics.json --lora lora_eval.json --out editions/amd/AMD_RESULTS.md
+        --telemetry telemetry_summary.json --gnn gnn_metrics.json --lora lora_eval.json \
+        --voice voice_bench.json --out editions/amd/AMD_RESULTS.md
 
 With ``--results-dir`` it picks up ``llm_bench*.json``, ``report.json`` (e2e), ``telemetry_summary.json``,
-``gnn*.json`` and ``lora*.json`` in that directory. GNN / LoRA files come from the other AMD work streams; their
+``gnn*.json``, ``lora*.json`` and ``voice_bench*.json`` in that directory. A voice benchmark carries its own
+provenance lines (where the recogniser ran, who served the text model); they are printed with its table, because
+those runs may come from the AMD Token Factory or a CPU rehearsal rather than the droplet. GNN / LoRA files come from the other AMD work streams; their
 schema is not fixed here, so their scalar values are rendered generically (a top-level ``metrics`` object is
 preferred when present). Every number in the output is read from those files: the report never invents one, and a
 sensor the telemetry could not read is shown as ``n/a`` (``n/a (SR-IOV VF)`` on a virtual function), never as 0.
@@ -38,11 +41,13 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def discover(results_dir: Path) -> dict[str, list[Path]]:
-    found: dict[str, list[Path]] = {"llm_bench": [], "e2e": [], "telemetry": [], "gnn": [], "lora": []}
+    found: dict[str, list[Path]] = {"llm_bench": [], "e2e": [], "telemetry": [], "gnn": [], "lora": [], "voice": []}
     for p in sorted(results_dir.glob("*.json")):
         name = p.name.lower()
         if name.startswith("llm_bench"):
             found["llm_bench"].append(p)
+        elif name.startswith("voice_bench"):
+            found["voice"].append(p)
         elif name in ("report.json", "e2e_report.json") or name.startswith("e2e"):
             found["e2e"].append(p)
         elif name.startswith("telemetry") and name.endswith("summary.json"):
@@ -91,6 +96,57 @@ def _sensor(g: dict[str, Any], key: str) -> Any:
     return value if value is not None and not (vf and value == 0) else sensor_text(None, vf)
 
 
+def _voice_fake(v: dict) -> bool:
+    return bool((v.get("settings") or {}).get("fake"))
+
+
+def voice_headline(voice: list[dict]) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for v in voice:
+        if _voice_fake(v):
+            continue  # a harness check measures no model
+        m, label = v.get("metrics") or {}, v.get("label") or "voice intake"
+        rtf = (m.get("asr_rtf") or {}).get("p50")
+        if rtf is not None:
+            rows.append([f"Voice intake ({label}) — speech-to-text real-time factor p50", rtf])
+        rows.append([f"Voice intake ({label}) — transcript to checked fields p50 (s)",
+                     (m.get("extract_s") or {}).get("p50")])
+        if m.get("samples_checked"):
+            rows.append([f"Voice intake ({label}) — samples reconciled as documented",
+                         f"{m.get('samples_as_documented')}/{m.get('samples_checked')}"])
+    return rows
+
+
+def voice_section(v: dict) -> list[str]:
+    m, hw = v.get("metrics") or {}, v.get("hardware") or {}
+    asr, llm = hw.get("asr") or {}, hw.get("llm") or {}
+    rtf, asr_s, ext, total = (m.get(k) or {} for k in ("asr_rtf", "asr_s", "extract_s", "total_s"))
+    lines = [f"## Voice intake: {v.get('label')}", ""]
+    if _voice_fake(v):
+        lines += ["> **Offline harness check (fake recogniser and fake text model).** Not a measurement.", ""]
+    lines += [f"- {line}" for line in v.get("provenance") or []]
+    lines += [f"- Speech-to-text `{asr.get('model')}` ({asr.get('backend')}"
+              + (f", {asr.get('device')}" if asr.get("device") else "") + f") · text model chain head "
+              f"`{llm.get('model')}` · JSON mode {llm.get('json_mode')} · measured {str(v.get('generated_at'))[:19]}",
+              "",
+              md_table(["Voice notes", "RTF p50", "RTF p95", "ASR p50 (s)", "Extract p50 (s)", "Extract p95 (s)",
+                        "Note to fields p50 (s)", "Output tok (mean)", "As documented", "Values agree",
+                        "Repaired", "Fallback model"],
+                       [[f"{m.get('ok')}/{m.get('runs')}", rtf.get("p50"), rtf.get("p95"), asr_s.get("p50"),
+                         ext.get("p50"), ext.get("p95"), total.get("p50"),
+                         (m.get("completion_tokens") or {}).get("mean"),
+                         f"{m.get('samples_as_documented')}/{m.get('samples_checked')}", m.get("value_agreement"),
+                         m.get("repaired_runs"), m.get("failover_runs")]]), ""]
+    by_model = m.get("answers_by_model") or {}
+    if by_model:
+        per = m.get("extract_s_by_model") or {}
+        lines += ["Answers per text model (a number is credited only to the model that produced it):", "",
+                  md_table(["Model", "Answers", "Extract p50 (s)", "Extract p95 (s)"],
+                           [[k, n, (per.get(k) or {}).get("p50"), (per.get(k) or {}).get("p95")]
+                            for k, n in by_model.items()]), ""]
+    return lines
+
+
 def headline(llm: list[dict], e2e: list[dict], telemetry: list[dict]) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for b in llm:
@@ -121,25 +177,38 @@ def headline(llm: list[dict], e2e: list[dict], telemetry: list[dict]) -> list[li
     return rows
 
 
-def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[dict], lora: list[dict]) -> str:
-    sources = [d["_path"] for d in [*llm, *e2e, *telemetry, *gnn, *lora]]
+def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[dict], lora: list[dict],
+           voice: list[dict] | None = None) -> str:
+    voice = voice or []
+    sources = [d["_path"] for d in [*llm, *e2e, *telemetry, *gnn, *lora, *voice]]
     stamps = sorted({str(d.get("generated_at") or d.get("started_at") or "")[:10]
-                     for d in [*llm, *e2e, *telemetry, *gnn, *lora]} - {""})
-    hosts = sorted({str((d.get("env") or {}).get("host")) for d in [*llm, *e2e] if d.get("env")})
-    commits = sorted({str((d.get("env") or {}).get("git_commit")) for d in [*llm, *e2e] if d.get("env")})
+                     for d in [*llm, *e2e, *telemetry, *gnn, *lora, *voice]} - {""})
+    hosts = sorted({str((d.get("env") or {}).get("host")) for d in [*llm, *e2e, *voice] if d.get("env")})
+    commits = sorted({str((d.get("env") or {}).get("git_commit")) for d in [*llm, *e2e, *voice] if d.get("env")})
     gpu = _gpu_name(telemetry) or "GPU (name not captured)"
-    lines = [
-        "# Wapsi on AMD Instinct MI300X — measured results",
-        "",
-        f"- Hardware: {gpu} · hosts: {', '.join(hosts) or '—'} · commits: {', '.join(commits) or '—'}",
-        f"- Measured on: {', '.join(stamps) or '—'} · report generated {utc_now().isoformat()}",
-        "- Every number below is read from the JSON files listed at the end, produced by `editions/amd/bench/*` "
-        "runs on the droplet. Nothing is hand-entered.",
-        "",
-    ]
+    if llm or e2e or telemetry or gnn or lora:
+        lines = [
+            "# Wapsi on AMD Instinct MI300X — measured results",
+            "",
+            f"- Hardware: {gpu} · hosts: {', '.join(hosts) or '—'} · commits: {', '.join(commits) or '—'}",
+            f"- Measured on: {', '.join(stamps) or '—'} · report generated {utc_now().isoformat()}",
+            "- Every number below is read from the JSON files listed at the end, produced by `editions/amd/bench/*` "
+            "runs on the droplet. Nothing is hand-entered.",
+            "",
+        ]
+    else:  # voice benchmarks only: they say themselves where each model ran (no droplet claim in the header)
+        lines = [
+            "# Wapsi on AMD — voice intake results",
+            "",
+            f"- Client hosts: {', '.join(hosts) or '—'} · commits: {', '.join(commits) or '—'}",
+            f"- Measured on: {', '.join(stamps) or '—'} · report generated {utc_now().isoformat()}",
+            "- Every number below is read from the JSON files listed at the end, produced by "
+            "`editions/amd/bench/voice_bench.py`. Nothing is hand-entered. Each section states where its models ran.",
+            "",
+        ]
     if any(str((e.get("model") or {}).get("llm") or "").startswith("fake-llm") for e in e2e):
         lines += ["> **Contains an offline harness check (FakeLLM, CPU).** Those rows are not GPU measurements.", ""]
-    head = headline(llm, e2e, telemetry)
+    head = headline(llm, e2e, telemetry) + voice_headline(voice)
     if head:
         lines += ["## Headline", "", md_table(["Metric", "Value"], head), ""]
     for b in llm:
@@ -190,6 +259,8 @@ def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[di
                       md_table(["GPU", "Owner", "Peak VRAM (GB)", "Processes"],
                                [[p.get("gpu"), p.get("owner"), (p.get("vram_mb_peak") or 0) / 1024,
                                  ", ".join(p.get("process_names") or [])] for p in t["processes"]], digits=1), ""]
+    for v in voice:
+        lines += voice_section(v)
     for title, docs in (("GNN (GraphSAGE on ROCm)", gnn), ("LoRA fine-tune (Gemma 4, merged)", lora)):
         for d in docs:
             body = d.get("metrics") if isinstance(d.get("metrics"), dict) else d
@@ -198,7 +269,8 @@ def render(llm: list[dict], e2e: list[dict], telemetry: list[dict], gnn: list[di
     lines += ["## Sources", ""] + [f"- `{s}`" for s in sources] + [
         "", "## Reproduce", "",
         "See `editions/amd/RUNBOOK.md` (bench section): `gpu_telemetry.py` on the host, `llm_bench.py` against the "
-        "vLLM endpoint, `e2e_bench.py` over the golden cases, then this report.", ""]
+        "vLLM endpoint, `e2e_bench.py` over the golden cases, `voice_bench.py` for voice intake, then this report.",
+        ""]
     return "\n".join(lines)
 
 
@@ -210,17 +282,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--telemetry", nargs="*", default=[])
     ap.add_argument("--gnn", nargs="*", default=[])
     ap.add_argument("--lora", nargs="*", default=[])
+    ap.add_argument("--voice", nargs="*", default=[], help="voice_bench.py results")
     ap.add_argument("--out", default=None, help="default <results-dir>/AMD_RESULTS.md")
     args = ap.parse_args(argv)
     files: dict[str, list[Path]] = {k: [Path(p) for p in getattr(args, k)] for k in
-                                    ("llm_bench", "e2e", "telemetry", "gnn", "lora")}
+                                    ("llm_bench", "e2e", "telemetry", "gnn", "lora", "voice")}
     if args.results_dir:
         for k, v in discover(Path(args.results_dir)).items():
             files[k] += [p for p in v if p not in files[k]]
     if not any(files.values()):
         ap.error("no inputs: pass --results-dir or individual JSON files")
     docs = {k: [load(p) for p in v] for k, v in files.items()}
-    md = render(docs["llm_bench"], docs["e2e"], docs["telemetry"], docs["gnn"], docs["lora"])
+    md = render(docs["llm_bench"], docs["e2e"], docs["telemetry"], docs["gnn"], docs["lora"], docs["voice"])
     out = Path(args.out) if args.out else Path(args.results_dir or ".") / "AMD_RESULTS.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8", newline="\n")

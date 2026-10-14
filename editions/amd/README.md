@@ -90,7 +90,8 @@ droplet `bench/gpu_telemetry.py` reads `amd-smi` on the host.
 | `serving/start_llm.sh` | Starts vLLM with one of four profiles (`gemma4-merged`, `gemma4-base`, `qwen-fallback`, `verifier`): in a container, with `docker run`, or without Docker through `python -m vllm.entrypoints.openai.api_server` (`python` mode, bound to 127.0.0.1). It adds the ROCm flags and `--attention-backend TRITON_ATTN` for Gemma 4. `print` shows the commands without running them. |
 | `serving/pull_and_pin.sh`, `serving/smoke_test.py` | Pins each image by digest (refuses `:latest`); checks `/v1/models`, one completion, then one showcase case through the pipeline. |
 | `app/` | The app container. `api.py` is the FastAPI. `services.py` builds the adapters: `OpenAICompatLLM` pointed at the endpoint, `ParquetLedger`, `FileCaseStore`, `GnnHttpScorer`, `LLMJudgeGuard`. `ui_app.py` starts the shared Streamlit UI. `Dockerfile` builds a non-root image. |
-| `bench/` | `llm_bench.py` (streaming TTFT, tokens/s, concurrency sweep; `--rpm` for a rate-limited endpoint), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case; `--endpoint` for the metered client), `report.py`. |
+| `bench/` | `llm_bench.py` (streaming TTFT, tokens/s, concurrency sweep; `--rpm` for a rate-limited endpoint), `gpu_telemetry.py` (amd-smi or rocm-smi, memory per container), `e2e_bench.py` (golden cases, cases/hour, cost per case; `--endpoint` for the metered client), `voice_bench.py` (voice intake: speech-to-text real-time factor, extraction latency per model, samples reconciled as documented), `report.py` (writes `AMD_RESULTS.md`). |
+| `asr/` | `server.py`: Whisper on the AMD GPU behind an OpenAI-compatible `POST /v1/audio/transcriptions` (transformers on torch-ROCm; runs on the droplet host or in a GPU notebook, no Docker needed). Voice intake then runs on open models end to end: Whisper transcribes, the `llm` service translates and extracts the fields. See `docs/voice-intake.md`. |
 | `gnn/`, `lora/` | GraphSAGE training and scoring service, and the Gemma 4 LoRA fine-tune and merge. Their own READMEs. |
 
 ## Run the demo locally (no GPU, no key, no model downloads)
@@ -131,6 +132,10 @@ Everything is set through environment variables.
   JSON schema, `json_schema` for your own vLLM). Endpoint mode adds `WAPSI_JUDGE_MODEL`, `WAPSI_LLM_RPM`,
   `WAPSI_LLM_MAX_CONCURRENCY`, `WAPSI_LLM_CACHE_DIR`, `WAPSI_ALLOW_MODEL_FALLBACK`; the names are in
   [`kickoff/endpoint.env.example`](kickoff/endpoint.env.example).
+- **Voice intake**: `WAPSI_VOICE_BACKEND` (`auto`, `open`, `gemini`, `fake`), `WAPSI_ASR_BASE_URL`,
+  `WAPSI_ASR_API_KEY`, `WAPSI_ASR_MODEL` (an OpenAI-compatible transcription endpoint; without one the open path
+  uses local Whisper through transformers). Field extraction and translation go to the model endpoint above. See
+  [`docs/voice-intake.md`](../../docs/voice-intake.md).
 - **A GPU box**: `WAPSI_BASE_MODEL`, `WAPSI_VERIFIER_MODEL_ID`, `WAPSI_LORA_CONFIG`, `VLLM_GPU_UTIL`,
   `VERIFIER_GPU_UTIL`, `WAPSI_VERIFIER_BASE_URL` (switches on the judge), `WAPSI_GNN_URL` (switches on the GNN); see
   `.env.example` and `app/settings.py`.

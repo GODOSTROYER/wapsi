@@ -1,0 +1,380 @@
+{
+  "kind": "voice_bench",
+  "schema_version": 1,
+  "generated_at": "2026-10-14T01:08:00.813554+00:00",
+  "settings": {
+    "asr": "scripts",
+    "repeat": 1,
+    "min_interval_s": 5.0,
+    "items": [
+      "meera-impersonation",
+      "arjun-kyc-two-payments",
+      "fatima-courier-injection",
+      "swati-task-scam",
+      "amit-courier-two-payments",
+      "kavitha-courier-injection"
+    ],
+    "fake": false
+  },
+  "label": "sample scripts (stand-in) + DeepSeek-V4-Flash on AMD",
+  "hardware": {
+    "asr": {
+      "model": "sample scripts",
+      "backend": "fake",
+      "on_amd": false
+    },
+    "llm": {
+      "model": "Gemma-4-31B-IT",
+      "served_by": "AMD Token Factory",
+      "on_amd": true,
+      "json_mode": "json_object",
+      "answered": {
+        "DeepSeek-V4-Flash": 6
+      }
+    }
+  },
+  "provenance": [
+    "Speech-to-text: stand-in (the samples' scripts were used as transcripts). No speech model ran, so there is no real-time factor in this run.",
+    "Translation and field extraction: DeepSeek-V4-Flash (6 answers), served by the AMD Token Factory (AMD GPUs on the provider side). Latency includes the network; this is not an MI300X droplet benchmark.",
+    "The first model in the chain is Gemma-4-31B-IT; where another model answered, the first one failed its health probe or returned unusable output and was rejected (see models_tried)."
+  ],
+  "env": {
+    "host": "not recorded",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.14.2",
+    "git_commit": "1d500f6"
+  },
+  "metrics": {
+    "runs": 6,
+    "ok": 6,
+    "errors": 0,
+    "audio_s_total": 169.77,
+    "asr_rtf": {
+      "n": 0,
+      "mean": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "min": null,
+      "max": null
+    },
+    "asr_s": {
+      "n": 0,
+      "mean": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "min": null,
+      "max": null
+    },
+    "extract_s": {
+      "n": 6,
+      "mean": 25.7971,
+      "p50": 26.3458,
+      "p95": 31.934,
+      "p99": 32.9432,
+      "min": 18.0747,
+      "max": 33.1955
+    },
+    "total_s": {
+      "n": 6,
+      "mean": 25.7971,
+      "p50": 26.3458,
+      "p95": 31.934,
+      "p99": 32.9432,
+      "min": 18.0747,
+      "max": 33.1955
+    },
+    "prompt_tokens": {
+      "n": 6,
+      "mean": 2272.2,
+      "p50": 2270.5,
+      "p95": 2287.8,
+      "p99": 2287.9,
+      "min": 2254.0,
+      "max": 2288.0
+    },
+    "completion_tokens": {
+      "n": 6,
+      "mean": 432.2,
+      "p50": 395.5,
+      "p95": 542.8,
+      "p99": 544.5,
+      "min": 356.0,
+      "max": 545.0
+    },
+    "cost_usd_total": 0.00179169,
+    "llm_cached_runs": 0,
+    "repaired_runs": 1,
+    "retried_runs": 0,
+    "failover_runs": 6,
+    "answers_by_model": {
+      "DeepSeek-V4-Flash": 6
+    },
+    "extract_s_by_model": {
+      "DeepSeek-V4-Flash": {
+        "n": 6,
+        "mean": 25.7971,
+        "p50": 26.3458,
+        "p95": 31.934,
+        "p99": 32.9432,
+        "min": 18.0747,
+        "max": 33.1955
+      }
+    },
+    "samples_as_documented": 5,
+    "samples_checked": 6,
+    "value_agreement": 0.9167
+  },
+  "runs": [
+    {
+      "id": "meera-impersonation",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 30.93,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 28.1494,
+      "llm_cached": false,
+      "total_s": 28.1494,
+      "prompt_tokens": 2288,
+      "completion_tokens": 365,
+      "cost_usd": 0.00042252,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "31009260000101"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": false,
+      "segments": 8,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "arjun-kyc-two-payments",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 30.83,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 26.1023,
+      "llm_cached": false,
+      "total_s": 26.1023,
+      "prompt_tokens": 2287,
+      "completion_tokens": 536,
+      "cost_usd": 0.00018927,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "31109260000102"
+      ],
+      "counts": {
+        "MATCHED": 4,
+        "MISMATCH": 4,
+        "NOT_FOUND": 1
+      },
+      "injection_flagged": false,
+      "segments": 7,
+      "as_documented": false,
+      "values_agree": 6,
+      "values_compared": 10,
+      "differences": [
+        "victim_name: got 'Ramesh', expected 'Arjun Nair'",
+        "date_time: got '', expected '2026-09-11T15:00:00+05:30'",
+        "payment_mode: got '', expected 'IMPS'",
+        "amounts: got [10000.0, 10000.0, 110000.0], expected [10000.0, 100000.0, 110000.0]"
+      ],
+      "repeat": 0
+    },
+    {
+      "id": "fatima-courier-injection",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 26.75,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 18.0747,
+      "llm_cached": false,
+      "total_s": 18.0747,
+      "prompt_tokens": 2264,
+      "completion_tokens": 419,
+      "cost_usd": 0.00015329,
+      "attempts": 1,
+      "repaired": true,
+      "fixes": [
+        "fields.date_time: confidence missing, set to 0.5"
+      ],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "31109260000103"
+      ],
+      "counts": {
+        "MATCHED": 8,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": true,
+      "segments": 5,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "swati-task-scam",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 26.29,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 22.6715,
+      "llm_cached": false,
+      "total_s": 22.6715,
+      "prompt_tokens": 2263,
+      "completion_tokens": 372,
+      "cost_usd": 0.00042098,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "20508260078289"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": false,
+      "segments": 5,
+      "as_documented": true,
+      "values_agree": 9,
+      "values_compared": 10,
+      "differences": [
+        "beneficiary: got 'HB012494695604', expected 'HB01-2494695604'"
+      ],
+      "repeat": 0
+    },
+    {
+      "id": "amit-courier-two-payments",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 27.97,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 26.5894,
+      "llm_cached": false,
+      "total_s": 26.5894,
+      "prompt_tokens": 2277,
+      "completion_tokens": 545,
+      "cost_usd": 0.00019039,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "20508260078290"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 1,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": false,
+      "segments": 7,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "kavitha-courier-injection",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 27.0,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 33.1955,
+      "llm_cached": false,
+      "total_s": 33.1955,
+      "prompt_tokens": 2254,
+      "completion_tokens": 356,
+      "cost_usd": 0.00041524,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "DeepSeek-V4-Flash",
+      "models_tried": [
+        "Gemma-4-31B-IT: failed its health check, skipped",
+        "DeepSeek-V4-Flash: answered"
+      ],
+      "failover": true,
+      "matched_ncrp_ids": [
+        "11208260078296"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": true,
+      "segments": 6,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    }
+  ]
+}

@@ -1,0 +1,372 @@
+{
+  "kind": "voice_bench",
+  "schema_version": 1,
+  "generated_at": "2026-10-14T01:36:47.153073+00:00",
+  "settings": {
+    "asr": "scripts",
+    "repeat": 1,
+    "min_interval_s": 5.0,
+    "items": [
+      "meera-impersonation",
+      "arjun-kyc-two-payments",
+      "fatima-courier-injection",
+      "swati-task-scam",
+      "amit-courier-two-payments",
+      "kavitha-courier-injection"
+    ],
+    "fake": false
+  },
+  "label": "sample scripts (stand-in) + Gemma 4 31B on AMD",
+  "hardware": {
+    "asr": {
+      "model": "sample scripts",
+      "backend": "fake",
+      "on_amd": false
+    },
+    "llm": {
+      "model": "Gemma-4-31B-IT",
+      "served_by": "AMD Token Factory",
+      "on_amd": true,
+      "json_mode": "json_object",
+      "answered": {
+        "Gemma-4-31B-IT": 6
+      }
+    }
+  },
+  "provenance": [
+    "Speech-to-text: stand-in (the samples' scripts were used as transcripts). No speech model ran, so there is no real-time factor in this run.",
+    "Translation and field extraction: Gemma-4-31B-IT (6 answers), served by the AMD Token Factory (AMD GPUs on the provider side). Latency includes the network; this is not an MI300X droplet benchmark."
+  ],
+  "env": {
+    "host": "not recorded",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.14.2",
+    "git_commit": "fb43b54"
+  },
+  "metrics": {
+    "runs": 6,
+    "ok": 6,
+    "errors": 0,
+    "audio_s_total": 169.77,
+    "asr_rtf": {
+      "n": 0,
+      "mean": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "min": null,
+      "max": null
+    },
+    "asr_s": {
+      "n": 0,
+      "mean": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "min": null,
+      "max": null
+    },
+    "extract_s": {
+      "n": 6,
+      "mean": 8.8977,
+      "p50": 7.4984,
+      "p95": 14.0606,
+      "p99": 15.2562,
+      "min": 6.6191,
+      "max": 15.5551
+    },
+    "total_s": {
+      "n": 6,
+      "mean": 8.8977,
+      "p50": 7.4984,
+      "p95": 14.0606,
+      "p99": 15.2562,
+      "min": 6.6191,
+      "max": 15.5551
+    },
+    "prompt_tokens": {
+      "n": 6,
+      "mean": 2348.5,
+      "p50": 2348.0,
+      "p95": 2361.8,
+      "p99": 2361.9,
+      "min": 2335.0,
+      "max": 2362.0
+    },
+    "completion_tokens": {
+      "n": 6,
+      "mean": 384.0,
+      "p50": 370.5,
+      "p95": 440.8,
+      "p99": 443.4,
+      "min": 339.0,
+      "max": 444.0
+    },
+    "cost_usd_total": 0.00020362,
+    "llm_cached_runs": 0,
+    "repaired_runs": 0,
+    "retried_runs": 0,
+    "failover_runs": 0,
+    "answers_by_model": {
+      "Gemma-4-31B-IT": 6
+    },
+    "extract_s_by_model": {
+      "Gemma-4-31B-IT": {
+        "n": 6,
+        "mean": 8.8977,
+        "p50": 7.4984,
+        "p95": 14.0606,
+        "p99": 15.2562,
+        "min": 6.6191,
+        "max": 15.5551
+      }
+    },
+    "samples_as_documented": 4,
+    "samples_checked": 6,
+    "value_agreement": 0.9833
+  },
+  "runs": [
+    {
+      "id": "meera-impersonation",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 30.93,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 9.5772,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:36:56.746663+00:00",
+      "total_s": 9.5772,
+      "prompt_tokens": 2361,
+      "completion_tokens": 389,
+      "cost_usd": 3.591e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "31009260000101"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": true,
+      "segments": 8,
+      "as_documented": false,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "arjun-kyc-two-payments",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 30.83,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 15.5551,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:37:17.302031+00:00",
+      "total_s": 15.5551,
+      "prompt_tokens": 2362,
+      "completion_tokens": 444,
+      "cost_usd": 3.805e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "31109260000102"
+      ],
+      "counts": {
+        "MATCHED": 8,
+        "MISMATCH": 2,
+        "NOT_FOUND": 1
+      },
+      "injection_flagged": true,
+      "segments": 7,
+      "as_documented": false,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "fatima-courier-injection",
+      "world": "showcase",
+      "ok": true,
+      "audio_s": 26.75,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 6.6191,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:37:28.921419+00:00",
+      "total_s": 6.6191,
+      "prompt_tokens": 2337,
+      "completion_tokens": 339,
+      "cost_usd": 3.157e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "31109260000103"
+      ],
+      "counts": {
+        "MATCHED": 8,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": true,
+      "segments": 5,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "swati-task-scam",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 26.29,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 6.9964,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:37:41.564532+00:00",
+      "total_s": 6.9964,
+      "prompt_tokens": 2342,
+      "completion_tokens": 352,
+      "cost_usd": 3.091e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "20508260078289"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": false,
+      "segments": 5,
+      "as_documented": true,
+      "values_agree": 9,
+      "values_compared": 10,
+      "differences": [
+        "beneficiary: got 'HB012494695604', expected 'HB01-2494695604'"
+      ],
+      "repeat": 0
+    },
+    {
+      "id": "amit-courier-two-payments",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 27.97,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 8.0004,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:37:54.565597+00:00",
+      "total_s": 8.0004,
+      "prompt_tokens": 2354,
+      "completion_tokens": 431,
+      "cost_usd": 3.686e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "20508260078290"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 1,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": false,
+      "segments": 7,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    },
+    {
+      "id": "kavitha-courier-injection",
+      "world": "demo",
+      "ok": true,
+      "audio_s": 27.0,
+      "asr_s": 0.0,
+      "rtf": null,
+      "asr_language": "hi",
+      "extract_s": 6.6379,
+      "llm_cached": false,
+      "llm_measured_at": "2026-10-14T01:38:06.203600+00:00",
+      "total_s": 6.6379,
+      "prompt_tokens": 2335,
+      "completion_tokens": 349,
+      "cost_usd": 3.032e-05,
+      "attempts": 1,
+      "repaired": false,
+      "fixes": [],
+      "json_mode": "json_object",
+      "structured_by": "Gemma-4-31B-IT",
+      "models_tried": [
+        "Gemma-4-31B-IT: answered"
+      ],
+      "failover": false,
+      "matched_ncrp_ids": [
+        "11208260078296"
+      ],
+      "counts": {
+        "MATCHED": 9,
+        "MISMATCH": 0,
+        "NOT_FOUND": 0
+      },
+      "injection_flagged": true,
+      "segments": 6,
+      "as_documented": true,
+      "values_agree": 10,
+      "values_compared": 10,
+      "differences": [],
+      "repeat": 0
+    }
+  ]
+}

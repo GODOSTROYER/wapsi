@@ -253,6 +253,28 @@ parser until `uv run pytest tests/amd -k telemetry` passes.
 start a stage at 90 % unless you pass `--ignore-budget`. Endpoint mode has no GPU-hour bill; a notebook is metered
 only when `WAPSI_GPU_HOUR_USD` is set.
 
+## Voice intake on open models (any mode)
+
+A voice note is read by an open speech recogniser (Whisper) and an open text model on AMD fills the fields; the
+ledger reconciliation is the same code as everywhere else. See [`docs/voice-intake.md`](../../docs/voice-intake.md).
+
+```bash
+# the text model alone (the bundled samples' scripts stand in for the recogniser): 6 calls, 4 s apart
+uv run python -m editions.amd.bench.voice_bench --asr scripts --out editions/amd/bench/results/voice-$(date -u +%Y%m%d)
+
+# the whole open path with local Whisper (uv sync --extra asr; CPU works for 30 s clips, a ROCm GPU is faster)
+WAPSI_ASR_DEVICE=cuda uv run python -m editions.amd.bench.voice_bench --asr local --repeat 3   --out editions/amd/bench/results/voice-$(date -u +%Y%m%d)
+
+# Whisper as a service on a GPU box (OpenAI-compatible /v1/audio/transcriptions), then point the app at it
+uv run uvicorn editions.amd.asr.server:app --host 127.0.0.1 --port 8002     # uv sync --extra asr --extra amd-app
+export WAPSI_ASR_BASE_URL=http://127.0.0.1:8002/v1 WAPSI_ASR_ON_AMD=1 WAPSI_VOICE_BACKEND=open
+
+uv run python -m editions.amd.bench.voice_bench --fake                 # offline harness check, measures no model
+```
+
+Every result records where the recogniser ran and which model answered. A number from the Token Factory is
+AMD-served but is not an MI300X benchmark; a CPU number is a rehearsal number.
+
 ## Demo URL during judging
 
 Deploy **demo mode** (`app-demo`: CPU, `FakeLLM`, no GPU, no key) on any small host, or run the app against the
