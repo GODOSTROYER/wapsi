@@ -1,171 +1,171 @@
 1
-00:00:00,000 --> 00:00:04,240
+00:00:00,000 --> 00:00:03,840
 A kirana shop sells ₹1,200 of groceries to a stranger.
 
 2
-00:00:04,500 --> 00:00:09,700
+00:00:04,100 --> 00:00:08,300
 The stranger was spending stolen money. So the bank freezes the shop's whole account.
 
 3
-00:00:09,967 --> 00:00:18,886
+00:00:08,567 --> 00:00:17,007
 Apr 2021 to Nov 2025: India held ₹7,647 Cr for cyber-fraud victims.
 
 4
-00:00:19,167 --> 00:00:24,221
+00:00:17,267 --> 00:00:21,387
 It restored ₹167 Cr. 2.18%.
 
 5
-00:00:24,500 --> 00:00:28,772
+00:00:21,667 --> 00:00:25,658
 Money goes back only when someone proves whose money sits in which account.
 
 6
-00:00:28,772 --> 00:00:30,879
+00:00:25,658 --> 00:00:27,627
 Freezing everything skips that proof.
 
 7
-00:00:31,600 --> 00:00:36,061
+00:00:28,333 --> 00:00:32,548
 Wapsi traces the money, holds only the tainted amount,
 
 8
-00:00:36,061 --> 00:00:43,414
+00:00:32,548 --> 00:00:39,493
 drafts the STR and restoration packet, and verifies every number before a human approves.
 
 9
-00:00:43,667 --> 00:00:47,886
+00:00:39,767 --> 00:00:43,447
 The honest shop keeps trading. All data here is synthetic.
 
 10
-00:00:48,600 --> 00:00:54,059
+00:00:44,167 --> 00:00:48,847
 The Inbox: hold notices, ranked by the money still recoverable.
 
 11
-00:00:54,333 --> 00:01:00,593
+00:00:49,100 --> 00:00:54,340
 One complaint: ₹4,80,000 stolen, moved through four layers of accounts.
 
 12
-00:01:00,867 --> 00:01:07,071
+00:00:54,600 --> 00:01:00,520
 Wapsi traces every hop and splits mixed money per victim, as the SOP prescribes.
 
 13
-00:01:07,333 --> 00:01:15,008
+00:01:00,800 --> 00:01:06,760
 The landlord paid rent: likely innocent. ₹4,800 held, not his whole account.
 
 14
-00:01:15,267 --> 00:01:26,376
+00:01:07,033 --> 00:01:16,753
 The kirana shop delivered its goods: no hold. The aggregator pool: ₹19,200 held out of ₹5,00,20,000.
 
 15
-00:01:26,633 --> 00:01:37,368
+00:01:17,033 --> 00:01:25,593
 ₹1,42,848 held in 5 accounts, instead of ₹5,03,50,000 frozen in 6.
 
 16
-00:01:37,633 --> 00:01:44,738
+00:01:25,867 --> 00:01:32,467
 Gemma 4 writes only the sentences; every amount, account and date is filled from the ledger.
 
 17
-00:01:45,000 --> 00:01:50,839
+00:01:32,733 --> 00:01:38,573
 A verifier recomputes every number and checks every citation. Every draft here passes.
 
 18
-00:01:51,567 --> 00:01:56,156
+00:01:39,300 --> 00:01:42,980
 Complaints also arrive as voice notes. This one is in Hinglish.
 
 19
-00:01:56,433 --> 00:02:00,273
+00:01:43,233 --> 00:01:47,233
 Wapsi extracts the fields and checks every claim against the ledger.
 
 20
-00:02:00,533 --> 00:02:06,343
+00:01:47,500 --> 00:01:53,020
 The note hides an order to release the hold. It is quoted to the officer, and the hold stays.
 
 21
-00:02:06,600 --> 00:02:09,435
+00:01:53,300 --> 00:01:55,928
 On screen: the sample's script.
 
 22
-00:02:09,435 --> 00:02:16,569
+00:01:55,928 --> 00:02:02,540
 On the MI300X, Whisper large-v3-turbo transcribed this 26.75 s note in 0.80 s.
 
 23
-00:02:16,833 --> 00:02:22,589
+00:02:02,800 --> 00:02:08,008
 The agent runs on Google's ADK, with Gemma 4 calling Wapsi's tools natively.
 
 24
-00:02:22,589 --> 00:02:25,543
+00:02:08,008 --> 00:02:10,680
 Every call is recorded with its checks.
 
 25
-00:02:25,800 --> 00:02:32,479
+00:02:10,933 --> 00:02:17,133
 An analyst's approval is refused: only a supervisor can approve. An injected instruction is flagged.
 
 26
-00:02:32,733 --> 00:02:36,878
+00:02:17,400 --> 00:02:21,800
 Every step is sealed in a hash-chained, tamper-evident audit log.
 
 27
-00:02:37,600 --> 00:02:42,801
+00:02:22,533 --> 00:02:27,146
 Measured 14 Oct 2026 on AMD Instinct MI300X (AMD AI Notebook).
 
 28
-00:02:42,801 --> 00:02:45,989
+00:02:27,146 --> 00:02:29,973
 The golden set ran on a second MI300X.
 
 29
-00:02:46,267 --> 00:02:53,241
+00:02:30,233 --> 00:02:36,593
 Output throughput: 55 tok/s at concurrency 1, up to 699 tok/s at concurrency 64.
 
 30
-00:02:53,500 --> 00:03:00,634
+00:02:36,867 --> 00:02:43,307
 Real drafting prompts: 773 tok/s (concurrency 32), median first token 0.12 s.
 
 31
-00:03:00,900 --> 00:03:10,124
+00:02:43,567 --> 00:02:51,887
 1,590 cases an hour · $1.25 per 1,000 cases at the $1.99/GPU-hour list price.
 
 32
-00:03:10,400 --> 00:03:17,849
+00:02:52,167 --> 00:02:58,727
 39 golden cases: every hold exact, every draft verified, 0 injection leaks.
 
 33
-00:03:18,100 --> 00:03:26,084
+00:02:59,000 --> 00:03:05,760
 Test world: whole-account freezes lock ₹35.26 Cr. Wapsi holds ₹29.19 L.
 
 34
-00:03:26,367 --> 00:03:34,401
+00:03:06,033 --> 00:03:13,513
 Asked for the plan in free text, raw Gemma 4 gets an amount wrong in 48.7% of cases.
 
 35
-00:03:34,667 --> 00:03:44,641
+00:03:13,767 --> 00:03:21,967
 Like for like: raw STRs with a wrong amount 4/20. Wapsi-bound: 0/17, and 0 of all 155 drafts.
 
 36
-00:03:44,900 --> 00:03:50,932
+00:03:22,233 --> 00:03:27,858
 GNN on ROCm: AUC 1.0 on a saturated world.
 
 37
-00:03:50,932 --> 00:04:04,719
+00:03:27,858 --> 00:03:40,713
 Harder world: 92% dispositions, level with the rule-based scorer; innocent holders 87.5% vs 69%.
 
 38
-00:04:05,433 --> 00:04:10,518
+00:03:41,433 --> 00:03:46,153
 Gemma 4, Google's open model, writes every sentence, and never a number.
 
 39
-00:04:10,800 --> 00:04:14,988
+00:03:46,433 --> 00:03:50,619
 Google ADK runs the agent: native tool calls, a guard plugin,
 
 40
-00:04:14,988 --> 00:04:18,764
+00:03:50,619 --> 00:03:54,393
 a trace plugin sealing every call into the audit chain.
 
 41
-00:04:19,033 --> 00:04:24,628
+00:03:54,667 --> 00:03:59,867
 Open weights: a bank can serve it on its own AMD GPU, and customer data never leaves.
 
 42
-00:04:25,333 --> 00:04:29,123
+00:04:00,567 --> 00:04:03,527
 Wapsi. Hold the fraud, not the shop.
 
 43
-00:04:29,400 --> 00:04:34,460
+00:04:03,800 --> 00:04:07,600
 github.com/GODOSTROYER/wapsi

@@ -52,23 +52,87 @@ def beats() -> list[dict]:
     return out
 
 
-def tts(items: list[dict], voice: str, rate: int, force: bool) -> None:
+def tts(items: list[dict], voice: str, rate: int, force: bool, engine: str = "sapi", model: str = "") -> None:
     AUDIO.mkdir(parents=True, exist_ok=True)
     man_p = AUDIO / "manifest.json"
     man = json.loads(man_p.read_text(encoding="utf-8")) if man_p.exists() and not force else {}
     todo = []
     for b in items:
-        key = hashlib.sha1(f"{voice}|{rate}|{b['say']}".encode()).hexdigest()
+        tag = f"gemini|{model}|{voice}|{GEMINI_STYLE}" if engine == "gemini" else f"{voice}|{rate}"
+        key = hashlib.sha1(f"{tag}|{b['say']}".encode()).hexdigest()
         if man.get(b["id"]) != key or not (AUDIO / f"{b['id']}.wav").exists():
             todo.append({"id": b["id"], "say": b["say"]})
             man[b["id"]] = key
-    if todo:
+    if todo and engine == "gemini":
+        gemini_tts(todo, model, voice)
+    elif todo:
         lines = AUDIO / "lines.json"
         lines.write_text(json.dumps(todo, ensure_ascii=False, indent=1), encoding="utf-8")
         shell = shutil.which("pwsh") or shutil.which("powershell")
         run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(HERE / "tts.ps1"),
              "-Lines", str(lines), "-OutDir", str(AUDIO), "-Voice", voice, "-Rate", str(rate)])
     man_p.write_text(json.dumps(man, indent=1), encoding="utf-8")
+
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_STYLE = ("Confident narrator of a fast-moving startup product demo, Indian English accent, brisk pace, "
+                "speaking quickly but clearly, no long pauses, warm and serious, never theatrical.")
+
+
+def gemini_line(text: str, keys: list[str], start: int, model: str, voice: str) -> bytes:
+    """One line through Gemini TTS; keys are tried round robin from `start`, rotating on 429 / 5xx."""
+    import base64
+    import time
+    import urllib.error
+    import urllib.request
+
+    body = {"model": model, "response_format": {"type": "audio"},
+            "generation_config": {"speech_config": [{"voice": voice}]},
+            "input": [{"type": "user_input", "content": [{"type": "text", "text": text, "annotations": [
+                {"type": "speech_metadata", "style": GEMINI_STYLE}]}]}]}
+    data = json.dumps(body).encode()
+    last = ""
+    for attempt in range(len(keys) * 4):
+        key = keys[(start + attempt) % len(keys)]
+        req = urllib.request.Request(GEMINI_URL, data=data, method="POST",
+                                     headers={"x-goog-api-key": key, "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                out = json.loads(r.read())
+            for step in out.get("steps", []):
+                for c in step.get("content", []):
+                    if c.get("type") == "audio" and c.get("data"):
+                        return base64.b64decode(c["data"])
+            last = "no audio in the response"
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}"
+            if e.code not in (429, 500, 502, 503, 504):
+                raise SystemExit(f"Gemini TTS failed: {last} {e.read()[:200]!r}") from None
+        except (urllib.error.URLError, TimeoutError) as e:
+            last = str(e)
+        time.sleep(min(2 * (attempt // len(keys) + 1), 20))
+    raise SystemExit(f"Gemini TTS failed after retries: {last}")
+
+
+def gemini_tts(todo: list[dict], model: str, voice: str) -> None:
+    """Keys come from GEMINI_API_KEYS (comma-separated) in the environment; never printed."""
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+
+    keys = [k.strip() for k in os.environ.get("GEMINI_API_KEYS", os.environ.get("GEMINI_API_KEY", "")).split(",")
+            if k.strip()]
+    if not keys:
+        raise SystemExit("set GEMINI_API_KEYS (comma-separated) for --engine gemini")
+
+    def one(i_b: tuple[int, dict]) -> str:
+        i, b = i_b
+        wav = gemini_line(b["say"], keys, i, model, voice)
+        (AUDIO / f"{b['id']}.wav").write_bytes(wav)
+        return b["id"]
+
+    with ThreadPoolExecutor(max_workers=len(keys)) as ex:
+        for done in ex.map(one, enumerate(todo)):
+            print(f"tts {done}")
 
 
 def wav_seconds(p: Path) -> float:
@@ -161,10 +225,18 @@ def main() -> int:
     ap.add_argument("--voice", default="Microsoft Zira Desktop")
     ap.add_argument("--rate", type=int, default=1)
     ap.add_argument("--retts", action="store_true")
+    ap.add_argument("--engine", choices=["sapi", "gemini"], default="sapi",
+                    help="gemini: Gemini TTS, keys from GEMINI_API_KEYS, used round robin")
+    ap.add_argument("--model", default="gemini-3.8-flash-tts")
+    ap.add_argument("--only", help="comma-separated beat ids: synthesise just these lines and stop (voice test)")
     a = ap.parse_args()
 
     items = beats()
-    tts(items, a.voice, a.rate, a.retts)
+    if a.only:
+        tts([b for b in items if b["id"] in a.only.split(",")], a.voice, a.rate, True, a.engine, a.model)
+        return 0
+    tts(items, a.voice, a.rate, a.retts, a.engine, a.model)
+    a.voice = f"Gemini TTS {a.model}, voice {a.voice}" if a.engine == "gemini" else f"Windows SAPI {a.voice}"
     BUILD.mkdir(parents=True, exist_ok=True)
 
     t = 0.0
@@ -222,8 +294,8 @@ def mmss(s: float) -> str:
 def write_script(timeline: list, total: float, voice: str) -> None:
     L = ["# Wapsi · AMD ACT III demo video: final narration (draft cut)", "",
          f"Generated by `scripts/build_video.py` from `scripts/beats.py`. Total **{mmss(total)}** "
-         f"({total:.1f} s; limit 5:00). Voice: Windows SAPI `{voice}` (draft voice; replace with a human read "
-         "before submission if possible). Timings are measured from the synthesised audio.", "",
+         f"({total:.1f} s; limit 5:00). Voice: {voice} (synthesised). "
+         "Timings are measured from the synthesised audio.", "",
          "Every figure carries its place and date on screen. MI300X figures: measured 14 Oct 2026 on an AMD "
          "Instinct MI300X (AMD AI Notebook, ROCm 7.14, Gemma-4-31B-IT on vLLM 0.23). The app walkthrough is the "
          "local Streamlit app in recorded mode (prose recorded from Gemma-4-31B-IT on AMD Token Factory, "
