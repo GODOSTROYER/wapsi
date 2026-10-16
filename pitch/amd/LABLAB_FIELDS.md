@@ -48,8 +48,7 @@ How the entry meets each point of the track brief: [`../TRACK_FIT.md`](../TRACK_
 Partner prizes: the event page says a project can qualify for the main challenge prize, one partner prize, or
 both. Our partner prize is **Google** (Gemma 4 and the Agent Development Kit; see
 [`../GOOGLE_PRIZE.md`](../GOOGLE_PRIZE.md)). The Evolus track is prepared as an alternative
-([`../EVOLUS_TRACK.md`](../EVOLUS_TRACK.md)). **TODO (user):** confirm on the submission form whether one or two
-partner prizes can be selected, and pick accordingly.
+([`../EVOLUS_TRACK.md`](../EVOLUS_TRACK.md)). Selected: the **Google** partner prize. The Evolus track is not entered.
 
 ## Technologies and tags
 
@@ -82,8 +81,8 @@ the notebook is not the droplet.
 | Demo video (limit 5:00) | **TODO (user):** upload link. Draft cut (4:35, synthetic voice) is built locally by [`video/scripts/build_video.py`](video/scripts/build_video.py); narration and sources per beat in [`video/SCRIPT_FINAL.md`](video/SCRIPT_FINAL.md), captions in [`video/captions.srt`](video/captions.srt) |
 | Pitch presentation | [`deck/WAPSI_DECK.pdf`](deck/WAPSI_DECK.pdf) (12 slides, 16:9; rebuilt by [`deck/build_deck.py`](deck/build_deck.py) from [`deck/deck.html`](deck/deck.html)) |
 | Public GitHub repository (MIT) | https://github.com/GODOSTROYER/wapsi; it must contain the tag `amd-baseline`. Push explicit refs only: `git push origin main amd-baseline`. Never `git push --tags` or `--all`: local refs from earlier work (another event's tag and branch) must stay off the public repository |
-| Demo application platform | **TODO (user):** where the app is hosted (container host or the AMD instance) |
-| Application URL | **TODO (user):** the public URL; the page states that all data is synthetic |
+| Demo application platform | Streamlit Community Cloud (the app); Hugging Face Spaces (static showcase page with the video) |
+| Application URL | https://wapsi-arnavbule.streamlit.app/ (showcase: https://godostroyer-wapsi.static.hf.space/); the app states that all data is synthetic |
 | Cover image | [`cover/wapsi_cover_1920x1080.png`](cover/wapsi_cover_1920x1080.png) (also 1280x720 and a 1200x630 social card; rebuilt by [`cover/render.py`](cover/render.py)) |
 
 ## Originality statement (paste into the long description's last line or the README section it links to)

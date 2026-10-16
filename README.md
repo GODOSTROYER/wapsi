@@ -11,6 +11,9 @@ comes from data.
 > the evidence is in [pitch/TRACK_FIT.md](pitch/TRACK_FIT.md). Every number in the pitch is re-checked by
 > `uv run python pitch/check_numbers.py` ([pitch/NUMBERS.md](pitch/NUMBERS.md)).
 
+**Try it:** live app https://wapsi-arnavbule.streamlit.app/ (Streamlit Community Cloud, recorded mode, synthetic data) · showcase page with the
+demo video https://godostroyer-wapsi.static.hf.space/ (Hugging Face Space) · slides [pitch/amd/deck/WAPSI_DECK.pdf](pitch/amd/deck/WAPSI_DECK.pdf).
+
 *Wapsi* means "return". It follows the MHA/I4C *SOP for NCRP-CFCFRMS, Custody, Restoration of money and Grievance
 Redressal* (02.01.2026). All banking data in this repository is synthetic.
 

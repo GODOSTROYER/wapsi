@@ -1,13 +1,20 @@
 # Hosting the public demo (the "demo application URL")
 
+> **Deployed 2026-10-17.** The app runs on Streamlit Community Cloud at <https://wapsi-arnavbule.streamlit.app/>
+> (main file `deploy/streamlit_cloud/streamlit_app.py`, no secrets: recorded mode, labelled). Hugging Face refused
+> a Docker Space on the free tier (HTTP 402: Docker and Gradio Spaces need PRO), so the Space
+> <https://huggingface.co/spaces/GODOSTROYER/wapsi> is a free **static** showcase page
+> (`deploy/hf_static/`, served at <https://godostroyer-wapsi.static.hf.space/>) with the demo video and a link to
+> the app. Re-publish it with `uv run --with huggingface_hub python deploy/hf_static/publish.py` (`HF_TOKEN` set).
+
 The hackathon submission needs a public URL that stays up through judging. This page gets you one for free, with
 no credit card, in three ways. All of them serve the same thing: the shared officer app (`ui/app.py`) started by
 `deploy/demo/app.py`, with the two showcase cases and the synthetic demo world. All data is synthetic.
 
 | | Option | Card needed | Cold start | Best for |
 |---|---|---|---|---|
-| a | **Hugging Face Spaces** (Docker) | no | wakes on a visit after a long idle time | the judged URL (recommended) |
-| b | **Streamlit Community Cloud** | no | a visitor must click "wake up" after idle time | a second, independent URL |
+| a | **Hugging Face Spaces** (Docker) | needs Hugging Face PRO since 2026 (Docker and Gradio Spaces on free CPU) | wakes on a visit after a long idle time | the app, if you have PRO |
+| b | **Streamlit Community Cloud** | no | a visitor must click "wake up" after idle time | the judged URL (what we deployed) |
 | c | **Cloud Run** | yes (free trial) | none with one warm instance | if you already have the Google Cloud project |
 
 > **What was verified, and what was not (2026-10-14).** The image was built locally both from the repository
