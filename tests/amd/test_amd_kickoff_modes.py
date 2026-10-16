@@ -643,7 +643,7 @@ def test_e2e_bench_through_the_endpoint_has_no_gpu_hour_cost(tf, tmp_path, monke
     assert m["cases_ok"] == m["cases"] == 2 and m["draft_verification_pass_rate"] == 1.0
     assert m["drafts_per_hour"] > 0 and m["llm_seconds_per_case"]["n"] == 2
     assert c["usd_per_case"] is None and c["gpu_hour_usd"] is None and "placeholder" in c["note"]  # no GPU to price
-    assert c["api_usd_per_case"] == pytest.approx(ep["cost_usd"] / 2, rel=1e-6)
+    assert c["api_usd_per_case"] == round(ep["cost_usd"] / 2, 8)  # the report keeps 8 decimals
     assert c["api_inr_per_case"] == pytest.approx(c["api_usd_per_case"] * 88, rel=1e-4)
     assert ep["cache_hits"] == 0 and ep["calls"] == m["llm_calls"]  # a benchmark never reads the cache
     assert rep["settings"]["judge_endpoint"]["model"] == JUDGE and rep["model"]["guard"].startswith("rules+judge")
@@ -1060,7 +1060,8 @@ def test_fill_pitch_lists_its_slots(capsys):
     assert fill_pitch.main(["--slots"]) == 0
     out = capsys.readouterr().out
     assert "| `ep_cost_case` | API-reported cost per case in dollars | endpoint | optional: add `ep_cost_case` to " in out
-    assert "| `tf_demo_pass` |" in out and "| endpoint (Gemma only) | write `TBD(tf_demo_pass)`; listed in" in out
+    assert "| `ab_bound_wrong` |" in out and "(Gemma only) | write `TBD(ab_bound_wrong)`; listed in" in out
+    assert "| `tf_demo_pass` |" in out and "| endpoint (Gemma only) | optional: add `tf_demo_pass` to " in out
     assert "| `droplet_tokens_s` |" in out and "droplet / notebook (MI300X only)" in out
     assert "droplet / notebook / endpoint (Gemma only)" in out
     assert "| `adk_tool_calls` | (no evidence bundle carries it) | by hand, from editions.amd.app.agent_demo" in out

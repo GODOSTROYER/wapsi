@@ -149,27 +149,10 @@ EP = {"modes": ("endpoint",)}
 # The ids of pitch/NUMBERS.md "AMD measurement slots" that an evidence bundle can fill. The sentence around each
 # TBD(id) is the pitch's; the value is written so that it reads inside that sentence.
 SLOTS: tuple[Slot, ...] = (
-    Slot("tf_demo_pass", (_k("golden_draft_verification_pass_rate", RATE, "demo world, real model: drafts passing "
-                                                                         "the verifier"),
-                          _k("golden_cases", COUNT, "golden cases evaluated with the real model")),
-         "{k0} ({k1} cases)", **TF, shows="demo world, drafts passing the verifier with Gemma 4 writing the prose "
-                                         "(and how many golden cases the run covered)"),
-    Slot("tf_demo_fallback", (_k("golden_llm_prose_fallback_rate", RATE, "demo world, real model: share of drafts "
-                                                                        "whose prose was replaced by fixed text"),),
-         "{k0}", **TF, shows="demo world, share of drafts whose model prose was rejected and replaced by fixed text"),
-    Slot("tf_demo_hold_exact", (_k("golden_hold_exact_match_rate", RATE, "demo world, real model in the loop: holds "
-                                                                        "exact"),),
-         "{k0}", **TF, shows="demo world, holds exact with the real model in the loop"),
-    Slot("ab_raw_wrong", (_k("golden_llm_only_hallucination_rate", RATE, "same model without slots: share of cases "
-                                                                         "with an amount not in the case"),),
-         "{k0}", **TF, shows="raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount"),
     Slot("ab_bound_wrong", (_k("ab_bound_docs_with_wrong_amount", COUNT, "A/B: Wapsi-bound drafts with a wrong amount"),
                             _k("ab_bound_docs", COUNT, "A/B: Wapsi-bound drafts")),
          "{k0} (of {k1} drafts)", modes=ANY_RUN, gemma=True,
          shows="the same model inside Wapsi's slots and verifier: wrong amounts that reach a draft (target 0)"),
-    Slot("tf_call_latency", (_k("wapsi_prompts_e2e_p50_s_c1", SEC, "real drafting request latency p50, one request "
-                                                                   "at a time"),),
-         "{k0}", **TF, shows="median seconds per prose request, one request at a time"),
     Slot("gnn_amd_auc", (_k("gnn_hard_mule_auc", RATE, "AMD-trained GNN: mule ROC-AUC on the hard world"),),
          "{k0} ({where})", shows="GraphSAGE mule scorer trained on an AMD GPU: hard-world mule ROC-AUC, and the GPU"),
     Slot("gnn_amd_epoch", (_k("gnn_epoch_s", SEC, "GNN seconds per epoch on the AMD GPU"),), "{k0}",
@@ -191,6 +174,26 @@ SLOTS: tuple[Slot, ...] = (
 # TBD(id) where the number belongs (the sentence around it is the author's: say "through the shared trial API" for an
 # endpoint figure).
 EXTRA_SLOTS: tuple[Slot, ...] = (
+    # The demo world through the Token Factory: the pitch carries these figures filled by hand from the harness
+    # report (evals/reports/amd/demo-gemma4-tokenfactory-20261014.json), not as TBD(id) slots. A bundle can still
+    # fill them wherever TBD(id) is written; the words are "Gemma 4 on AMD (Token Factory)".
+    Slot("tf_demo_pass", (_k("golden_draft_verification_pass_rate", RATE, "demo world, real model: drafts passing "
+                                                                         "the verifier"),
+                          _k("golden_cases", COUNT, "golden cases evaluated with the real model")),
+         "{k0} ({k1} cases)", **TF, shows="demo world, drafts passing the verifier with Gemma 4 writing the prose "
+                                         "(and how many golden cases the run covered)"),
+    Slot("tf_demo_fallback", (_k("golden_llm_prose_fallback_rate", RATE, "demo world, real model: share of drafts "
+                                                                        "whose prose was replaced by fixed text"),),
+         "{k0}", **TF, shows="demo world, share of drafts whose model prose was rejected and replaced by fixed text"),
+    Slot("tf_demo_hold_exact", (_k("golden_hold_exact_match_rate", RATE, "demo world, real model in the loop: holds "
+                                                                        "exact"),),
+         "{k0}", **TF, shows="demo world, holds exact with the real model in the loop"),
+    Slot("ab_raw_wrong", (_k("golden_llm_only_hallucination_rate", RATE, "same model without slots: share of cases "
+                                                                         "with an amount not in the case"),),
+         "{k0}", **TF, shows="raw Gemma 4 asked for the hold plan in free text: share of cases with a wrong amount"),
+    Slot("tf_call_latency", (_k("wapsi_prompts_e2e_p50_s_c1", SEC, "real drafting request latency p50, one request "
+                                                                   "at a time"),),
+         "{k0}", **TF, shows="median seconds per prose request, one request at a time"),
     Slot("gpu_where", (), "{where}, {date}", GPU_KEYS,
          shows="where and when the GPU-box numbers were measured, e.g. MI300X, 2026-10-16"),
     Slot("gpu_ttft", (_k("llm_ttft_p50_s_c16", SEC, "TTFT p50 at concurrency 16"),

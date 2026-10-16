@@ -430,6 +430,9 @@ By hand: TBD(evolus_blocks).
 EXTRA_IDS = ("gpu_where", "gpu_ttft", "gpu_verifier_tps", "gpu_cost_case", "gpu_vram_peak", "gpu_lora", "gpu_gnn_hard",
              "ab_where", "ab_str_wrong")
 HAND_FILLED = "evolus_blocks"  # in fill_pitch.MANUAL_SLOTS: no bundle may ever fill it
+# Token Factory figures the real pitch now carries filled by hand from a harness report (fill_pitch.EXTRA_SLOTS); the
+# copy keeps them as TBD(id) on the deck so the endpoint fill path (Gemma-only, endpoint-only wording) stays tested
+TF_IDS = ("tf_demo_pass", "tf_demo_fallback", "tf_demo_hold_exact", "ab_raw_wrong", "tf_call_latency")
 _FILLED = re.compile(r"<!-- slot:([a-z0-9_]+) -->.*?<!-- /slot -->", re.S)
 
 
@@ -446,7 +449,8 @@ def _pitch_copy(tmp_path: Path, extra_page: str = EXTRA_PAGE, extra_ids: tuple[s
         (pitch / rel).write_text(text, encoding="utf-8", newline="\n")
     deck = pitch / "amd" / "DECK_OUTLINE.md"
     text = deck.read_text(encoding="utf-8")
-    own = [s.sid for s in fill_pitch.SLOTS if f"TBD({s.sid})" not in text]  # reworded out of the deck since
+    own = [sid for sid in (*(s.sid for s in fill_pitch.SLOTS), *TF_IDS)
+           if f"TBD({sid})" not in text]  # reworded out of the deck (or filled by hand) since
     text += "".join(f"\n{sid}: TBD({sid}).\n" for sid in own) + extra_page
     deck.write_text(text, encoding="utf-8", newline="\n")
     numbers = pitch / "NUMBERS.md"
@@ -456,7 +460,7 @@ def _pitch_copy(tmp_path: Path, extra_page: str = EXTRA_PAGE, extra_ids: tuple[s
         text = text[:start] + text[text.index(fill_pitch.END) + len(fill_pitch.END):]
     assert "| Slot |" in text and text.rstrip().splitlines()[-1].startswith("|"), "the open-slots table ends the page"
     listed = set(_checker().parse_slots(numbers))
-    wanted = [*(s.sid for s in fill_pitch.SLOTS), HAND_FILLED, *extra_ids]
+    wanted = [*(s.sid for s in fill_pitch.SLOTS), *TF_IDS, HAND_FILLED, *extra_ids]
     rows = "".join(f"| {sid} | a figure not measured yet | as measured | a results file |\n"
                    for sid in dict.fromkeys(wanted) if sid not in listed)
     numbers.write_text(text.rstrip("\n") + "\n" + rows, encoding="utf-8", newline="\n")
