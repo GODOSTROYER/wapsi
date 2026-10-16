@@ -157,7 +157,10 @@ def test_dockerfile_bakes_the_world_and_the_docs_index_and_holds_no_key():
 
 
 def test_streamlit_config_is_shipped_and_identical_in_both_places():
-    assert (ROOT / ".streamlit" / "config.toml").read_bytes() == (ROOT / "ui" / ".streamlit" / "config.toml").read_bytes()
+    root_copy = (ROOT / ".streamlit" / "config.toml").read_bytes()
+    assert root_copy == (ROOT / "ui" / ".streamlit" / "config.toml").read_bytes()
+    # Community Cloud's entry point reads the copy next to it (deploy/streamlit_cloud/streamlit_app.py)
+    assert root_copy == (ROOT / "deploy" / "streamlit_cloud" / ".streamlit" / "config.toml").read_bytes()
 
 
 # --------------------------------------------------------------------------- the launcher's start-up step

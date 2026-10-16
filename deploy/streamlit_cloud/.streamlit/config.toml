@@ -1,0 +1,61 @@
+# Wapsi UI settings: the pitch deck's "ledger" look (paper, ink navy, vermillion stamp, held green; Fraunces for
+# headings, IBM Plex Sans for text, IBM Plex Mono for figures). Streamlit reads this file from the directory it is
+# started in (the repo-root copy) and, in current releases, from next to the main script: identical copies live in
+# ui/.streamlit/ (`streamlit run ui/app.py` from any directory) and deploy/streamlit_cloud/.streamlit/ (the Community
+# Cloud entry point). Keep the three copies the same. Per-mode palettes keep "Use system setting" working, so the
+# app follows the viewer's light / dark choice. Fonts load from Google Fonts; offline, the fallbacks after each
+# name apply and nothing else changes. The app's own CSS (ui/components/theme.py) has no external references.
+[theme]
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap, Segoe UI, sans-serif"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&display=swap, Georgia, serif"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, Consolas, monospace"
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+baseRadius = "0.55rem"
+buttonRadius = "0.45rem"
+showSidebarBorder = true
+
+[theme.light]
+base = "light"
+primaryColor = "#13203A"
+backgroundColor = "#F5F0E4"
+secondaryBackgroundColor = "#ECE4D1"
+textColor = "#13203A"
+borderColor = "#CFC4AC"
+linkColor = "#B3261E"
+redColor = "#B3261E"
+greenColor = "#0B6B50"
+codeBackgroundColor = "#ECE4D1"
+dataframeHeaderBackgroundColor = "#ECE4D1"
+
+[theme.light.sidebar]
+backgroundColor = "#ECE4D1"
+secondaryBackgroundColor = "#FFFCF5"
+borderColor = "#CFC4AC"
+
+[theme.dark]
+base = "dark"
+primaryColor = "#4A6FA5"
+backgroundColor = "#0E1729"
+secondaryBackgroundColor = "#18243C"
+textColor = "#F5F0E4"
+borderColor = "#2E3B57"
+linkColor = "#FF8F82"
+redColor = "#FF8F82"
+greenColor = "#6FD3A8"
+codeBackgroundColor = "#18243C"
+dataframeHeaderBackgroundColor = "#18243C"
+
+[theme.dark.sidebar]
+backgroundColor = "#0A1222"
+secondaryBackgroundColor = "#18243C"
+borderColor = "#2E3B57"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+magicEnabled = false

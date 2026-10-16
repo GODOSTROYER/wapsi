@@ -68,8 +68,10 @@ def tiles(items: Sequence[Tile], min_width_rem: float | None = None) -> str:
         sw = (f'<span class="wp-chip-dot" style="background:var(--wp-s-{esc(t.swatch)})"></span>'
               if t.swatch else "")
         note = f'<div class="wp-tile-note">{esc(t.note)}</div>' if t.note else ""
+        # long figures (e.g. "172.8k / 1.8k") get a smaller display size so they never truncate
+        vcls = "wp-tile-value wp-tile-value-long" if len(t.value) > 9 else "wp-tile-value"
         out.append(f'<div class="{cls}"{tip}><div class="wp-tile-label">{sw}{esc(t.label)}</div>'
-                   f'<div class="wp-tile-value">{esc(t.value)}</div>{note}</div>')
+                   f'<div class="{vcls}">{esc(t.value)}</div>{note}</div>')
     return f'<div class="wp-tiles"{style}>{"".join(out)}</div>'
 
 

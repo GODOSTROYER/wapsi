@@ -1,10 +1,16 @@
 """Design tokens and the one CSS block the app injects per run.
 
-Restrained palette: neutral ink derived from Streamlit's own text colour (``currentColor``) so surfaces and borders
-work in light and dark themes without detection; one accent (ink blue); categorical hues (validated with the
-dataviz palette checker, adjacent pairs, both modes) only for dispositions; status hues only for real state.
+The look follows the pitch deck's "ledger" language: paper background, ink-navy text, a vermillion stamp for what a
+whole-account freeze would lock and a green "held" for what Wapsi actually holds; Fraunces for headings and headline
+figures, IBM Plex Sans for text, IBM Plex Mono for account numbers, table figures and labels. The palette and fonts
+themselves are set in ``.streamlit/config.toml``; this sheet only names the families (with system fallbacks).
 
-No external fonts, images or scripts (works offline and under a strict content security policy).
+Neutral surfaces and borders are derived from Streamlit's own text colour (``currentColor``) where possible so they
+work in light and dark themes without detection; one accent (ink navy, paper-gold in dark); categorical hues
+(validated with the dataviz palette checker, adjacent pairs, both modes) only for dispositions; status hues only for
+real state.
+
+No external fonts, images or scripts in this sheet (it works offline and under a strict content security policy).
 """
 
 from __future__ import annotations
@@ -17,8 +23,18 @@ from wapsi.models import (
     Role,
 )
 
-ACCENT_LIGHT = "#256abf"
-ACCENT_DARK = "#3987e5"
+ACCENT_LIGHT = "#13203A"  # deck ink navy
+ACCENT_DARK = "#E9C46A"  # deck gold on night
+
+# The deck's ledger tokens: (light, dark).
+LEDGER: dict[str, tuple[str, str]] = {
+    "card": ("#FFFCF5", "#18243C"),
+    "rule": ("#CFC4AC", "#2E3B57"),
+    "stamp": ("#B3261E", "#FF8F82"),
+    "held": ("#0B6B50", "#6FD3A8"),
+    "gold": ("#9A6B12", "#E9C46A"),
+    "ink": ("#13203A", "#F5F0E4"),
+}
 
 # Categorical hues: (light, dark). Order validated for adjacent-pair CVD separation in both modes.
 SERIES: dict[str, tuple[str, str]] = {
@@ -29,7 +45,7 @@ SERIES: dict[str, tuple[str, str]] = {
     "violet": ("#4a3aa7", "#9085e9"),
     "red": ("#e34948", "#e66767"),
     "gray": ("#8a8f9c", "#8a8f9c"),
-    "ink": ("#1b1d23", "#eef0f4"),
+    "ink": ("#13203A", "#F5F0E4"),
 }
 
 # Status hues (fixed, never reused as series colours); always paired with an icon + label.
@@ -49,7 +65,15 @@ CHIP_TONES: dict[str, tuple[str, int]] = {
     "good": ("#0ca30c", 55),
     "warn": ("#c98500", 50),
     "bad": ("#d03b3b", 75),
-    "accent": ("#256abf", 70),
+    "accent": ("#13203A", 85),
+    "stamp": ("#B3261E", 85),
+    "held": ("#0B6B50", 85),
+}
+# Dark-theme bases for the deck tones (the light bases are too deep to read on night navy).
+CHIP_TONES_DARK: dict[str, tuple[str, int]] = {
+    "accent": ("#E9C46A", 85),
+    "stamp": ("#FF8F82", 85),
+    "held": ("#6FD3A8", 85),
 }
 CHIP_TINT = 14
 
@@ -112,7 +136,9 @@ CLOCK_STATUS_HEX: dict[ClockStatus, str] = {
     ClockStatus.DONE: STATUS["good"],
 }
 
-MONO = '"Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+MONO = '"IBM Plex Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+SERIF = '"Fraunces", "Iowan Old Style", Georgia, serif'
+SANS = '"IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
 
 
 def series_hex(tone: str, dark: bool = False) -> str:
@@ -127,11 +153,15 @@ def accent(dark: bool = False) -> str:
 def _tone_vars(dark: bool) -> str:
     parts = []
     for tone, (base, share) in CHIP_TONES.items():
+        if dark and tone in CHIP_TONES_DARK:
+            base, share = CHIP_TONES_DARK[tone]
         parts.append(f"--wp-{tone}-fg:color-mix(in srgb,{base} {share}%,currentColor);"
                      f"--wp-{tone}-bg:color-mix(in srgb,{base} {CHIP_TINT}%,transparent);")
     for tone, (light, dk) in SERIES.items():
         parts.append(f"--wp-s-{tone}:{dk if dark else light};")
     parts.append(f"--wp-accent:{accent(dark)};")
+    for name, (light, dk) in LEDGER.items():
+        parts.append(f"--wp-{name}:{dk if dark else light};")
     return "".join(parts)
 
 
@@ -267,13 +297,98 @@ _CSS = """
 @media (prefers-reduced-motion:reduce){.wp-skel{animation:none}}
 .wp-foot{font-size:.74rem;color:color-mix(in srgb,currentColor 72%,transparent);margin-top:.4rem;line-height:1.45}
 @media (max-width:640px){.wp-strip{grid-template-columns:1fr}.wp-strip-mid{text-align:left}}
+/* ---- the deck's ledger look (overrides the neutral rules above) ---- */
+[data-testid="stAppViewContainer"] .block-container{padding-top:2.6rem}
+[data-testid="stMarkdownContainer"] h1,[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,[data-testid="stHeading"] h1,[data-testid="stHeading"] h2,
+[data-testid="stHeading"] h3{font-family:__SERIF__;letter-spacing:-.01em}
+.wp-head{margin:0 0 1.15rem}
+.wp-head h1{font-family:__SERIF__;font-size:2.35rem;font-weight:700;letter-spacing:-.015em;line-height:1.08;
+ font-variation-settings:"opsz" 144}
+.wp-head p{font-size:1.02rem;margin-top:.4rem}
+.wp-eyebrow{font-family:__MONO__;font-size:.74rem;font-weight:500;letter-spacing:.16em;color:var(--wp-stamp-fg);
+ margin:0 0 .45rem}
+.wp-section{font-family:__MONO__;font-weight:500;font-size:.74rem;letter-spacing:.14em;color:var(--wp-stamp-fg);
+ margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.7rem}
+.wp-section::after{content:"";flex:1;height:1px;background:color-mix(in srgb,var(--wp-rule) 80%,transparent)}
+.wp-brand{gap:.7rem;margin:.1rem 0 1.1rem;padding-bottom:.9rem;border-bottom:1px solid var(--wp-rule)}
+.wp-brand-mark{background:var(--wp-ink);color:var(--wp-card);border-radius:.45rem;font-family:__SERIF__;
+ font-weight:700;font-size:1.25rem}
+.wp-brand-name{font-family:__SERIF__;font-size:1.45rem;font-weight:700;letter-spacing:-.01em}
+.wp-brand-sub{font-family:__MONO__;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+ color:var(--wp-stamp-fg)}
+.wp-casebar,.wp-tile,.wp-strip,.wp-check,.wp-empty,.wp-doc{background:var(--wp-card)}
+.wp-casebar{border:1.5px solid var(--wp-rule);border-radius:.7rem;padding:.65rem 1rem}
+.wp-casebar .wp-mono{font-weight:500}
+.wp-sep{background:var(--wp-rule)}
+.wp-tile{border:1.5px solid var(--wp-rule);border-radius:.75rem;padding:.8rem .95rem .75rem}
+.wp-tile-label{font-family:__MONO__;font-size:.64rem;letter-spacing:.04em;text-transform:uppercase;
+ white-space:normal;overflow:visible;line-height:1.35;align-items:flex-start}
+.wp-tile-value{font-family:__SERIF__;font-size:1.7rem;font-weight:700;letter-spacing:-.01em;line-height:1.2;
+ margin-top:.15rem;font-variation-settings:"opsz" 72}
+.wp-tile-note{font-size:.76rem}
+.wp-tile-value-long{font-size:1.22rem;line-height:1.55;letter-spacing:-.02em}
+.wp-tile-accent{border-color:color-mix(in srgb,var(--wp-held) 70%,transparent);
+ background:color-mix(in srgb,var(--wp-held) 7%,var(--wp-card));box-shadow:inset 3px 0 0 var(--wp-held)}
+.wp-tile-accent .wp-tile-value{color:var(--wp-held-fg)}
+.wp-strip{border:1.5px solid var(--wp-rule);border-radius:.8rem;padding:1.1rem 1.3rem 1rem;gap:1.2rem}
+.wp-strip-side{position:relative}
+.wp-strip-side .wp-strip-k{font-family:__MONO__;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase}
+.wp-strip-side .wp-strip-v{font-family:__SERIF__;font-size:2.1rem;font-weight:700;letter-spacing:-.015em;
+ line-height:1.15;margin:.15rem 0 .1rem}
+.wp-strip-bad .wp-strip-v{color:var(--wp-stamp-fg);text-decoration-color:color-mix(in srgb,var(--wp-stamp) 70%,transparent)}
+.wp-strip-good .wp-strip-v{color:var(--wp-held-fg)}
+.wp-strip-side::after{display:inline-block;margin-top:.45rem;padding:.12rem .55rem;border:2px solid;border-radius:.2rem;
+ font-family:__MONO__;font-size:.7rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+ transform:rotate(-3deg)}
+.wp-strip-bad::after{content:"Frozen";color:var(--wp-stamp-fg);border-color:var(--wp-stamp-fg)}
+.wp-strip-good::after{content:"Held";color:var(--wp-held-fg);border-color:var(--wp-held-fg)}
+.wp-strip-mid b{font-family:__SERIF__;font-size:2rem;font-weight:900;color:var(--wp-gold);line-height:1.1}
+.wp-strip-msg{border-top:1px solid var(--wp-rule);padding-top:.7rem}
+.wp-chip{border-radius:.3rem;border:1px solid color-mix(in srgb,var(--wp-gray-fg) 22%,transparent);padding:.1rem .5rem}
+.wp-badge{border-radius:.25rem}
+.wp-cite{font-family:__MONO__;font-size:.7rem;border-color:var(--wp-rule);border-radius:.2rem}
+.wp-table-wrap{border:1.5px solid var(--wp-rule);border-radius:.75rem;background:var(--wp-card)}
+.wp-table th{font-family:__MONO__;font-weight:500;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+ background:color-mix(in srgb,var(--wp-rule) 22%,transparent);border-bottom:1.5px solid var(--wp-rule)}
+.wp-table td{border-bottom:1px solid color-mix(in srgb,var(--wp-rule) 55%,transparent)}
+.wp-table td.r{font-family:__MONO__;font-size:.86rem}
+.wp-kv .k{font-family:__MONO__;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase}
+.wp-big{font-family:__SERIF__;font-size:1.6rem}
+.wp-check{border-width:1.5px;border-color:var(--wp-rule)}
+.wp-check-pass{border-color:color-mix(in srgb,var(--wp-held) 45%,var(--wp-rule))}
+.wp-check-fail{background:color-mix(in srgb,var(--wp-stamp) 9%,var(--wp-card))}
+.wp-empty{border-color:var(--wp-rule)}
+.wp-empty h3{font-family:__SERIF__;font-size:1.3rem}
+.wp-callout{border-radius:.6rem;border:1.5px solid color-mix(in srgb,var(--wp-ink) 22%,transparent);
+ background:var(--wp-card);box-shadow:inset 4px 0 0 var(--wp-ink)}
+.wp-callout-warn{border-color:color-mix(in srgb,var(--wp-gold) 50%,transparent);
+ background:color-mix(in srgb,var(--wp-gold) 9%,var(--wp-card));box-shadow:inset 4px 0 0 var(--wp-gold)}
+.wp-quote{border-left-color:var(--wp-stamp);background:var(--wp-card)}
+.wp-doc{border:1.5px solid var(--wp-rule)}
+[data-testid="stMetricValue"]{font-family:__SERIF__;font-weight:700;letter-spacing:-.01em}
+[data-testid="stMetricLabel"] p{font-family:__MONO__;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+[data-testid="stTabs"] button[role="tab"] p{font-weight:600}
+[data-testid="stExpander"] details{background:var(--wp-card);border-color:var(--wp-rule)}
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p{font-family:__MONO__;font-size:.68rem;font-weight:500;
+ letter-spacing:.14em;text-transform:uppercase;color:color-mix(in srgb,currentColor 70%,transparent)}
+[data-testid="stSidebar"] [role="radiogroup"]{gap:.1rem;align-items:stretch;width:100%}
+[data-testid="stSidebar"] [role="radiogroup"] label{padding:.22rem .45rem;border-radius:.4rem;width:auto;margin:0;
+ transition:background .12s ease}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{background:color-mix(in srgb,currentColor 6%,transparent)}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:var(--wp-card);
+ box-shadow:inset 3px 0 0 var(--wp-stamp),0 0 0 1px var(--wp-rule)}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p{font-weight:600}
+[data-testid="stSidebar"] hr{border-color:var(--wp-rule)}
+[data-testid="stSidebar"] .wp-foot{font-size:.72rem;margin-bottom:.75rem}
+@media (prefers-reduced-motion:reduce){[data-testid="stSidebar"] [role="radiogroup"] label{transition:none}}
 """
 
 
 def css(dark: bool | None = None) -> str:
     """Full <style> block. Chip colours derive from the inherited text colour, so they need no theme detection;
     ``dark`` only selects the series swatch steps (unknown -> light steps, which read on both themes)."""
-    body = _CSS.replace("__MONO__", MONO)
+    body = _CSS.replace("__MONO__", MONO).replace("__SERIF__", SERIF).replace("__SANS__", SANS)
     tokens = f":root{{{_tone_vars(bool(dark))}}}"
     return "<style>" + tokens + " ".join(line.strip() for line in body.strip().splitlines()) + "</style>"
 
