@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wapsi use-case thumbnail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,800;9..144,900&family=IBM+Plex+Mono:wght@600;700&family=IBM+Plex+Sans:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#0F1A2E; --paper:#F2ECE1; --stamp:#C8321E; --held:#0E7A55; --amber:#F5B12E; --muted:#9FB0C8; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#000; }
+  #stage { width:1920px; height:1080px; position:relative; overflow:hidden;
+    background: radial-gradient(1200px 800px at 78% 40%, #1C2C4A 0%, var(--ink) 60%); color:var(--paper);
+    font-family:"IBM Plex Sans", "Segoe UI", sans-serif; }
+  .rail { position:absolute; left:0; top:0; bottom:0; width:28px; background:linear-gradient(var(--amber) 0 30%, var(--held) 30% 100%); }
+  .brand { position:absolute; left:110px; top:84px; font:900 132px/1 "Fraunces", Georgia, serif; letter-spacing:-2px; }
+  .brand span { color:var(--amber); }
+  .hook { position:absolute; left:110px; top:262px; width:1040px; font:900 120px/1.0 "Fraunces", Georgia, serif; letter-spacing:-2px; }
+  .hook .not { color:var(--muted); }
+  .hook mark { background:var(--amber); color:var(--ink); padding:0 18px; border-radius:10px; }
+  .cards { position:absolute; left:110px; bottom:110px; display:flex; gap:34px; align-items:center; }
+  .card { border-radius:18px; padding:26px 34px; font-family:"IBM Plex Mono", Consolas, monospace; }
+  .card .k { font-size:30px; font-weight:600; letter-spacing:3px; text-transform:uppercase; opacity:.92; }
+  .card .v { font-size:92px; font-weight:700; line-height:1.05; }
+  .frozen { background:var(--stamp); transform:rotate(-3deg); box-shadow:0 18px 40px rgba(0,0,0,.45); position:relative; }
+  .frozen .v { text-decoration: line-through 8px rgba(255,255,255,.85); }
+  .held { background:var(--held); box-shadow:0 18px 40px rgba(0,0,0,.45); }
+  .arrow { font:700 90px/1 "IBM Plex Sans", sans-serif; color:var(--amber); }
+  .chip { position:absolute; right:90px; top:84px; display:flex; gap:16px; }
+  .chip div { background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.25); border-radius:999px;
+    padding:14px 28px; font:700 34px/1 "IBM Plex Sans", sans-serif; }
+  .chip .amd { background:#ED1C24; border-color:#ED1C24; }
+  svg { position:absolute; right:40px; top:220px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="rail"></div>
+  <div class="brand">Wapsi<span>.</span></div>
+  <div class="chip"><div class="amd">AMD MI300X</div><div>Gemma 4</div></div>
+  <div class="hook"><mark>7 people.</mark><br><span class="not">One fair hold.</span></div>
+
+  <!-- money trail: one complaint fans out; only a slice of each account is held -->
+  <svg width="760" height="620" viewBox="0 0 760 620">
+    <g fill="none" stroke="#F5B12E" stroke-linecap="round" opacity=".85">
+      <path d="M90 310 C 230 310 230 140 360 140" stroke-width="16"/>
+      <path d="M90 310 C 230 310 230 470 360 470" stroke-width="16"/>
+      <path d="M400 140 C 520 140 520 70 620 70" stroke-width="9"/>
+      <path d="M400 140 C 520 140 520 240 620 240" stroke-width="9"/>
+      <path d="M400 470 C 520 470 520 390 620 390" stroke-width="9"/>
+      <path d="M400 470 C 520 470 520 550 620 550" stroke-width="9"/>
+    </g>
+    <circle cx="90" cy="310" r="40" fill="#F5B12E"/>
+    <g stroke="#5FD3B5" stroke-width="7" fill="#13223B">
+      <circle cx="380" cy="140" r="78"/><circle cx="380" cy="470" r="78"/>
+      <circle cx="640" cy="70" r="52"/><circle cx="640" cy="240" r="52"/>
+      <circle cx="640" cy="390" r="52"/><circle cx="640" cy="550" r="52"/>
+    </g>
+    <g fill="#F5B12E">
+      <path d="M380 140 L380 62 A78 78 0 0 1 438 88 Z"/>
+      <path d="M380 470 L380 392 A78 78 0 0 1 432 412 Z"/>
+      <path d="M640 70 L640 18 A52 52 0 0 1 678 34 Z"/>
+      <path d="M640 240 L640 188 A52 52 0 0 1 670 197 Z"/>
+      <path d="M640 390 L640 338 A52 52 0 0 1 684 362 Z"/>
+      <path d="M640 550 L640 498 A52 52 0 0 1 672 509 Z"/>
+    </g>
+  </svg>
+
+  <div class="cards">
+    <div class="card held"><div class="k">Officer · Supervisor · Call centre · Police</div><div class="v" style="font-size:64px">Auditor · Shop · Agent</div></div>
+  </div>
+</div>
+</body>
+</html>

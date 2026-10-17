@@ -13,12 +13,14 @@ def main() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=2 / 3)
-        page.goto((HERE / "thumbnail.html").as_uri())
-        page.wait_for_timeout(800)
-        out = HERE / "wapsi_youtube_thumbnail_1280x720.png"
-        page.locator("#stage").screenshot(path=str(out))
+        for src, name in (("thumbnail.html", "wapsi_youtube_thumbnail_1280x720.png"),
+                          ("thumbnail_usecases.html", "wapsi_usecases_thumbnail_1280x720.png")):
+            page.goto((HERE / src).as_uri())
+            page.wait_for_timeout(800)
+            out = HERE / name
+            page.locator("#stage").screenshot(path=str(out))
+            print("wrote", out)
         browser.close()
-        print("wrote", out)
 
 
 if __name__ == "__main__":
