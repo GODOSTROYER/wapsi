@@ -8,12 +8,18 @@
 
 Needs ffmpeg with libx264 and libass on PATH, and PowerShell (System.Speech) for the voice.
 Output: pitch/amd/video/wapsi_amd_demo_draft.mp4, captions.srt, SCRIPT_FINAL.md (timings from the real audio).
+
+Another video from the same pipeline: `--beats <beats .py file> --out-dir <dir>` reads SCENES / SOURCES (and the
+optional OUT_NAME, SCRIPT_TITLE, SCRIPT_NOTES, MAX_SECONDS) from that file and writes audio/, build/, the MP4,
+captions.srt and SCRIPT_FINAL.md under <dir>; app screenshots and slides are looked up in <dir>/shots and
+<dir>/slides first, then in this video's shots/ and slides/ (e.g. pitch/amd/video_usecases).
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import shutil
@@ -28,12 +34,52 @@ sys.path.insert(0, str(HERE))
 from beats import SCENES, SOURCES  # noqa: E402
 
 AUDIO, BUILD, SLIDES, SHOTS = ROOT / "audio", ROOT / "build", ROOT / "slides", ROOT / "shots"
+SLIDE_DIRS, SHOT_DIRS = [SLIDES], [SHOTS]  # searched in order (--out-dir puts its own folders first)
 FPS = 30
 GAP = 0.25  # silence after each beat
 SCENE_GAP = 0.45  # extra silence at the end of a scene
 FRAME = (144, 22, 1632, 918)  # where an app screenshot sits on slides/uiframe.png
 PAPER = "0xF2ECE1"
 OUT_MP4 = ROOT / "wapsi_amd_demo_draft.mp4"
+SCRIPT_TITLE = "# Wapsi · AMD ACT III demo video: final narration (draft cut)"
+SCRIPT_NOTES = ("Every figure carries its place and date on screen. MI300X figures: measured 14 Oct 2026 on an AMD "
+                "Instinct MI300X (AMD AI Notebook, ROCm 7.14, Gemma-4-31B-IT on vLLM 0.23). The app walkthrough is the "
+                "local Streamlit app in recorded mode (prose recorded from Gemma-4-31B-IT on AMD Token Factory, "
+                "14-10-2026); the agent trace was recorded on AMD Token Factory. Synthetic data only.")
+MAX_SECONDS = 300
+BEATS_NAME = "scripts/beats.py"
+
+
+def configure(beats_file: str | None, out_dir: str | None) -> None:
+    """Point the pipeline at another beats file and output folder (defaults: this video, unchanged)."""
+    global ROOT, AUDIO, BUILD, OUT_MP4, SCENES, SOURCES, SCRIPT_TITLE, SCRIPT_NOTES, MAX_SECONDS, BEATS_NAME
+    if beats_file:
+        spec = importlib.util.spec_from_file_location("video_beats", Path(beats_file).resolve())
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        SCENES, SOURCES = mod.SCENES, mod.SOURCES
+        SCRIPT_TITLE = getattr(mod, "SCRIPT_TITLE", SCRIPT_TITLE)
+        SCRIPT_NOTES = getattr(mod, "SCRIPT_NOTES", SCRIPT_NOTES)
+        MAX_SECONDS = getattr(mod, "MAX_SECONDS", MAX_SECONDS)
+        out_name = getattr(mod, "OUT_NAME", None)
+        bp = Path(beats_file).resolve()
+        base = Path(out_dir).resolve() if out_dir else ROOT
+        BEATS_NAME = bp.relative_to(base).as_posix() if bp.is_relative_to(base) else bp.name
+    else:
+        out_name = None
+    if out_dir:
+        ROOT = Path(out_dir).resolve()
+        AUDIO, BUILD = ROOT / "audio", ROOT / "build"
+        SLIDE_DIRS.insert(0, ROOT / "slides")
+        SHOT_DIRS.insert(0, ROOT / "shots")
+        OUT_MP4 = ROOT / (out_name or OUT_MP4.name)
+
+
+def find(dirs: list[Path], name: str) -> Path:
+    for d in dirs:
+        if (d / name).exists():
+            return d / name
+    raise SystemExit(f"{name} not found in {', '.join(map(str, dirs))}")
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -56,7 +102,7 @@ def tts(items: list[dict], voice: str, rate: int, force: bool, engine: str = "sa
     AUDIO.mkdir(parents=True, exist_ok=True)
     man_p = AUDIO / "manifest.json"
     man = json.loads(man_p.read_text(encoding="utf-8")) if man_p.exists() and not force else {}
-    todo = []
+    todo, old = [], dict(man)
     for b in items:
         tag = f"gemini|{model}|{voice}|{GEMINI_STYLE}" if engine == "gemini" else f"{voice}|{rate}"
         key = hashlib.sha1(f"{tag}|{b['say']}".encode()).hexdigest()
@@ -64,7 +110,18 @@ def tts(items: list[dict], voice: str, rate: int, force: bool, engine: str = "sa
             todo.append({"id": b["id"], "say": b["say"]})
             man[b["id"]] = key
     if todo and engine == "gemini":
-        gemini_tts(todo, model, voice)
+        done: list[str] = []
+        try:
+            gemini_tts(todo, model, voice, done)
+        finally:  # keep what was synthesised; lines that failed stay due
+            for b in todo:
+                if b["id"] in done:
+                    continue
+                if b["id"] in old:
+                    man[b["id"]] = old[b["id"]]
+                else:
+                    man.pop(b["id"], None)
+            man_p.write_text(json.dumps(man, indent=1), encoding="utf-8")
     elif todo:
         lines = AUDIO / "lines.json"
         lines.write_text(json.dumps(todo, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -79,22 +136,54 @@ GEMINI_STYLE = ("Confident narrator of a fast-moving startup product demo, India
                 "speaking quickly but clearly, no long pauses, warm and serious, never theatrical.")
 
 
+NO_METADATA: set[str] = set()  # models that reject the style annotation: the style goes into the text instead
+EXHAUSTED: set[tuple[str, str]] = set()  # (model, key) pairs whose daily quota is used up in this run
+
+
+def as_wav(audio: bytes, mime: str) -> bytes:
+    """Some TTS models return a WAV file, others raw 16-bit mono PCM (audio/L16;rate=24000): wrap the latter."""
+    import io
+    import re
+
+    if audio[:4] == b"RIFF":
+        return audio
+    m = re.search(r"rate=(\d+)", mime)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(int(m.group(1)) if m else 24000)
+        w.writeframes(audio)
+    return buf.getvalue()
+
+
 def gemini_line(text: str, keys: list[str], start: int, model: str, voice: str) -> bytes:
-    """One line through Gemini TTS; keys are tried round robin from `start`, rotating on 429 / 5xx."""
+    """One line through Gemini TTS; keys are tried round robin from `start`, rotating on 429 / 5xx. A key whose daily
+    quota is used up is not tried again; when every key is, the run stops (no other voice is substituted)."""
     import base64
     import time
     import urllib.error
     import urllib.request
 
-    body = {"model": model, "response_format": {"type": "audio"},
-            "generation_config": {"speech_config": [{"voice": voice}]},
-            "input": [{"type": "user_input", "content": [{"type": "text", "text": text, "annotations": [
-                {"type": "speech_metadata", "style": GEMINI_STYLE}]}]}]}
-    data = json.dumps(body).encode()
+    def body() -> bytes:
+        if model in NO_METADATA:
+            content = {"type": "text", "text": f"Read this aloud as a {GEMINI_STYLE[0].lower()}{GEMINI_STYLE[1:]} "
+                                               f"Say only the text after the colon: {text}"}
+        else:
+            content = {"type": "text", "text": text,
+                       "annotations": [{"type": "speech_metadata", "style": GEMINI_STYLE}]}
+        return json.dumps({"model": model, "response_format": {"type": "audio"},
+                           "generation_config": {"speech_config": [{"voice": voice}]},
+                           "input": [{"type": "user_input", "content": [content]}]}).encode()
+
     last = ""
     for attempt in range(len(keys) * 4):
         key = keys[(start + attempt) % len(keys)]
-        req = urllib.request.Request(GEMINI_URL, data=data, method="POST",
+        if (model, key) in EXHAUSTED:
+            if all((model, k) in EXHAUSTED for k in keys):
+                raise SystemExit(f"Gemini TTS: the daily quota of {model} is used up on every key")
+            continue
+        req = urllib.request.Request(GEMINI_URL, data=body(), method="POST",
                                      headers={"x-goog-api-key": key, "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=180) as r:
@@ -102,19 +191,26 @@ def gemini_line(text: str, keys: list[str], start: int, model: str, voice: str) 
             for step in out.get("steps", []):
                 for c in step.get("content", []):
                     if c.get("type") == "audio" and c.get("data"):
-                        return base64.b64decode(c["data"])
+                        return as_wav(base64.b64decode(c["data"]), c.get("mime_type") or c.get("mimeType") or "")
             last = "no audio in the response"
         except urllib.error.HTTPError as e:
             last = f"HTTP {e.code}"
+            msg = e.read()[:400].decode(errors="replace")
+            if e.code == 400 and "metadata is not supported" in msg:
+                NO_METADATA.add(model)
+                continue
+            if e.code == 429 and "per day" in msg:
+                EXHAUSTED.add((model, key))
+                continue
             if e.code not in (429, 500, 502, 503, 504):
-                raise SystemExit(f"Gemini TTS failed: {last} {e.read()[:200]!r}") from None
+                raise SystemExit(f"Gemini TTS failed: {last} {msg[:200]!r}") from None
         except (urllib.error.URLError, TimeoutError) as e:
             last = str(e)
         time.sleep(min(2 * (attempt // len(keys) + 1), 20))
     raise SystemExit(f"Gemini TTS failed after retries: {last}")
 
 
-def gemini_tts(todo: list[dict], model: str, voice: str) -> None:
+def gemini_tts(todo: list[dict], model: str, voice: str, done: list[str] | None = None) -> None:
     """Keys come from GEMINI_API_KEYS (comma-separated) in the environment; never printed."""
     import os
     from concurrent.futures import ThreadPoolExecutor
@@ -131,8 +227,18 @@ def gemini_tts(todo: list[dict], model: str, voice: str) -> None:
         return b["id"]
 
     with ThreadPoolExecutor(max_workers=len(keys)) as ex:
-        for done in ex.map(one, enumerate(todo)):
-            print(f"tts {done}")
+        futures = [ex.submit(one, ib) for ib in enumerate(todo)]
+        errors = []
+        for f in futures:
+            try:
+                bid = f.result()
+                print(f"tts {bid}")
+                if done is not None:
+                    done.append(bid)
+            except SystemExit as e:
+                errors.append(str(e))
+        if errors:
+            raise SystemExit(errors[0])
 
 
 def wav_seconds(p: Path) -> float:
@@ -155,20 +261,21 @@ def clip(b: dict, d: float) -> Path:
     enc = ["-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-t", f"{d:.3f}"]
     if vis[0] == "slide":
         run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", str(FPS), "-t", f"{d:.3f}",
-             "-i", str(SLIDES / f"{vis[1]}.png"), "-vf", f"format=yuv420p{fade}", *enc, str(out)])
+             "-i", str(find(SLIDE_DIRS, f"{vis[1]}.png")), "-vf", f"format=yuv420p{fade}", *enc, str(out)])
     else:
         _, shot, x, w, y0, y1 = vis
         from PIL import Image  # pillow ships with the project's deps
 
-        img_h = Image.open(SHOTS / f"{shot}.png").size[1]
+        shot_p = find(SHOT_DIRS, f"{shot}.png")
+        img_h = Image.open(shot_p).size[1]
         h = round(w * 9 / 16)
         y0, y1 = (max(0, min(v, img_h - h)) for v in (y0, y1))
         fx, fy, fw, fh = FRAME
         flt = (f"[0]crop=w={w}:h={h}:x={x}:y='{ease(y0, y1, d)}',scale={fw}:{fh}:flags=lanczos[s];"
                f"[1][s]overlay={fx}:{fy},format=yuv420p{fade}")
         run(["ffmpeg", "-y", "-loglevel", "error",
-             "-loop", "1", "-framerate", str(FPS), "-t", f"{d:.3f}", "-i", str(SHOTS / f"{shot}.png"),
-             "-loop", "1", "-framerate", str(FPS), "-t", f"{d:.3f}", "-i", str(SLIDES / "uiframe.png"),
+             "-loop", "1", "-framerate", str(FPS), "-t", f"{d:.3f}", "-i", str(shot_p),
+             "-loop", "1", "-framerate", str(FPS), "-t", f"{d:.3f}", "-i", str(find(SLIDE_DIRS, "uiframe.png")),
              "-filter_complex", flt, *enc, str(out)])
     return out
 
@@ -229,7 +336,10 @@ def main() -> int:
                     help="gemini: Gemini TTS, keys from GEMINI_API_KEYS, used round robin")
     ap.add_argument("--model", default="gemini-3.8-flash-tts")
     ap.add_argument("--only", help="comma-separated beat ids: synthesise just these lines and stop (voice test)")
+    ap.add_argument("--beats", help="another beats .py file (SCENES, SOURCES); default: scripts/beats.py")
+    ap.add_argument("--out-dir", help="write audio/, build/, the MP4, captions and SCRIPT_FINAL.md here")
     a = ap.parse_args()
+    configure(a.beats, a.out_dir)
 
     items = beats()
     if a.only:
@@ -282,8 +392,8 @@ def main() -> int:
 
     write_script(timeline, t, a.voice)
     print(f"\n{OUT_MP4}  {t:.1f} s ({int(t // 60)}:{int(t % 60):02d})")
-    if t > 300:
-        print("WARNING: longer than 5:00")
+    if t > MAX_SECONDS:
+        print(f"WARNING: longer than {mmss(MAX_SECONDS)}")
     return 0
 
 
@@ -292,14 +402,11 @@ def mmss(s: float) -> str:
 
 
 def write_script(timeline: list, total: float, voice: str) -> None:
-    L = ["# Wapsi · AMD ACT III demo video: final narration (draft cut)", "",
-         f"Generated by `scripts/build_video.py` from `scripts/beats.py`. Total **{mmss(total)}** "
-         f"({total:.1f} s; limit 5:00). Voice: {voice} (synthesised). "
+    L = [SCRIPT_TITLE, "",
+         f"Generated by `scripts/build_video.py` from `{BEATS_NAME}`. Total **{mmss(total)}** "
+         f"({total:.1f} s; limit {mmss(MAX_SECONDS).replace('.0', '')}). Voice: {voice} (synthesised). "
          "Timings are measured from the synthesised audio.", "",
-         "Every figure carries its place and date on screen. MI300X figures: measured 14 Oct 2026 on an AMD "
-         "Instinct MI300X (AMD AI Notebook, ROCm 7.14, Gemma-4-31B-IT on vLLM 0.23). The app walkthrough is the "
-         "local Streamlit app in recorded mode (prose recorded from Gemma-4-31B-IT on AMD Token Factory, "
-         "14-10-2026); the agent trace was recorded on AMD Token Factory. Synthetic data only.", ""]
+         SCRIPT_NOTES, ""]
     scene = None
     for b, t0, d, _speech in timeline:
         if b["scene"] != scene:

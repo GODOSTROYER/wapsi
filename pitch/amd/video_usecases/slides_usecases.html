@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wapsi use-case video slides</title>
+<style>
+  :root {
+    --paper: #F2ECE1;
+    --paper-2: #E8E0D1;
+    --ink: #15202B;
+    --ink-2: #3B4651;
+    --muted: #6A6255;
+    --rule: #CFC4B1;
+    --sindoor: #B8321F;   /* frozen / fraud */
+    --sindoor-soft: #F3D9D2;
+    --held: #0B6E5B;      /* amount-specific hold / returned */
+    --held-soft: #D3EAE2;
+    --amd: #111111;
+    --gold: #9C6B12;
+    --num: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+    --serif: "Georgia", "Cambria", serif;
+    --mono: "Cascadia Mono", "Consolas", monospace;
+    --sans: "Segoe UI", "Bahnschrift", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--sans); }
+  section { display: none; position: absolute; inset: 0; padding: 88px 128px 160px; }
+  section.on { display: block; }
+  /* ledger rules: a faint column grid, the identity motif */
+  section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(90deg, transparent 0 96px, var(--sindoor) 96px 98px, transparent 98px) no-repeat,
+      repeating-linear-gradient(180deg, transparent 0 63px, rgba(21,32,43,.055) 63px 64px);
+    opacity: .9;
+  }
+  .step { opacity: 0; }
+  .show .step.s1, .s-1 .s1, .s-2 .s1, .s-2 .s2, .s-3 .s1, .s-3 .s2, .s-3 .s3 { opacity: 1; }
+  .kicker { font: 600 26px/1 var(--num); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .kicker b { color: var(--sindoor); font-weight: 700; }
+  .h1 { font: 400 92px/1.06 var(--serif); letter-spacing: -.01em; }
+  .h2 { font: 400 64px/1.12 var(--serif); }
+  .big { font: 700 220px/0.9 var(--num); letter-spacing: -.02em; font-stretch: condensed; }
+  .num { font-family: var(--num); font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); }
+  .src { position: absolute; left: 128px; right: 128px; bottom: 196px; font: 400 22px/1.35 var(--sans); color: var(--muted);
+         border-top: 1px solid var(--rule); padding-top: 14px; }
+  .src b { color: var(--ink-2); font-weight: 600; }
+  .brand { position: absolute; right: 128px; top: 64px; font: 700 30px/1 var(--num); letter-spacing: .04em; color: var(--ink); }
+  .brand i { font-style: normal; color: var(--held); }
+  .stamp { display: inline-block; border: 8px solid var(--sindoor); color: var(--sindoor); padding: 18px 34px 12px;
+           font: 700 74px/1 var(--num); letter-spacing: .08em; transform: rotate(-6deg); border-radius: 10px;
+           background: rgba(184,50,31,.06); box-shadow: inset 0 0 0 3px rgba(184,50,31,.25); }
+  .stamp.held { border-color: var(--held); color: var(--held); background: rgba(11,110,91,.06); box-shadow: inset 0 0 0 3px rgba(11,110,91,.25); transform: rotate(3deg); }
+  .card { background: #FBF8F2; border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 18px 40px -24px rgba(21,32,43,.45); }
+  .pill { display: inline-block; padding: 8px 18px; border-radius: 999px; font: 600 24px/1 var(--num); letter-spacing: .04em; }
+  .pill.amd { background: var(--amd); color: #fff; }
+  .pill.g { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+  .row { display: flex; gap: 40px; }
+  .tile { flex: 1; padding: 34px 36px 30px; }
+  .tile .v { font: 700 112px/1 var(--num); letter-spacing: -.01em; }
+  .tile .l { margin-top: 14px; font: 400 30px/1.25 var(--sans); color: var(--ink-2); }
+  .ok { color: var(--held); }
+  .bad { color: var(--sindoor); }
+
+  /* hook */
+  .ledger { width: 900px; padding: 36px 44px; }
+  .ledger .line { display: flex; justify-content: space-between; font: 400 34px/1.9 var(--mono); border-bottom: 1px dashed var(--rule); }
+  .ledger .line:last-child { border: 0; }
+
+  /* bars */
+  .bar { height: 120px; border-radius: 6px; display: flex; align-items: center; padding-left: 28px; color: #fff; font: 700 54px/1 var(--num); }
+  .barlabel { font: 400 32px/1.3 var(--sans); color: var(--ink-2); margin: 34px 0 14px; }
+
+  /* chart */
+  .chart { display: flex; align-items: flex-end; gap: 44px; width: 1060px; height: 470px; border-bottom: 3px solid var(--ink); padding: 0 20px; }
+  .col { width: 160px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .col .b { width: 100%; background: var(--ink); border-radius: 6px 6px 0 0; }
+  .col .t { font: 700 52px/1 var(--num); margin-bottom: 14px; }
+  .col .c { position: absolute; }
+  .xl { display: flex; gap: 44px; padding: 14px 20px 0; }
+  .xl div { width: 160px; text-align: center; font: 400 28px/1.2 var(--num); color: var(--muted); }
+  .callout { position: absolute; right: 128px; top: 330px; width: 520px; padding: 36px 40px; border-left: 10px solid var(--held); }
+  .callout .v { font: 700 128px/1 var(--num); color: var(--held); }
+  .callout .l { font: 400 30px/1.3 var(--sans); color: var(--ink-2); margin-top: 12px; }
+
+  /* compare */
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 46px; }
+  .side { padding: 40px 44px; }
+  .side h3 { font: 600 30px/1 var(--num); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 26px; }
+  .side .v { font: 700 150px/1 var(--num); }
+  .side .l { font: 400 32px/1.3 var(--sans); color: var(--ink-2); margin-top: 16px; }
+  .side.raw { border-top: 12px solid var(--sindoor); }
+  .side.bound { border-top: 12px solid var(--held); }
+
+  .pipeline { display: flex; gap: 18px; margin-top: 60px; }
+  .pipeline .p { flex: 1; padding: 30px 28px; min-height: 250px; }
+  .pipeline .p .n { font: 700 30px/1 var(--num); color: var(--held); }
+  .pipeline .p .t { font: 600 36px/1.15 var(--sans); margin-top: 18px; }
+  .pipeline .p .d { font: 400 25px/1.35 var(--sans); color: var(--ink-2); margin-top: 14px; }
+  .pipeline .p.human { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .pipeline .p.human .d { color: #C9C2B5; }
+  .pipeline .p.human .n { color: #8FD3BF; }
+
+  .checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 44px; }
+  .checks .card { padding: 30px 34px; }
+  .checks .v { font: 700 96px/1 var(--num); color: var(--held); }
+  .checks .l { font: 400 29px/1.3 var(--sans); color: var(--ink-2); margin-top: 10px; }
+
+  .tools { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
+  .tools span { font: 500 28px/1 var(--mono); padding: 14px 20px; background: #FBF8F2; border: 1px solid var(--rule); border-radius: 10px; }
+  .tools span.no { border-color: var(--sindoor); color: var(--sindoor); }
+  /* ---- use-case video additions ---- */
+  .cast { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; margin-top: 56px; }
+  .cast .card { padding: 28px 30px; min-height: 230px; }
+  .cast .n { font: 700 28px/1 var(--num); color: var(--held); }
+  .cast .t { font: 600 34px/1.15 var(--sans); margin-top: 16px; }
+  .cast .d { font: 400 24px/1.35 var(--sans); color: var(--ink-2); margin-top: 12px; }
+  .cast .card.why { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .cast .card.why .d { color: #C9C2B5; } .cast .card.why .n { color: #8FD3BF; }
+  .persona { display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px; margin-top: 64px; }
+  .persona .card { padding: 36px 40px; min-height: 380px; }
+  .persona h3 { font: 600 26px/1 var(--num); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .persona .card.gets { border-top: 12px solid var(--held); }
+  .persona .card.gets h3 { color: var(--held); }
+  .persona p { font: 400 34px/1.38 var(--sans); margin-top: 22px; color: var(--ink); }
+  .term { margin-top: 44px; padding: 34px 44px; background: var(--ink); color: #E8E0D1; border-radius: 14px; font: 400 30px/1.75 var(--mono); }
+  .term .row2 { display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(232,224,209,.18); }
+  .term .y { color: #8FD3BF; font-weight: 700; }
+  .term .h { color: #9C948A; }
+  .mtiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px 34px; margin-top: 34px; }
+  .mtiles .card { padding: 26px 34px 24px; }
+  .mtiles .card.dim { opacity: .32; }
+  .mtiles .v { font: 700 76px/1 var(--num); }
+  .mtiles .vs2 { font: 400 28px/1.25 var(--sans); color: var(--ink-2); margin-top: 12px; }
+  .mtiles .l { font: 400 24px/1.3 var(--sans); color: var(--muted); margin-top: 8px; }
+  .where { display: inline-block; margin-top: 14px; padding: 7px 14px; border-radius: 999px; background: var(--amd); color: #fff; font: 600 20px/1 var(--num); letter-spacing: .04em; }
+  .links { margin-top: 60px; display: grid; grid-template-columns: 260px 1fr; row-gap: 22px; font: 400 40px/1.2 var(--mono); }
+  .links .k { font: 600 26px/1.6 var(--num); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- the cast -->
+<section id="cast">
+  <div class="brand">WAPSI <i>↩</i></div>
+  <div class="kicker">Who uses Wapsi · <b>seven people, one case</b></div>
+  <div class="h2" style="margin-top:36px">Hold only the stolen money. <span class="ok">Everyone else keeps going.</span></div>
+  <div class="cast">
+    <div class="card"><div class="n">01</div><div class="t">Bank nodal officer</div><div class="d">Opens a 1930 complaint, gets a hold plan.</div></div>
+    <div class="card"><div class="n">02</div><div class="t">Supervisor</div><div class="d">Approves. A second person, every time.</div></div>
+    <div class="card"><div class="n">03</div><div class="t">Call-centre &amp; branch</div><div class="d">Turns a voice note into a checked complaint.</div></div>
+    <div class="card"><div class="n">04</div><div class="t">Police</div><div class="d">Hold requests checked for what is missing.</div></div>
+    <div class="card"><div class="n">05</div><div class="t">Compliance &amp; audit</div><div class="d">A log nobody can quietly change.</div></div>
+    <div class="card why"><div class="n">06</div><div class="t">The shop &amp; the victim</div><div class="d">The shop keeps trading. The victim's money is held.</div></div>
+    <div class="card"><div class="n">07</div><div class="t">Anyone: ask the agent</div><div class="d">Plain questions, answers from the data.</div></div>
+  </div>
+  <div class="src">All data shown in this video is synthetic.</div>
+</section>
+
+<!-- persona cards -->
+<section id="p_officer">
+  <div class="kicker">Use case <b>1</b> of 7</div>
+  <div class="h1" style="margin-top:30px">The bank's nodal officer</div>
+  <div class="persona">
+    <div class="card"><h3>Who</h3><p>The officer who acts on cyber-fraud complaints from the 1930 helpline (NCRP).</p></div>
+    <div class="card"><h3>Does in Wapsi</h3><p>Opens a complaint and follows the money, hop by hop.</p></div>
+    <div class="card gets"><h3>Gets</h3><p>A hold plan: the exact amount to hold in each account, and the SOP rule behind it.</p></div>
+  </div>
+</section>
+<section id="p_supervisor">
+  <div class="kicker">Use case <b>2</b> of 7</div>
+  <div class="h1" style="margin-top:30px">The supervisor</div>
+  <div class="persona">
+    <div class="card"><h3>Who</h3><p>The checker. Nothing goes out on one person's say-so.</p></div>
+    <div class="card"><h3>Does in Wapsi</h3><p>Reviews what the analyst prepared, then approves, returns or rejects it.</p></div>
+    <div class="card gets"><h3>Gets</h3><p>Maker-checker by design. A whole-account freeze only as a recorded exception.</p></div>
+  </div>
+</section>
+<section id="p_staff">
+  <div class="kicker">Use case <b>3</b> of 7</div>
+  <div class="h1" style="margin-top:30px">Call-centre and branch staff</div>
+  <div class="persona">
+    <div class="card"><h3>Who</h3><p>The people who take the customer's call, often in Hinglish.</p></div>
+    <div class="card"><h3>Does in Wapsi</h3><p>Uploads the voice note.</p></div>
+    <div class="card gets"><h3>Gets</h3><p>The complaint as fields, every claim checked against the bank's ledger.</p></div>
+  </div>
+</section>
+<section id="p_police">
+  <div class="kicker">Use case <b>4</b> of 7</div>
+  <div class="h1" style="margin-top:30px">The police</div>
+  <div class="persona">
+    <div class="card"><h3>Who</h3><p>Investigating officers who ask the bank to hold money.</p></div>
+    <div class="card"><h3>Does in Wapsi</h3><p>The bank checks their hold request against an eight-field checklist.</p></div>
+    <div class="card gets"><h3>Gets</h3><p>A hold on the amount that can be traced, and a letter listing what is missing.</p></div>
+  </div>
+</section>
+<section id="p_audit">
+  <div class="kicker">Use case <b>5</b> of 7</div>
+  <div class="h1" style="margin-top:30px">Compliance and audit</div>
+  <div class="persona">
+    <div class="card"><h3>Who</h3><p>Compliance teams, internal auditors, the regulator.</p></div>
+    <div class="card"><h3>Does in Wapsi</h3><p>Looks back at any case: who did what, when, and in which role.</p></div>
+    <div class="card gets"><h3>Gets</h3><p>A tamper-evident log, and deadline clocks that count down by themselves.</p></div>
+  </div>
+</section>
+
+<!-- tamper drill -->
+<section id="drill">
+  <div class="kicker">Use case 5 · tamper drill on the audit log</div>
+  <div class="h2" style="margin-top:30px">Six ways to cheat the log. <span class="ok">Six caught.</span></div>
+  <div class="term">
+    <div class="row2 h"><span>tamper attempt</span><span>caught?</span></div>
+    <div class="row2"><span>change what was approved</span><span class="y">yes</span></div>
+    <div class="row2"><span>change who approved, re-hash that entry</span><span class="y">yes</span></div>
+    <div class="row2"><span>delete the approval</span><span class="y">yes</span></div>
+    <div class="row2"><span>swap two entries</span><span class="y">yes</span></div>
+    <div class="row2"><span>drop the last entries</span><span class="y">yes</span></div>
+    <div class="row2" style="border:0"><span>edit, then re-hash everything after it</span><span class="y">yes</span></div>
+  </div>
+  <div class="src"><b>Source:</b> <span class="mono">uv run python -m wapsi.audit drill</span> on the synthetic showcase case (a 40-event chain). Runs on a laptop; no model involved.</div>
+</section>
+
+<!-- the shop and the victim -->
+<section id="honest">
+  <div class="kicker">Use case <b>6</b> of 7 · the people this is for · showcase case</div>
+  <div class="vs">
+    <div class="card side bound"><h3 class="ok">The kirana shop</h3><div class="v num ok" style="font-size:112px">No hold</div><div class="l">Goods delivered, so nothing is held. Its <b class="num">₹51,200</b> balance stays free and it keeps trading.</div></div>
+    <div class="card side bound"><h3 class="ok">The victim</h3><div class="v num ok" style="font-size:112px">₹3,34,848</div><div class="l">traced and recoverable: <b class="num">₹1,42,848</b> held here, <b class="num">₹1,92,000</b> requested from the other bank.</div></div>
+  </div>
+  <div style="margin-top:40px; font:400 34px/1.4 var(--sans); color:var(--ink-2)"><b class="num bad" style="font-size:44px">99.75%</b> of what a whole-account freeze would lock belongs to people who did nothing wrong.</div>
+  <div class="src"><b>Source:</b> hand-computed showcase case, <span class="mono">src/wapsi/fixtures/showcase.py</span> (pitch/NUMBERS.md sc1_*). Synthetic data.</div>
+</section>
+
+<!-- why this wins -->
+<section id="moats">
+  <div class="brand">WAPSI <i>↩</i></div>
+  <div class="kicker">Why this wins</div>
+  <div class="h2" style="margin-top:30px">Hard to fake, <span class="ok">easy to trust.</span></div>
+  <div class="pipeline">
+    <div class="card p"><div class="n">01</div><div class="t">Numbers from data</div><div class="d">The model writes only the words. A verifier recomputes every rupee.</div></div>
+    <div class="card p"><div class="n">02</div><div class="t">Rules cite the SOP</div><div class="d">Each hold names its clause in the MHA / I4C procedure.</div></div>
+    <div class="card p"><div class="n">03</div><div class="t">Two people, one log</div><div class="d">Maker-checker approvals and a tamper-evident audit chain.</div></div>
+    <div class="card p human"><div class="n">04</div><div class="t">Open model, bank's own GPU</div><div class="d">Gemma 4 on the bank's own AMD GPU. Customer data never leaves.</div></div>
+  </div>
+</section>
+<section id="metrics">
+  <div class="kicker">The results · and where each one ran</div>
+  <div class="mtiles">
+    <div class="card" data-f="1"><div class="v num ok">₹29.19 L</div><div class="vs2">held, instead of <b class="num bad">₹35.26 Cr</b> frozen</div><div class="l">39-case test world · 0 false freezes</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+    <div class="card" data-f="2"><div class="v num">1,590</div><div class="vs2">cases an hour on one GPU</div><div class="l">end to end, trace to verified drafts</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+    <div class="card" data-f="2"><div class="v num">$1.25</div><div class="vs2">per 1,000 cases</div><div class="l">at the $1.99 per GPU-hour list price</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+    <div class="card" data-f="3"><div class="v num bad">19 of 39</div><div class="vs2">cases with a wrong amount, raw Gemma 4</div><div class="l">free-text plan, no Wapsi</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+    <div class="card" data-f="3"><div class="v num ok">0 of 155</div><div class="vs2">bound drafts with a wrong amount</div><div class="l">same model, numbers from slots</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+    <div class="card" data-f="3"><div class="v num ok">100%</div><div class="vs2">of drafts pass the verifier</div><div class="l">39-case golden set</div><span class="where">AMD Instinct MI300X · 14 Oct 2026</span></div>
+  </div>
+  <div class="src"><b>Source:</b> editions/amd/evidence/notebook/2026-10-14 (golden_eval.json, evidence.json, bench/e2e_c16.json), AMD AI Notebook, ROCm 7.14, Gemma-4-31B-IT on vLLM. Synthetic data.</div>
+</section>
+
+<!-- close -->
+<section id="close_uc">
+  <div class="brand">WAPSI <i>↩</i></div>
+  <div class="kicker">AMD Developer Hackathon ACT III · Track 3, Reinvent Commerce</div>
+  <div class="h1" style="margin-top:44px; font-size:110px">Hold the fraud,<br><span class="ok">not the shop.</span></div>
+  <div class="links">
+    <div class="k">Live app</div><div>wapsi-arnavbule.streamlit.app</div>
+    <div class="k">Showcase</div><div>godostroyer-wapsi.static.hf.space</div>
+    <div class="k">Code</div><div>github.com/GODOSTROYER/wapsi</div>
+  </div>
+  <div style="margin-top:44px; font:400 30px/1.4 var(--sans); color:var(--ink-2)">MIT licence · <b class="bad">synthetic data only</b> · Gemma 4 on AMD</div>
+</section>
+
+<script>
+  // metrics_1..3: the same slide with one group of tiles in focus
+  const m = document.getElementById('metrics');
+  for (const f of ['1', '2', '3']) {
+    const c = m.cloneNode(true);
+    c.id = 'metrics_' + f;
+    c.querySelectorAll('[data-f]').forEach(t => t.classList.toggle('dim', t.dataset.f !== f));
+    m.parentNode.insertBefore(c, m);
+  }
+  m.remove();
+  function show(id) {
+    document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === id));
+  }
+  window.SLIDES = [...document.querySelectorAll('section')].map(s => s.id);
+</script>
+</body>
+</html>

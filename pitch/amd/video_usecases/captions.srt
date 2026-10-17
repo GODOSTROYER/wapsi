@@ -1,0 +1,143 @@
+1
+00:00:00,000 --> 00:00:03,600
+A kirana shop sells ₹1,200 of groceries to a stranger.
+
+2
+00:00:03,867 --> 00:00:08,827
+The stranger was spending stolen money. So the bank freezes the shop's whole account.
+
+3
+00:00:09,100 --> 00:00:13,740
+Wapsi holds only the stolen amount. Here is how seven different people use it.
+
+4
+00:00:14,467 --> 00:00:20,147
+First, the bank's nodal officer. Fraud complaints from the 1930 helpline land in her inbox.
+
+5
+00:00:20,400 --> 00:00:25,320
+She opens one: ₹4,80,000 stolen from a customer.
+
+6
+00:00:25,600 --> 00:00:29,840
+Wapsi shows where the money went, hop by hop, through four layers of accounts.
+
+7
+00:00:30,100 --> 00:00:36,540
+A hold plan: for each account, the exact amount to hold, and the SOP rule behind it.
+
+8
+00:00:36,800 --> 00:00:43,280
+₹1,42,848 held, instead of ₹5,03,50,000 frozen.
+
+9
+00:00:44,000 --> 00:00:48,360
+Next, the supervisor. Nothing leaves the bank without a second person.
+
+10
+00:00:48,633 --> 00:00:53,433
+The analyst who prepared the plan cannot approve it. Every item waits for a supervisor.
+
+11
+00:00:53,700 --> 00:00:59,340
+The supervisor approves. The approval is stamped with a fingerprint of exactly what was approved.
+
+12
+00:00:59,600 --> 00:01:02,520
+Freezing a whole account is only an exception:
+
+13
+00:01:02,520 --> 00:01:06,520
+a reason from a fixed list, recorded, approved by someone else.
+
+14
+00:01:07,233 --> 00:01:11,029
+Call-centre and branch staff take complaints by phone, often in Hinglish.
+
+15
+00:01:11,029 --> 00:01:12,433
+They upload the voice note.
+
+16
+00:01:12,700 --> 00:01:19,700
+Wapsi writes out the fields, then checks every claim against the bank's own ledger.
+
+17
+00:01:20,400 --> 00:01:25,280
+The police send hold requests. Many are incomplete, or ask to freeze everything.
+
+18
+00:01:25,533 --> 00:01:30,533
+Wapsi checks each request against an eight-point checklist. This one has four of the eight.
+
+19
+00:01:30,800 --> 00:01:35,769
+The hold is limited to what can be traced: ₹43,200, not the whole account.
+
+20
+00:01:35,769 --> 00:01:38,320
+A letter asks for the missing details.
+
+21
+00:01:39,033 --> 00:01:42,513
+Compliance teams and auditors need proof, months later.
+
+22
+00:01:42,767 --> 00:01:47,327
+Every action goes into a hash-chained log. Each entry locks the one before it.
+
+23
+00:01:47,600 --> 00:01:52,960
+We tried six ways to tamper with it: editing, deleting, reordering. All six were caught.
+
+24
+00:01:53,233 --> 00:01:59,633
+Deadlines are counted: the STR is due within 7 working days; a hold may lapse after 90 days.
+
+25
+00:02:00,367 --> 00:02:06,607
+The people this is for. The kirana shop delivered its goods: no hold. It keeps trading.
+
+26
+00:02:06,867 --> 00:02:13,107
+99.75% of what the freeze locks belongs to people who did nothing wrong.
+
+27
+00:02:13,367 --> 00:02:19,727
+And the victim: ₹3,34,848 traced and recoverable.
+
+28
+00:02:20,433 --> 00:02:26,993
+Anyone on the team can simply ask. An agent built on Google's Agent Development Kit answers.
+
+29
+00:02:27,267 --> 00:02:33,387
+It calls Wapsi's tools. Every number in its answer comes from a tool, never from the model's memory.
+
+30
+00:02:33,667 --> 00:02:38,187
+And it follows the rules. Asked by an analyst to approve, it refuses.
+
+31
+00:02:38,900 --> 00:02:47,959
+Numbers from data, words from the model, every rupee recomputed. Rules cite the SOP.
+
+32
+00:02:47,959 --> 00:02:55,940
+Maker-checker, tamper-evident log. Open Gemma 4 on the bank's own AMD GPU.
+
+33
+00:02:56,200 --> 00:03:07,840
+39-case test world, AMD Instinct MI300X: freeze ₹35.26 Cr; Wapsi holds ₹29.19 L, 0 false freezes.
+
+34
+00:03:08,100 --> 00:03:14,580
+One MI300X: 1,590 cases an hour, $1.25 per 1,000 cases.
+
+35
+00:03:14,833 --> 00:03:23,673
+Raw Gemma 4: a wrong amount in 19 of 39 cases. Wapsi-bound: 0 of 155 drafts. Every draft verified.
+
+36
+00:03:24,400 --> 00:03:30,760
+Wapsi. Hold the fraud, not the shop. Live app and code on screen. Synthetic data only.
